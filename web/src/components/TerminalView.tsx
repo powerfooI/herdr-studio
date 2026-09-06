@@ -6,7 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import type { IBufferLine, ILink } from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
-import { Columns2, Keyboard, Maximize2, Rows2, X } from "lucide-react";
+import { Columns2, Copy, Keyboard, Maximize2, Rows2, X } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -31,9 +31,15 @@ import {
 import { paneCanClose } from "../paneJump";
 import { shallowEqual, store, useStoreSelector } from "../store";
 import {
+  copyTextFromUserGesture,
   createTerminalClipboardProvider,
   decodeTerminalClipboard,
 } from "../terminalClipboard";
+import {
+  TERMINAL_COPY_RECENT_LINES,
+  terminalCopyRecentRequest,
+  terminalCopyRecentText,
+} from "../terminalCopyRecent";
 import {
   clearTerminalComposerDrafts,
   terminalComposerCloseWarning,
@@ -1960,6 +1966,38 @@ export function TerminalView({
   };
   const uploadComposerImage = (file: File) =>
     uploadTerminalImage(connectionClient, file);
+  const copyRecentUnwrapped = async () => {
+    const targetPaneId = paneIdRef.current;
+    if (!targetPaneId) return;
+    try {
+      const request = terminalCopyRecentRequest(targetPaneId);
+      const result = await connectionClient.call(
+        request.method,
+        request.params,
+      );
+      const text = terminalCopyRecentText(result);
+      if (!text) {
+        store.notify({
+          kind: "info",
+          message: "Nothing to copy",
+          detail: "The terminal has no recent output.",
+        });
+        return;
+      }
+      await copyTextFromUserGesture(text);
+      store.notify({
+        kind: "success",
+        message: `Copied the last ${TERMINAL_COPY_RECENT_LINES} lines`,
+        detail: "Wrapped lines were joined on the server.",
+      });
+    } catch (error) {
+      store.notify({
+        kind: "error",
+        message: "Copy recent lines failed",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
   const notifyComposerError = (message: string) => {
     store.notify({
       kind: "error",
@@ -2130,6 +2168,16 @@ export function TerminalView({
           />
         ) : null}
         <div className="terminal-pane-toolbar" aria-label="Pane actions">
+          <button
+            type="button"
+            className="terminal-pane-action"
+            title={`Copy the last ${TERMINAL_COPY_RECENT_LINES} lines (wrapped lines joined)`}
+            aria-label={`Copy the last ${TERMINAL_COPY_RECENT_LINES} lines (wrapped lines joined)`}
+            onPointerDown={preventPaneActionFocus}
+            onClick={() => void copyRecentUnwrapped()}
+          >
+            <Copy size={14} />
+          </button>
           <button
             type="button"
             className="terminal-pane-action"

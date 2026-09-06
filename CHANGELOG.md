@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Copy the last 200 terminal lines from the pane toolbar with soft-wrapped
+  rows joined back into logical lines.
+
 ## 0.5.2 - 2026-09-06
 
 ### Added

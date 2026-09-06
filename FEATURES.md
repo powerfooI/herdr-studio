@@ -52,6 +52,8 @@ Closed panes are removed from the history automatically.
   path into the terminal. This also works through `--ssh-host`.
 - Relay OSC 52 clipboard writes from local or remote terminal applications to
   the initiating browser.
+- Copy the last 200 terminal lines from the pane toolbar with soft-wrapped
+  rows joined back into logical lines.
 - `Cmd/Ctrl`-click HTTP(S) links to open them safely in a new tab.
 - `Cmd/Ctrl`-click workspace-relative or absolute file paths in terminal output
   to preview text, Markdown, or images without leaving the terminal.
