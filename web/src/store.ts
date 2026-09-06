@@ -2095,6 +2095,28 @@ export const store = {
     );
   },
 
+  movePaneToWorkspace(paneId: string, workspaceId: string) {
+    return action(
+      (lease) =>
+        lease.client.call("pane.move", {
+          pane_id: paneId,
+          destination: {
+            type: "new_tab",
+            workspace_id: workspaceId,
+          },
+          focus: false,
+        }),
+      {
+        refresh: "immediate",
+        failureNotice: (error) => ({
+          kind: "error",
+          message: "Agent move failed",
+          detail: error.message,
+        }),
+      },
+    );
+  },
+
   gitPullWorkspace(workspaceId: string) {
     return action(
       async (lease) => {

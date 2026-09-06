@@ -47,6 +47,7 @@ export function AgentRow({
   workspaceLabel,
   onSelect,
   onOpenMenu,
+  drag,
 }: {
   pane: Pane;
   selected: boolean;
@@ -56,6 +57,11 @@ export function AgentRow({
   workspaceLabel?: string;
   onSelect?: (pane: Pane) => void;
   onOpenMenu: (x: number, y: number) => void;
+  drag?: {
+    isDragging: boolean;
+    onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDragEnd: () => void;
+  };
 }) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
@@ -80,13 +86,18 @@ export function AgentRow({
     <div
       className={`agent-row ${nested ? "is-nested" : "is-standalone"} ${
         selected ? "is-selected" : ""
-      } ${pane.focused ? "is-focused" : ""}`}
+      } ${pane.focused ? "is-focused" : ""} ${
+        drag?.isDragging ? "is-dragging" : ""
+      }`}
       style={
         nested
           ? { marginLeft: TREE_DEPTH_INDENT + depth * TREE_DEPTH_INDENT }
           : undefined
       }
       role={nested ? "treeitem" : "button"}
+      draggable={!!drag}
+      onDragStart={drag?.onDragStart}
+      onDragEnd={drag?.onDragEnd}
       tabIndex={nested ? (selected ? 0 : -1) : 0}
       aria-level={nested ? depth + 1 : undefined}
       aria-selected={nested ? selected : undefined}
