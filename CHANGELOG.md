@@ -19,8 +19,10 @@
 - Make `Cmd+W` close only the active pane in split tabs.
 - Keep Diff scope labels on one line and mobile terminal shortcuts within view.
 - Preserve History focus and view mode during refresh; correct Grok timestamps.
-- Make terminal backgrounds and ANSI colors follow the light application theme,
-  and upgrade xterm so IME preedit stays inside the viewport and anchors to the
+- Make terminal default colors follow the application theme while preserving
+  explicit application colors, and keep terminal sizing free of a hidden
+  scrollbar gutter.
+- Upgrade xterm so IME preedit stays inside the viewport and anchors to the
   live cursor during TUI redraws.
 
 ## 0.5.1 - 2026-09-03
