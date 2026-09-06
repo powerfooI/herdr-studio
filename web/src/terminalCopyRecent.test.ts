@@ -7,10 +7,10 @@ import {
 
 describe("terminalCopyRecentRequest", () => {
   test("reads recent unwrapped text for the pane", () => {
-    expect(terminalCopyRecentRequest("ws1.p1")).toEqual({
+    expect(terminalCopyRecentRequest("w1:p1")).toEqual({
       method: "pane.read",
       params: {
-        pane_id: "ws1.p1",
+        pane_id: "w1:p1",
         source: "recent_unwrapped",
         format: "text",
         lines: TERMINAL_COPY_RECENT_LINES,
@@ -19,7 +19,7 @@ describe("terminalCopyRecentRequest", () => {
   });
 
   test("accepts an explicit line count", () => {
-    expect(terminalCopyRecentRequest("ws1.p1", 50).params.lines).toBe(50);
+    expect(terminalCopyRecentRequest("w1:p1", 50).params.lines).toBe(50);
   });
 });
 
@@ -28,7 +28,7 @@ describe("terminalCopyRecentText", () => {
     const result = {
       type: "pane_read",
       read: {
-        pane_id: "ws1.p1",
+        pane_id: "w1:p1",
         workspace_id: "ws1",
         tab_id: "t1",
         source: "recent_unwrapped",

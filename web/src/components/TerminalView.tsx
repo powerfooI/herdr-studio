@@ -1969,13 +1969,22 @@ export function TerminalView({
   const copyRecentUnwrapped = async () => {
     const targetPaneId = paneIdRef.current;
     if (!targetPaneId) return;
+    let text: string | null = null;
     try {
       const request = terminalCopyRecentRequest(targetPaneId);
       const result = await connectionClient.call(
         request.method,
         request.params,
       );
-      const text = terminalCopyRecentText(result);
+      text = terminalCopyRecentText(result);
+      if (text === null) {
+        store.notify({
+          kind: "error",
+          message: "Copy recent lines failed",
+          detail: "Unexpected response from Herdr.",
+        });
+        return;
+      }
       if (!text) {
         store.notify({
           kind: "info",
@@ -1989,12 +1998,17 @@ export function TerminalView({
         kind: "success",
         message: `Copied the last ${TERMINAL_COPY_RECENT_LINES} lines`,
         detail: "Wrapped lines were joined on the server.",
+        autoDismissMs: 5000,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       store.notify({
         kind: "error",
         message: "Copy recent lines failed",
-        detail: error instanceof Error ? error.message : String(error),
+        detail: text
+          ? `${message}. Use Copy to approve this clipboard write.`
+          : message,
+        ...(text ? { actionLabel: "Copy", actionClipboardText: text } : {}),
       });
     }
   };
