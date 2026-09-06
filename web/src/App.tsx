@@ -148,6 +148,7 @@ const LazyTerminalView = lazy(() =>
 
 type TerminalViewProps = {
   paneId?: string;
+  resolvedTheme: ResolvedTheme;
   showMobileKeys?: boolean;
   mobileShortcuts?: MobileTerminalShortcutRows;
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
@@ -764,6 +765,7 @@ function resizeTargetForSplit(
 // Render the active tab's Herdr pane layout; single-pane and zoomed tabs keep
 // the old full terminal view.
 function TerminalPaneLayout({
+  resolvedTheme,
   mobileShortcuts,
   mobileSideShortcuts,
   composerOpen,
@@ -772,6 +774,7 @@ function TerminalPaneLayout({
   onAgentHistoryOpenChange,
   onOpenWorkspaceFile,
 }: {
+  resolvedTheme: ResolvedTheme;
   mobileShortcuts: MobileTerminalShortcutRows;
   mobileSideShortcuts: MobileTerminalSideShortcuts;
   composerOpen: boolean;
@@ -820,6 +823,7 @@ function TerminalPaneLayout({
     return (
       <TerminalView
         key={mountKeyForPane(activePaneId)}
+        resolvedTheme={resolvedTheme}
         mobileShortcuts={mobileShortcuts}
         mobileSideShortcuts={mobileSideShortcuts}
         composerOpen={composerOpen}
@@ -874,6 +878,7 @@ function TerminalPaneLayout({
         <TerminalView
           key={mountKeyForPane(activePaneId)}
           paneId={activePaneId}
+          resolvedTheme={resolvedTheme}
           mobileShortcuts={mobileShortcuts}
           mobileSideShortcuts={mobileSideShortcuts}
           composerOpen={composerOpen}
@@ -977,6 +982,7 @@ function TerminalPaneLayout({
             <TerminalView
               key={mountKeyForPane(layoutPane.pane_id)}
               paneId={layoutPane.pane_id}
+              resolvedTheme={resolvedTheme}
               showMobileKeys={isActive}
               mobileShortcuts={mobileShortcuts}
               mobileSideShortcuts={mobileSideShortcuts}
@@ -1053,6 +1059,7 @@ export default function App() {
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() =>
     loadSystemTheme(),
   );
+  const resolvedTheme: ResolvedTheme = theme === "system" ? systemTheme : theme;
   const [accentColor, setAccentColor] = useState<AccentColor>(() =>
     loadAccentColor(),
   );
@@ -2259,7 +2266,6 @@ export default function App() {
     return () => media.removeEventListener("change", onChange);
   }, []);
   useLayoutEffect(() => {
-    const resolvedTheme = theme === "system" ? systemTheme : theme;
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
     localStorage.setItem(THEME_KEY, theme);
@@ -2276,7 +2282,7 @@ export default function App() {
       );
     }
     localStorage.setItem(UI_SCALE_KEY, String(uiScale));
-  }, [accentColor, systemTheme, theme, uiScale]);
+  }, [accentColor, resolvedTheme, theme, uiScale]);
   useEffect(() => {
     localStorage.setItem(
       MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -2816,6 +2822,7 @@ export default function App() {
           >
             <div className="workspace-terminal-surface">
               <TerminalPaneLayout
+                resolvedTheme={resolvedTheme}
                 mobileShortcuts={mobileTerminalShortcuts}
                 mobileSideShortcuts={mobileTerminalSideShortcuts}
                 composerOpen={terminalComposerOpen}

@@ -48,6 +48,8 @@ const DEFAULT_EVENTS = [
   "workspace.renamed",
   "workspace.closed",
   "workspace.focused",
+  "workspace.moved",
+  "workspace.reordered",
   "tab.created",
   "tab.closed",
   "tab.renamed",

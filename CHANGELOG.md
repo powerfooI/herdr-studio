@@ -6,6 +6,7 @@
 
 - Add a website tutorial, History filters, and adjustable text size.
 - Drag across the Files annotation gutter to comment on multiple lines.
+- Drag workspaces in the sidebar to persistently reorder them.
 
 ### Changed
 
@@ -17,6 +18,9 @@
 - Make `Cmd+W` close only the active pane in split tabs.
 - Keep Diff scope labels on one line and mobile terminal shortcuts within view.
 - Preserve History focus and view mode during refresh; correct Grok timestamps.
+- Make terminal backgrounds and ANSI colors follow the light application theme,
+  and upgrade xterm so IME preedit stays inside the viewport and anchors to the
+  live cursor during TUI redraws.
 
 ## 0.5.1 - 2026-09-03
 

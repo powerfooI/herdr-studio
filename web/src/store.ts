@@ -2084,6 +2084,17 @@ export const store = {
     );
   },
 
+  moveWorkspace(workspaceId: string, insertIndex: number) {
+    return action(
+      (lease) =>
+        lease.client.call("workspace.move", {
+          workspace_id: workspaceId,
+          insert_index: insertIndex,
+        }),
+      { refresh: "immediate" },
+    );
+  },
+
   gitPullWorkspace(workspaceId: string) {
     return action(
       async (lease) => {

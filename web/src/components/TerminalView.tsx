@@ -18,6 +18,7 @@ import {
 } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { bridge, type ConnectionClient } from "../api";
+import type { ResolvedTheme } from "../appearance";
 import { mobileTerminalShortcutExecution } from "../mobileTerminalShortcutAction";
 import {
   defaultMobileTerminalShortcutRows,
@@ -90,6 +91,12 @@ import {
 } from "../terminalResize";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
 import { TerminalSelectionDragGuard } from "../terminalSelectionGuard";
+import {
+  inferTerminalCanvasBackground,
+  type TerminalRgb,
+  terminalAnsiForTheme,
+  terminalThemeFor,
+} from "../terminalThemes";
 import { paneHasAgentHistory } from "./agentSession";
 import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
 import { TerminalComposer } from "./TerminalComposer";
@@ -128,6 +135,23 @@ function sendBytes(
 
 const FONT_FAMILY =
   'SFMono-Regular, Menlo, Monaco, "0xProto Nerd Font Mono", "JetBrainsMonoNL Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", Consolas, "Liberation Mono", "Courier New", "Noto Sans Mono CJK SC", "Source Han Mono SC", "Sarasa Mono SC", "Herdr Nerd Symbols", monospace';
+const TERMINAL_CANVAS_BACKGROUND_PROPERTY = "--terminal-canvas-background";
+
+function applyTerminalTheme(
+  term: Terminal,
+  resolvedTheme: ResolvedTheme,
+  canvasBackground: TerminalRgb | null = null,
+) {
+  const theme = terminalThemeFor(resolvedTheme, canvasBackground);
+  term.options.theme = theme;
+  if (theme.background) {
+    term.element?.style.setProperty(
+      TERMINAL_CANVAS_BACKGROUND_PROPERTY,
+      theme.background,
+    );
+  }
+}
+
 const LINK_BLUE = "\x1b[94m";
 const RESET_FOREGROUND = "\x1b[39m";
 const ANSI_SEQUENCE_RE =
@@ -399,6 +423,7 @@ export type TerminalWorkspaceFileRequest = {
 
 export function TerminalView({
   paneId,
+  resolvedTheme,
   showMobileKeys = true,
   mobileShortcuts = defaultMobileTerminalShortcutRows(),
   mobileSideShortcuts = defaultMobileTerminalSideShortcuts(),
@@ -409,6 +434,7 @@ export function TerminalView({
   onOpenWorkspaceFile,
 }: {
   paneId?: string;
+  resolvedTheme: ResolvedTheme;
   showMobileKeys?: boolean;
   mobileShortcuts?: MobileTerminalShortcutRows;
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
@@ -493,6 +519,14 @@ export function TerminalView({
   // and without an instance change in the deps the attach effect would not
   // fire again, leaving the recreated terminal detached and blank.
   const [termInstance, setTermInstance] = useState<Terminal | null>(null);
+  // The init effect intentionally does not depend on the theme: it reads the
+  // ref at mount, while the theme effect below requests a fresh Herdr frame.
+  const resolvedThemeRef = useRef(resolvedTheme);
+  const terminalCanvasBackgroundRef = useRef<{
+    terminalId: string;
+    color: TerminalRgb;
+  } | null>(null);
+  const themeRefreshTerminalRef = useRef<string | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const attachedRef = useRef<string | null>(null);
   const attachingRef = useRef<string | null>(null);
@@ -759,13 +793,7 @@ export function TerminalView({
       disableStdin: composerOpenRef.current,
       fontFamily: FONT_FAMILY,
       ...terminalDensity(),
-      theme: {
-        background: "#0b0d12",
-        foreground: "#c9cdd6",
-        cursor: "#c9cdd6",
-        overviewRulerBorder: "rgba(0,0,0,0)",
-        selectionBackground: "rgba(110,168,255,0.3)",
-      },
+      theme: terminalThemeFor(resolvedThemeRef.current),
       allowProposedApi: true,
       linkHandler: {
         activate(event, text) {
@@ -777,7 +805,7 @@ export function TerminalView({
       },
       // xterm treats exactly 0 as "use the 14px platform default". A positive
       // sub-pixel value rounds its internal scrollbar gutter down to zero.
-      overviewRuler: { width: 0.01 },
+      scrollbar: { width: 0.01 },
       scrollback: 2000,
     });
     const fit = new FitAddon();
@@ -873,11 +901,39 @@ export function TerminalView({
       }
       const text = b64toText(t.bytes);
       if (text === null) return;
+      if (t.full) {
+        const canvasBackground = inferTerminalCanvasBackground(text);
+        if (canvasBackground) {
+          terminalCanvasBackgroundRef.current = {
+            terminalId: t.terminal_id,
+            color: canvasBackground,
+          };
+          applyTerminalTheme(term, resolvedThemeRef.current, canvasBackground);
+        }
+        if (themeRefreshTerminalRef.current === t.terminal_id) {
+          themeRefreshTerminalRef.current = null;
+          applyTerminalTheme(term, resolvedThemeRef.current, canvasBackground);
+          term.reset();
+          renderedTerminalRef.current = t.terminal_id;
+        }
+      }
+      const canvasBackground =
+        terminalCanvasBackgroundRef.current?.terminalId === t.terminal_id
+          ? terminalCanvasBackgroundRef.current.color
+          : null;
       attachWatchdogRef.current?.markFrame();
       attachTimeoutCountRef.current = 0;
       setTerminalLoading(false);
       setTerminalAttachError("");
-      term.write(colorHttpLinks(text));
+      term.write(
+        colorHttpLinks(
+          terminalAnsiForTheme(
+            text,
+            resolvedThemeRef.current,
+            canvasBackground,
+          ),
+        ),
+      );
       focusTerminalSoon();
     });
     const offClipboard = bridge.onTerminalClipboard((clipboard) => {
@@ -1015,7 +1071,8 @@ export function TerminalView({
       observedAt: number,
     ) => {
       const shouldSend = imeFallback.recordInput(text, eventTime, observedAt);
-      if (shouldSend) sendText(text);
+      if (!shouldSend) return;
+      sendText(text);
     };
     const cancelImeTextareaFallback = () => {
       if (imeTextareaTimer !== null) {
@@ -1798,6 +1855,12 @@ export function TerminalView({
     // retry, reconnect): the server repaints a full frame anyway, and keeping
     // the buffer avoids a blank flash plus losing local scrollback.
     if (renderedTerminalRef.current !== terminalId) {
+      themeRefreshTerminalRef.current = null;
+      const canvasBackground =
+        terminalCanvasBackgroundRef.current?.terminalId === terminalId
+          ? terminalCanvasBackgroundRef.current.color
+          : null;
+      applyTerminalTheme(term, resolvedThemeRef.current, canvasBackground);
       term.reset();
       renderedTerminalRef.current = terminalId;
     }
@@ -1890,6 +1953,50 @@ export function TerminalView({
     s.terminalAttachEpoch,
     attachRetry,
     connectionClient,
+    termInstance,
+  ]);
+
+  // Herdr's rendered frame contains an explicit true-color background on
+  // every cell, so changing xterm's theme alone leaves the old dark canvas in
+  // place. Ask Herdr for a same-size full repaint and swap themes immediately
+  // before that frame is written.
+  useEffect(() => {
+    resolvedThemeRef.current = resolvedTheme;
+    const term = termInstance;
+    if (!term) return;
+    const terminalId = attachedRef.current;
+    if (!terminalId) {
+      applyTerminalTheme(term, resolvedTheme);
+      return;
+    }
+    const size = fitVisibleTerminal() ?? { cols: term.cols, rows: term.rows };
+    const relaySize = relayViewportFor(size);
+    themeRefreshTerminalRef.current = terminalId;
+    connectionClient
+      .call("terminal.resize", {
+        terminal_id: terminalId,
+        cols: size.cols,
+        rows: size.rows,
+        relay_active: relaySize !== null,
+        ...(relaySize
+          ? { relay_cols: relaySize.cols, relay_rows: relaySize.rows }
+          : {}),
+      })
+      .catch(() => {
+        if (themeRefreshTerminalRef.current !== terminalId) return;
+        themeRefreshTerminalRef.current = null;
+        const canvasBackground =
+          terminalCanvasBackgroundRef.current?.terminalId === terminalId
+            ? terminalCanvasBackgroundRef.current.color
+            : null;
+        applyTerminalTheme(term, resolvedTheme, canvasBackground);
+        term.refresh(0, term.rows - 1);
+      });
+  }, [
+    connectionClient,
+    fitVisibleTerminal,
+    relayViewportFor,
+    resolvedTheme,
     termInstance,
   ]);
 

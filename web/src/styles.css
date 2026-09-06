@@ -6,6 +6,7 @@
   --panel-2: #24283b;
   --input-bg: #11141b;
   --terminal-bg: #0b0d12;
+  --terminal-fg: #c9cdd6;
   --border: #2f3549;
   --border-soft: rgba(255, 255, 255, 0.07);
   --text: #d5dcff;
@@ -85,7 +86,8 @@
   --panel: #d8d9e0;
   --panel-2: #c4c8da;
   --input-bg: #f6f7f9;
-  --terminal-bg: #0b0d12;
+  --terminal-bg: #f6f7f9;
+  --terminal-fg: #2b3245;
   --border: #b6bbd1;
   --border-soft: rgba(31, 47, 102, 0.12);
   --text: #1f2f66;
@@ -2520,6 +2522,7 @@ textarea:focus {
   color: var(--text-strong);
 }
 .tree-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2609,6 +2612,26 @@ textarea:focus {
 }
 .tree-row.is-pinned:not(.is-focused) {
   background: color-mix(in srgb, var(--panel-2) 62%, transparent);
+}
+.tree-row.is-dragging {
+  opacity: 0.45;
+}
+.tree-row.drop-before::after,
+.tree-row.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.tree-row.drop-before::after {
+  top: -1px;
+}
+.tree-row.drop-after::after {
+  bottom: -1px;
 }
 .row-spinner {
   width: 10px;
@@ -7282,10 +7305,18 @@ textarea:focus {
    */
   letter-spacing: 0 !important;
 }
-.terminal-view .xterm-viewport {
+.terminal-view .xterm:not(.allow-transparency) .xterm-viewport {
+  /* xterm.css hard-codes black here, which otherwise leaks through below the
+     final fractional-height row and around the terminal padding. Include
+     xterm's transparency state so this wins even when its CSS loads later. */
+  background-color: var(--terminal-canvas-background, var(--terminal-bg));
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: none;
+}
+.terminal-view .xterm .composition-view {
+  background-color: var(--terminal-canvas-background, var(--terminal-bg));
+  color: var(--terminal-fg);
 }
 .terminal-pane-toolbar {
   position: absolute;

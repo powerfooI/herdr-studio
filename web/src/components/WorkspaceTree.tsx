@@ -197,6 +197,13 @@ export function WorkspaceTree({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [agentMenu, setAgentMenu] = useState<AgentMenuState | null>(null);
   const [pendingClosePane, setPendingClosePane] = useState<Pane | null>(null);
+  const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<string | null>(
+    null,
+  );
+  const [workspaceDropTarget, setWorkspaceDropTarget] = useState<{
+    workspaceId: string;
+    position: "before" | "after";
+  } | null>(null);
   const [agentLayout, setAgentLayout] = useState<WorkspaceAgentLayout>(() =>
     parseWorkspaceAgentLayout(
       localStorage.getItem(WORKSPACE_AGENT_LAYOUT_STORAGE_KEY),
@@ -251,6 +258,8 @@ export function WorkspaceTree({
     setMenu(null);
     setAgentMenu(null);
     setPendingClosePane(null);
+    setDraggedWorkspaceId(null);
+    setWorkspaceDropTarget(null);
   }, [connectionClient]);
   useEffect(() => {
     localStorage.setItem(WORKSPACE_AGENT_LAYOUT_STORAGE_KEY, agentLayout);
@@ -321,6 +330,63 @@ export function WorkspaceTree({
     setCollapsedWorktreeGroupKeys((current) =>
       setWorktreeGroupCollapsed(current, workspace, collapsed),
     );
+  };
+
+  const clearWorkspaceDrag = () => {
+    setDraggedWorkspaceId(null);
+    setWorkspaceDropTarget(null);
+  };
+  const workspaceDropPosition = (e: React.DragEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+  };
+  const onWorkspaceDragStart = (
+    workspace: Workspace,
+    e: React.DragEvent<HTMLDivElement>,
+  ) => {
+    setDraggedWorkspaceId(workspace.workspace_id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", workspace.workspace_id);
+  };
+  const onWorkspaceDragOver = (
+    workspace: Workspace,
+    e: React.DragEvent<HTMLDivElement>,
+  ) => {
+    if (!draggedWorkspaceId || draggedWorkspaceId === workspace.workspace_id) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const position = workspaceDropPosition(e);
+    setWorkspaceDropTarget((current) =>
+      current?.workspaceId === workspace.workspace_id &&
+      current.position === position
+        ? current
+        : { workspaceId: workspace.workspace_id, position },
+    );
+  };
+  const onWorkspaceDrop = (
+    workspace: Workspace,
+    e: React.DragEvent<HTMLDivElement>,
+  ) => {
+    e.preventDefault();
+    const draggedId = draggedWorkspaceId;
+    const position = workspaceDropPosition(e);
+    clearWorkspaceDrag();
+    if (!draggedId || draggedId === workspace.workspace_id) return;
+    const orderedIds = [...s.workspaces]
+      .sort((a, b) => a.number - b.number)
+      .map((candidate) => candidate.workspace_id);
+    const from = orderedIds.indexOf(draggedId);
+    const to = orderedIds.indexOf(workspace.workspace_id);
+    if (from < 0 || to < 0) return;
+    // workspace.move inserts before the entry currently at insert_index, so
+    // an insertion point past the dragged row lands one slot earlier.
+    const insertIndex = position === "before" ? to : to + 1;
+    if (from < insertIndex ? insertIndex - 1 === from : insertIndex === from) {
+      return;
+    }
+    void store.moveWorkspace(draggedId, insertIndex);
   };
 
   if (s.workspaces.length === 0) {
@@ -414,6 +480,17 @@ export function WorkspaceTree({
               onSelectAgent={onSelectAgent}
               onAgentContextMenu={(pane, x, y) => setAgentMenu({ pane, x, y })}
               onContextMenu={(w, x, y) => setMenu({ workspace: w, x, y })}
+              workspaceDrag={{
+                isDragging: draggedWorkspaceId === w.workspace_id,
+                dropPosition:
+                  workspaceDropTarget?.workspaceId === w.workspace_id
+                    ? workspaceDropTarget.position
+                    : null,
+                onDragStart: (e) => onWorkspaceDragStart(w, e),
+                onDragOver: (e) => onWorkspaceDragOver(w, e),
+                onDrop: (e) => onWorkspaceDrop(w, e),
+                onDragEnd: clearWorkspaceDrag,
+              }}
             />
           ))}
         </div>
@@ -518,6 +595,15 @@ export function WorkspaceTree({
   );
 }
 
+type WorkspaceDragProps = {
+  isDragging: boolean;
+  dropPosition: "before" | "after" | null;
+  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
+};
+
 function workspaceSubtreeContainsActiveItem(
   workspace: Workspace,
   childrenByParent: ReadonlyMap<string, Workspace[]>,
@@ -557,6 +643,7 @@ function WorkspaceRow({
   onSelectAgent,
   onAgentContextMenu,
   onContextMenu,
+  workspaceDrag,
 }: {
   w: Workspace;
   depth: number;
@@ -570,6 +657,7 @@ function WorkspaceRow({
   onSelectAgent?: (pane: Pane) => void;
   onAgentContextMenu: (pane: Pane, x: number, y: number) => void;
   onContextMenu: (w: Workspace, x: number, y: number) => void;
+  workspaceDrag?: WorkspaceDragProps;
 }) {
   const children = childrenByParent.get(w.workspace_id) ?? [];
   const agents = agentsByWorkspace.get(w.workspace_id) ?? [];
@@ -653,9 +741,18 @@ function WorkspaceRow({
           hasActiveAgent ? "has-active-agent" : ""
         } ${isChild ? "is-child" : ""} ${pinned ? "is-pinned" : ""} ${
           isPendingFocus ? "is-loading" : ""
+        } ${workspaceDrag?.isDragging ? "is-dragging" : ""} ${
+          workspaceDrag?.dropPosition
+            ? `drop-${workspaceDrag.dropPosition}`
+            : ""
         }`}
         style={{ paddingLeft: 6 + depth * TREE_DEPTH_INDENT }}
         role="treeitem"
+        draggable={!!workspaceDrag}
+        onDragStart={workspaceDrag?.onDragStart}
+        onDragOver={workspaceDrag?.onDragOver}
+        onDrop={workspaceDrag?.onDrop}
+        onDragEnd={workspaceDrag?.onDragEnd}
         tabIndex={
           workspaceTreeItemIsTabStop({
             workspaceFocused: w.focused,
