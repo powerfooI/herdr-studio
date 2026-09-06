@@ -59,7 +59,10 @@ export function AgentRow({
   onOpenMenu: (x: number, y: number) => void;
   drag?: {
     isDragging: boolean;
+    dropPosition: "before" | "after" | null;
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
     onDragEnd: () => void;
   };
 }) {
@@ -88,7 +91,7 @@ export function AgentRow({
         selected ? "is-selected" : ""
       } ${pane.focused ? "is-focused" : ""} ${
         drag?.isDragging ? "is-dragging" : ""
-      }`}
+      } ${drag?.dropPosition ? `drop-${drag.dropPosition}` : ""}`}
       style={
         nested
           ? { marginLeft: TREE_DEPTH_INDENT + depth * TREE_DEPTH_INDENT }
@@ -97,6 +100,8 @@ export function AgentRow({
       role={nested ? "treeitem" : "button"}
       draggable={!!drag}
       onDragStart={drag?.onDragStart}
+      onDragOver={drag?.onDragOver}
+      onDrop={drag?.onDrop}
       onDragEnd={drag?.onDragEnd}
       tabIndex={nested ? (selected ? 0 : -1) : 0}
       aria-level={nested ? depth + 1 : undefined}

@@ -7,7 +7,7 @@
 - Add a website tutorial, History filters, and adjustable text size.
 - Drag across the Files annotation gutter to comment on multiple lines.
 - Drag workspaces in the sidebar to persistently reorder them.
-- Drag agent sessions onto workspaces to move them into a new tab.
+- Reorder agent sessions by dragging them within the separate Agents panel.
 
 ### Changed
 

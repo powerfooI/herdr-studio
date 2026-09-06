@@ -2616,11 +2616,6 @@ textarea:focus {
 .tree-row.is-dragging {
   opacity: 0.45;
 }
-.tree-row.agent-drop-target {
-  background: color-mix(in srgb, var(--accent-soft) 82%, var(--panel));
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
 .tree-row.drop-before::after,
 .tree-row.drop-after::after {
   content: "";
@@ -2872,21 +2867,42 @@ textarea:focus {
   overflow: auto;
 }
 .agent-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 6px;
   border-radius: 7px;
-  cursor: grab;
+  cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.agent-row:active {
+.agent-row.is-standalone {
+  cursor: grab;
+}
+.agent-row.is-standalone:active {
   cursor: grabbing;
 }
 .agent-row.is-dragging {
   opacity: 0.45;
+}
+.agent-row.drop-before::after,
+.agent-row.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.agent-row.drop-before::after {
+  top: -1px;
+}
+.agent-row.drop-after::after {
+  bottom: -1px;
 }
 .agent-row:hover {
   background: var(--panel-2);
