@@ -3,6 +3,8 @@ const EAST_ASIAN_PUNCTUATION_RE =
 const RECENT_OUTPUT_LEAD_MS = 16;
 const RECENT_OUTPUT_MAX_AGE_MS = 80;
 const PENDING_XTERM_OUTPUT_MAX_AGE_MS = 24;
+const COMMIT_CAPTURE_WINDOW_MS = 50;
+const COMMIT_DUPLICATE_WINDOW_MS = 300;
 
 type ImeInputEvent = Pick<InputEvent, "data" | "inputType" | "isComposing">;
 
@@ -259,5 +261,106 @@ export class TerminalImeFallbackTracker {
         this.pendingXtermOutput.delete(id);
       }
     }
+  }
+}
+
+/**
+ * Drops the duplicate of an IME commit that arrives as a side effect of
+ * switching input sources with candidates visible (e.g. pressing
+ * Shift/CapsLock to leave a Chinese IME). macOS confirms such commits
+ * asynchronously, so xterm emits the committed text once from its
+ * compositionend finalization and then again from its own input fast path
+ * when the OS re-delivers the text without a key event.
+ *
+ * The guard learns the committed text from xterm's first emission after each
+ * compositionend (normally the composition finalization), then drops exactly
+ * one identical re-emission inside a short window and records a tombstone so
+ * the app-side recovery funnels do not re-send that same text when the OS
+ * re-delivery arrives without a beforeinput event. A canceled composition
+ * (Escape) leaves no textarea delta and never arms the guard, and each
+ * compositionend re-arms the capture so legitimately repeated commits always
+ * pass. New keydown, paste, and composition sessions disarm the guard before
+ * xterm can emit their input. Tombstones last only through the original native
+ * input's recovery cycle, including a handled flush with no missing text.
+ * The guard is timer-free; windows expire lazily on the next check.
+ *
+ * xterm-internal double finalization from a non-229 keydown mid-composition
+ * remains out of scope. A finalize emission delayed past the capture window
+ * simply leaves the guard unarmed, i.e. the pre-fix behavior.
+ */
+export class TerminalImeCommitGuard {
+  private captureUntil = 0;
+  private committedText: string | null = null;
+  private duplicateUntil = 0;
+  private suppressedDuplicate: { text: string; until: number } | null = null;
+
+  /**
+   * Reopens the capture window when a composition session ends having
+   * committed text. A canceled composition leaves no delta and never arms
+   * the guard, so a stray emission right after Escape cannot be captured.
+   */
+  endComposition(at: number, committedDelta: string | null): void {
+    this.beginIndependentInput();
+    this.captureUntil = committedDelta ? at + COMMIT_CAPTURE_WINDOW_MS : 0;
+  }
+
+  /**
+   * Filters one xterm data emission. Returns false when the emission is the
+   * duplicate of the captured commit and must not reach the terminal.
+   */
+  filterXtermData(data: string, at: number): boolean {
+    if (this.suppressedDuplicate?.text !== data) {
+      this.completeRecoveryCycle();
+    }
+    if (this.committedText === null) {
+      if (!this.captureUntil || at > this.captureUntil) return true;
+      this.captureUntil = 0;
+      this.committedText = data;
+      this.duplicateUntil = at + COMMIT_DUPLICATE_WINDOW_MS;
+      return true;
+    }
+    if (at > this.duplicateUntil || data !== this.committedText) {
+      this.beginIndependentInput();
+      return true;
+    }
+    this.committedText = null;
+    this.duplicateUntil = 0;
+    this.suppressedDuplicate = {
+      text: data,
+      until: at + COMMIT_DUPLICATE_WINDOW_MS,
+    };
+    return false;
+  }
+
+  /**
+   * Consumes the tombstone of a previously suppressed duplicate when an
+   * app-side recovery funnel tries to send the same text again. Without a
+   * beforeinput event the textarea fallback still produces the duplicated
+   * commit text, and this check is the only thing that stops it.
+   */
+  consumeSuppressedDuplicate(text: string, at: number): boolean {
+    const suppressed = this.suppressedDuplicate;
+    if (!suppressed || at > suppressed.until || suppressed.text !== text) {
+      return false;
+    }
+    this.suppressedDuplicate = null;
+    return true;
+  }
+
+  /** Retires recovery even when xterm already accounted for the whole delta. */
+  completeRecoveryCycle(): void {
+    this.suppressedDuplicate = null;
+  }
+
+  /** Must run before xterm handles a new keydown, paste, or composition. */
+  beginIndependentInput(): void {
+    this.captureUntil = 0;
+    this.committedText = null;
+    this.duplicateUntil = 0;
+    this.completeRecoveryCycle();
+  }
+
+  dispose(): void {
+    this.beginIndependentInput();
   }
 }

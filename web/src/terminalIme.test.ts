@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   isTerminalImeCommittedInputType,
+  TerminalImeCommitGuard,
   terminalImeEventTime,
   terminalImeFallbackText,
   TerminalImeFallbackTracker,
@@ -306,5 +307,217 @@ describe("terminal IME punctuation fallback tracking", () => {
     input("！", 130, "missing");
 
     expect(sent.join("")).toBe("，。？！");
+  });
+});
+
+describe("terminal IME commit duplication guard", () => {
+  test("suppresses exactly one identical re-emission of the commit", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 130)).toBe(false);
+    expect(guard.filterXtermData("ni hao", 140)).toBe(true);
+  });
+
+  test("never arms when a canceled composition leaves no delta", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, null);
+    expect(guard.filterXtermData("x", 110)).toBe(true);
+    expect(guard.filterXtermData("x", 120)).toBe(true);
+  });
+
+  test("never arms when a canceled composition emits nothing", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "x");
+    expect(guard.filterXtermData("x", 200)).toBe(true);
+    expect(guard.filterXtermData("x", 220)).toBe(true);
+  });
+
+  test("lets a legitimately repeated commit re-arm through compositionend", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    guard.endComposition(200, "ni hao");
+    expect(guard.filterXtermData("ni hao", 201)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 230)).toBe(false);
+  });
+
+  test("does not consume on different text or after the duplicate window", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("ni", 120)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 450)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 460)).toBe(true);
+  });
+
+  test("disarms after a different emission inside the window", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("other", 120)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 150)).toBe(true);
+  });
+
+  test("preserves the next physical key even when it repeats the commit", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "a");
+    expect(guard.filterXtermData("a", 101)).toBe(true);
+    // TerminalView's custom key handler runs before xterm can emit on keydown
+    // (its later textarea capture listener would be too late).
+    guard.beginIndependentInput();
+    expect(guard.filterXtermData("a", 200)).toBe(true);
+    expect(guard.filterXtermData("a", 201)).toBe(true);
+  });
+
+  test("preserves explicit paste and cancels capture before its first emission", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "a");
+    // A paste can precede the asynchronous composition finalization.
+    guard.beginIndependentInput();
+    expect(guard.filterXtermData("a", 110)).toBe(true);
+    expect(guard.filterXtermData("a", 120)).toBe(true);
+
+    guard.endComposition(200, "a");
+    expect(guard.filterXtermData("a", 201)).toBe(true);
+    // Both native paste and the term.paste fallback use this boundary.
+    guard.beginIndependentInput();
+    expect(guard.filterXtermData("a", 210)).toBe(true);
+  });
+
+  test("new composition retires both capture and an unconsumed tombstone", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "a");
+    guard.filterXtermData("a", 101);
+    guard.filterXtermData("a", 130);
+    guard.beginIndependentInput();
+    expect(guard.consumeSuppressedDuplicate("a", 140)).toBe(false);
+    expect(guard.filterXtermData("a", 141)).toBe(true);
+    guard.endComposition(150, "a");
+    expect(guard.filterXtermData("a", 151)).toBe(true);
+    expect(guard.filterXtermData("a", 160)).toBe(false);
+    guard.endComposition(170, null);
+    expect(guard.consumeSuppressedDuplicate("a", 180)).toBe(false);
+  });
+
+  test("treats window edges as still inside the window", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 150)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 450)).toBe(false);
+  });
+
+  test("ignores emissions outside the capture window before arming", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "late");
+    expect(guard.filterXtermData("late", 200)).toBe(true);
+    expect(guard.filterXtermData("late", 210)).toBe(true);
+  });
+
+  test("tombstones a suppressed duplicate for the recovery funnels", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 130)).toBe(false);
+    expect(guard.consumeSuppressedDuplicate("ni", 140)).toBe(false);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 140)).toBe(true);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 150)).toBe(false);
+  });
+
+  test.each([true, false])(
+    "scopes duplicate recovery to one input cycle (beforeinput=%s)",
+    (hasBeforeInput) => {
+      const guard = new TerminalImeCommitGuard();
+      const textarea = new TerminalImeTextareaFallbackTracker();
+      const sent: string[] = [];
+      // Match TerminalView.onData: record the textarea emission first, even
+      // when the commit guard subsequently suppresses it.
+      const onData = (text: string, at: number) => {
+        const remaining = textarea.recordXtermData(text);
+        if (remaining && guard.filterXtermData(remaining, at)) {
+          sent.push(remaining);
+        }
+      };
+      const flush = (value: string, at: number) => {
+        const result = textarea.flush(value);
+        if (result.status === "handled") {
+          if (
+            result.text &&
+            !guard.consumeSuppressedDuplicate(result.text, at)
+          ) {
+            sent.push(result.text);
+          }
+          // TerminalView retires the tombstone even for handled/null.
+          guard.completeRecoveryCycle();
+        }
+        return result;
+      };
+
+      guard.endComposition(100, "a");
+      onData("a", 101);
+      if (hasBeforeInput) {
+        guard.completeRecoveryCycle();
+        textarea.begin("a");
+      }
+      // Locked xterm's input capture listener emits before our input listener.
+      onData("a", 130);
+      textarea.begin("a"); // input-only Safari recovery preserves the baseline
+      expect(flush("aa", 131)).toEqual({
+        status: "handled",
+        text: hasBeforeInput ? null : "a",
+      });
+      expect(sent).toEqual(["a"]);
+      expect(guard.consumeSuppressedDuplicate("a", 132)).toBe(false);
+      textarea.complete(); // final timer
+      guard.completeRecoveryCycle();
+
+      // Independent textarea-only input must survive without a physical key.
+      guard.completeRecoveryCycle(); // next beforeinput
+      textarea.begin("aa");
+      expect(flush("aaa", 200)).toEqual({ status: "handled", text: "a" });
+      expect(sent).toEqual(["a", "a"]);
+    },
+  );
+
+  test("a new beforeinput retires recovery without disabling OS replay suppression", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "a");
+    guard.filterXtermData("a", 101);
+    guard.completeRecoveryCycle(); // duplicate's beforeinput
+    expect(guard.filterXtermData("a", 130)).toBe(false);
+    guard.completeRecoveryCycle(); // next beforeinput, before any final timer
+    expect(guard.consumeSuppressedDuplicate("a", 140)).toBe(false);
+  });
+
+  test("final recovery cleanup retires an unused tombstone", () => {
+    const guard = new TerminalImeCommitGuard();
+    const textarea = new TerminalImeTextareaFallbackTracker();
+    guard.endComposition(100, "a");
+    guard.filterXtermData("a", 101);
+    guard.filterXtermData("a", 130);
+    textarea.begin("a");
+    expect(textarea.flush("a")).toEqual({ status: "pending" });
+    expect(textarea.flush("a", true)).toEqual({ status: "unhandled" });
+    textarea.complete();
+    guard.completeRecoveryCycle();
+    expect(guard.consumeSuppressedDuplicate("a", 140)).toBe(false);
+  });
+
+  test("lets the tombstone expire", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    guard.filterXtermData("ni hao", 101);
+    guard.filterXtermData("ni hao", 130);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 500)).toBe(false);
+  });
+
+  test("dispose clears any armed duplicate suppression", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    guard.filterXtermData("ni hao", 110);
+    guard.dispose();
+    expect(guard.filterXtermData("ni hao", 120)).toBe(true);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 120)).toBe(false);
   });
 });

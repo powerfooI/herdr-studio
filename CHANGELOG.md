@@ -16,6 +16,8 @@
 - Keep the Inspector following workspace focus switches: a focus marker whose
   action completed without the workspace ever becoming focused no longer
   disables retargeting indefinitely.
+- Stop duplicating IME text committed while switching input sources with
+  candidates visible (e.g. leaving a Chinese IME mid-composition).
 - Follow tab switches in the History view: re-pin the shown session to the
   newly active tab's agent (or the next available agent when the pinned pane
   closes) instead of showing a stale or missing session.
