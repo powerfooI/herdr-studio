@@ -57,11 +57,13 @@ import { terminalFocusBlockedByOverlay } from "../terminalFocus";
 import { uploadTerminalImage } from "../terminalImageUpload";
 import {
   isTerminalImeCommittedInputType,
+  TerminalImeCommitGuard,
   TerminalImeFallbackTracker,
   TerminalImeKeyEventTracker,
   TerminalImeTextareaFallbackTracker,
   terminalImeEventTime,
   terminalImeFallbackText,
+  terminalImeTextareaDelta,
 } from "../terminalIme";
 import {
   macCommandEditingSequence,
@@ -824,6 +826,7 @@ export function TerminalView({
     const imeFallback = new TerminalImeFallbackTracker();
     const imeKeyEvent = new TerminalImeKeyEventTracker();
     const imeTextareaFallback = new TerminalImeTextareaFallbackTracker();
+    const imeCommitGuard = new TerminalImeCommitGuard();
     const readTerminalTextareaSnapshot = (): TerminalPasteTextareaSnapshot => {
       const textarea = term.textarea;
       const value = textarea?.value ?? "";
@@ -837,6 +840,7 @@ export function TerminalView({
     let imeTextareaTimer: number | null = null;
     let terminalCompositionActive = false;
     let compositionSettleTimer: number | null = null;
+    let compositionStartTextareaValue = "";
     let nativePasteFallbackTimer: number | null = null;
     let pasteTextareaClearTimer: number | null = null;
     let pasteTextareaBeforeInput: TerminalPasteTextareaSnapshot | null = null;
@@ -847,6 +851,9 @@ export function TerminalView({
       const unsuppressedData = imeTextareaFallback.recordXtermData(data);
       if (!unsuppressedData) return;
       const dataAt = performance.now();
+      if (!imeCommitGuard.filterXtermData(unsuppressedData, dataAt)) {
+        return;
+      }
       const shouldSend = imeFallback.recordXtermData(unsuppressedData, dataAt);
       if (!shouldSend) return;
       const terminalId = desiredTerminalRef.current;
@@ -1012,6 +1019,7 @@ export function TerminalView({
       eventTime: number,
       observedAt: number,
     ) => {
+      if (imeCommitGuard.consumeSuppressedDuplicate(text, observedAt)) return;
       const shouldSend = imeFallback.recordInput(text, eventTime, observedAt);
       if (!shouldSend) return;
       sendText(text);
@@ -1265,10 +1273,21 @@ export function TerminalView({
       pasteTextareaBeforeInput = null;
       pastePaneIdBeforeInput = null;
       lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+      compositionStartTextareaValue = lastTerminalTextareaSnapshot.value;
       cancelImeTextareaFallback();
     };
     const onTerminalCompositionEnd = () => {
       lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+      // Only arm the guard when the composition actually committed text. A
+      // canceled composition leaves no delta, so a stray emission right
+      // after Escape can never be captured as a commit.
+      imeCommitGuard.endComposition(
+        performance.now(),
+        terminalImeTextareaDelta(
+          compositionStartTextareaValue,
+          lastTerminalTextareaSnapshot.value,
+        ),
+      );
       cancelImeTextareaFallback();
       cancelCompositionSettle();
       // This listener runs after xterm's compositionend listener. Keep fallback
@@ -1702,6 +1721,7 @@ export function TerminalView({
         capture: true,
       });
       imeFallback.dispose();
+      imeCommitGuard.dispose();
       linkProvider.dispose();
       const terminalId = attachedRef.current ?? desiredTerminalRef.current;
       if (

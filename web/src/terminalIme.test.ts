@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   isTerminalImeCommittedInputType,
+  TerminalImeCommitGuard,
   terminalImeEventTime,
   terminalImeFallbackText,
   TerminalImeFallbackTracker,
@@ -306,5 +307,97 @@ describe("terminal IME punctuation fallback tracking", () => {
     input("！", 130, "missing");
 
     expect(sent.join("")).toBe("，。？！");
+  });
+});
+
+describe("terminal IME commit duplication guard", () => {
+  test("suppresses exactly one identical re-emission of the commit", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 130)).toBe(false);
+    expect(guard.filterXtermData("ni hao", 140)).toBe(true);
+  });
+
+  test("never arms when a canceled composition leaves no delta", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, null);
+    expect(guard.filterXtermData("x", 110)).toBe(true);
+    expect(guard.filterXtermData("x", 120)).toBe(true);
+  });
+
+  test("never arms when a canceled composition emits nothing", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "x");
+    expect(guard.filterXtermData("x", 200)).toBe(true);
+    expect(guard.filterXtermData("x", 220)).toBe(true);
+  });
+
+  test("lets a legitimately repeated commit re-arm through compositionend", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    guard.endComposition(200, "ni hao");
+    expect(guard.filterXtermData("ni hao", 201)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 230)).toBe(false);
+  });
+
+  test("does not consume on different text or after the duplicate window", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("ni", 120)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 450)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 460)).toBe(true);
+  });
+
+  test("still suppresses identical text after a different emission inside the window", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("other", 120)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 150)).toBe(false);
+  });
+
+  test("treats window edges as still inside the window", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 150)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 450)).toBe(false);
+  });
+
+  test("ignores emissions outside the capture window before arming", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "late");
+    expect(guard.filterXtermData("late", 200)).toBe(true);
+    expect(guard.filterXtermData("late", 210)).toBe(true);
+  });
+
+  test("tombstones a suppressed duplicate for the recovery funnels", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    expect(guard.filterXtermData("ni hao", 130)).toBe(false);
+    expect(guard.consumeSuppressedDuplicate("ni", 140)).toBe(false);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 140)).toBe(true);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 150)).toBe(false);
+  });
+
+  test("lets the tombstone expire", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    guard.filterXtermData("ni hao", 101);
+    guard.filterXtermData("ni hao", 130);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 500)).toBe(false);
+  });
+
+  test("dispose clears any armed duplicate suppression", () => {
+    const guard = new TerminalImeCommitGuard();
+    guard.endComposition(100, "ni hao");
+    expect(guard.filterXtermData("ni hao", 101)).toBe(true);
+    guard.filterXtermData("ni hao", 110);
+    guard.dispose();
+    expect(guard.filterXtermData("ni hao", 120)).toBe(true);
+    expect(guard.consumeSuppressedDuplicate("ni hao", 120)).toBe(false);
   });
 });

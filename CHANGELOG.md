@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Stop duplicating IME text committed while switching input sources with
+  candidates visible (e.g. leaving a Chinese IME mid-composition).
+
 ## 0.5.2 - 2026-09-06
 
 ### Added
