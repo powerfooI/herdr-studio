@@ -86,18 +86,19 @@ function AgentHistoryMinimap({
   onSelect: (sequence: number) => void;
 }) {
   const stripRef = useRef<HTMLDivElement>(null);
-  const scrubbingRef = useRef(false);
+  const interactingRef = useRef(false);
   const visibleRangeRef = useRef<MessageMinimapVisibleRange | null>(null);
   visibleRangeRef.current = visibleRange;
 
   // With more messages than the strip can fit, the bars overflow and the
-  // strip scrolls horizontally; keep the raised wave inside the strip's own
-  // viewport instead of letting it drift out of sight. Suppressed while the
-  // user is scrubbing so the strip never moves under their finger.
+  // strip scrolls horizontally; glide the strip only when the raised wave
+  // actually leaves the strip's viewport, so scrolling the timeline does
+  // not restart a smooth-scroll animation on every frame. Suppressed while
+  // the user is interacting so the strip never moves under their finger.
   const centerWave = useCallback(() => {
     const strip = stripRef.current;
     const range = visibleRangeRef.current;
-    if (!strip || !range || scrubbingRef.current) return;
+    if (!strip || !range || interactingRef.current) return;
     if (strip.scrollWidth <= strip.clientWidth) return;
     const startBar = strip.children[range.start - 1];
     const endBar = strip.children[range.end - 1];
@@ -108,6 +109,12 @@ function AgentHistoryMinimap({
       startBar.getBoundingClientRect().left - stripRect.left + strip.scrollLeft;
     const waveRight =
       endBar.getBoundingClientRect().right - stripRect.left + strip.scrollLeft;
+    if (
+      waveLeft >= strip.scrollLeft &&
+      waveRight <= strip.scrollLeft + strip.clientWidth
+    ) {
+      return;
+    }
     const target = Math.max(
       0,
       Math.min(
@@ -124,6 +131,72 @@ function AgentHistoryMinimap({
   useEffect(() => {
     centerWave();
   }, [centerWave, visibleRange]);
+
+  // The thumb is the strip's own horizontal scrollbar: it tracks the strip's
+  // scroll position whether the strip was panned directly or moved by
+  // centerWave following the timeline.
+  const updateThumb = useCallback(() => {
+    const thumb = indicatorRef.current;
+    const track = thumb?.parentElement;
+    const strip = stripRef.current;
+    if (!thumb || !track || !strip) return;
+    const max = strip.scrollWidth - strip.clientWidth;
+    if (max <= 1) {
+      thumb.style.display = "none";
+      return;
+    }
+    const trackWidth = track.clientWidth;
+    if (trackWidth <= 0) {
+      thumb.style.display = "none";
+      return;
+    }
+    // Clamp to the track: below a 12px track the minimum width would
+    // otherwise exceed it, inverting the travel direction.
+    const thumbWidth = Math.min(
+      trackWidth,
+      Math.max((strip.clientWidth / strip.scrollWidth) * trackWidth, 12),
+    );
+    thumb.style.display = "block";
+    thumb.style.width = `${thumbWidth}px`;
+    thumb.style.transform = `translateX(${(strip.scrollLeft / max) * (trackWidth - thumbWidth)}px)`;
+  }, [indicatorRef]);
+
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    updateThumb();
+    strip.addEventListener("scroll", updateThumb, { passive: true });
+    const observer = new ResizeObserver(updateThumb);
+    observer.observe(strip);
+    return () => {
+      strip.removeEventListener("scroll", updateThumb);
+      observer.disconnect();
+    };
+  }, [updateThumb, entries.length]);
+
+  // Bars are memoized so scrolling never re-diffs hundreds of divs; the
+  // raised wave flips is-in-view imperatively instead.
+  const bars = useMemo(
+    () =>
+      entries.map(({ message, sequence }) => (
+        <div
+          key={message.id}
+          className={`agent-history-minimap-bar is-${message.role}`}
+          title={`#${sequence} ${historyEntryLabel(message)}`}
+        />
+      )),
+    [entries],
+  );
+
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const start = (visibleRange?.start ?? 1) - 1;
+    const end = (visibleRange?.end ?? 0) - 1;
+    for (let i = 0; i < strip.children.length; i++) {
+      strip.children[i].classList.toggle("is-in-view", i >= start && i <= end);
+    }
+  }, [visibleRange, bars]);
 
   const sequenceAtClientX = useCallback(
     (clientX: number) => {
@@ -153,25 +226,77 @@ function AgentHistoryMinimap({
     [entries],
   );
 
+  // Horizontal gestures pan the strip itself; the timeline and wave stay
+  // put. Only a tap (no dragging) jumps the timeline to that message.
+  const panRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    panning: boolean;
+  } | null>(null);
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // Capture so a drag keeps scrubbing even off the strip.
-    event.currentTarget.setPointerCapture(event.pointerId);
-    scrubbingRef.current = true;
-    const sequence = sequenceAtClientX(event.clientX);
-    if (sequence !== null) onSelect(sequence);
+    // Only the primary pointer's primary button starts an interaction:
+    // right/middle clicks must not jump, and a second touch must not
+    // overwrite the tracked finger.
+    if (event.button !== 0 || !event.isPrimary) return;
+    panRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: stripRef.current?.scrollLeft ?? 0,
+      panning: false,
+    };
+    // From press to release the strip must not move under the pointer, so a
+    // tap selects the bar that was actually pressed.
+    interactingRef.current = true;
+    // Capture from the press so a release off the strip still delivers
+    // pointerup; otherwise the interaction state would wedge until the
+    // pointer re-enters. Touch gets implicit capture already.
+    if (event.pointerType === "mouse") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
   };
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // Only scrub for drags that started on the strip; pointer capture keeps
-    // routing those here until pointerup/pointercancel clears the ref. (No
-    // event.buttons check: some touch implementations report buttons = 0
-    // mid-drag, which would silently break scrubbing.)
-    if (!scrubbingRef.current) return;
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    // Belt-and-suspenders cleanup for exotic capture loss: if a mouse move
+    // arrives with no buttons down, the press is over, so drop the state
+    // instead of turning the move into a ghost pan. Mouse only: some touch
+    // stacks report buttons = 0 mid-drag, and touch cleanup already arrives
+    // via pointercancel.
+    if (event.pointerType === "mouse" && event.buttons === 0) {
+      panRef.current = null;
+      interactingRef.current = false;
+      return;
+    }
+    const dx = event.clientX - pan.startX;
+    const dy = event.clientY - pan.startY;
+    if (!pan.panning) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      pan.panning = true;
+    }
+    // Touch pans natively (touch-action allows it) and cancels this handler;
+    // a mouse cannot pan a scrollable by dragging, so move the strip
+    // manually (captured since pointerdown).
+    if (event.pointerType === "mouse") {
+      const strip = stripRef.current;
+      if (strip) strip.scrollLeft = pan.startScrollLeft - dx;
+    }
+  };
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = panRef.current;
+    if (pan && pan.pointerId !== event.pointerId) return;
+    panRef.current = null;
+    interactingRef.current = false;
+    if (!pan || pan.panning) return;
     const sequence = sequenceAtClientX(event.clientX);
     if (sequence !== null) onSelect(sequence);
-  };
-  const handlePointerEnd = () => {
-    scrubbingRef.current = false;
     centerWave();
+  };
+  const handlePointerCancel = () => {
+    panRef.current = null;
+    interactingRef.current = false;
   };
   // The strip is a single slider-like control: one tab stop, with arrow-key
   // navigation across messages. The bars themselves stay non-focusable.
@@ -232,26 +357,10 @@ function AgentHistoryMinimap({
         onKeyDown={handleKeyDown}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
-        {entries.map(({ message, sequence }) => {
-          const roleLabel = historyEntryLabel(message);
-          const inView =
-            visibleRange !== null &&
-            sequence >= visibleRange.start &&
-            sequence <= visibleRange.end;
-          return (
-            <div
-              key={message.id}
-              className={
-                `agent-history-minimap-bar is-${message.role}` +
-                (inView ? " is-in-view" : "")
-              }
-              title={`#${sequence} ${roleLabel}`}
-            />
-          );
-        })}
+        {bars}
       </div>
       <div className="agent-history-minimap-scrollbar" aria-hidden="true">
         <div
@@ -720,27 +829,6 @@ export function AgentHistoryDrawer({
         max = Math.max(max, sequence);
       }
       publish(min <= max ? { start: min, end: max } : null);
-      // Move the minimap indicator like a real scrollbar: a continuous,
-      // per-frame linear mapping of the timeline's scroll geometry (the same
-      // math native scrollbars use), applied imperatively so it glides with
-      // the scroll instead of stepping with the wave state.
-      const thumb = minimapIndicatorRef.current;
-      const track = thumb?.parentElement;
-      if (thumb && track) {
-        const maxScroll = root.scrollHeight - root.clientHeight;
-        if (maxScroll <= 1) {
-          thumb.style.display = "none";
-        } else {
-          const trackWidth = track.clientWidth;
-          const thumbWidth = Math.max(
-            (root.clientHeight / root.scrollHeight) * trackWidth,
-            12,
-          );
-          thumb.style.display = "block";
-          thumb.style.width = `${thumbWidth}px`;
-          thumb.style.transform = `translateX(${(root.scrollTop / maxScroll) * (trackWidth - thumbWidth)}px)`;
-        }
-      }
     };
     const schedule = () => {
       if (frame === 0) frame = window.requestAnimationFrame(recompute);
@@ -800,10 +888,14 @@ export function AgentHistoryDrawer({
   }, []);
 
   const usage = tokenUsage(session);
-  const messageEntries = visibleMessages.map((message, index) => ({
-    message,
-    sequence: index + 1,
-  }));
+  const messageEntries = useMemo(
+    () =>
+      visibleMessages.map((message, index) => ({
+        message,
+        sequence: index + 1,
+      })),
+    [visibleMessages],
+  );
   const sessionReady = session?.status === "ok";
   const historyReady = history?.status === "ok" || messages.length > 0;
   const hasSessionData = sessionReady || historyReady;

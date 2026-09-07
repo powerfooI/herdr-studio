@@ -7880,8 +7880,12 @@ textarea:focus {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  /* Horizontal drags scrub the timeline; vertical ones keep scrolling it. */
-  touch-action: pan-y;
+  /* Keep horizontal gestures at the strip's scroll bounds from chaining to
+     the page, where a trackpad swipe could trigger browser back/forward. */
+  overscroll-behavior-x: contain;
+  /* Horizontal drags pan the strip natively; taps jump via pointer
+     handlers. */
+  touch-action: pan-x pan-y;
 }
 
 .agent-history-minimap:focus-visible {
@@ -7912,8 +7916,9 @@ textarea:focus {
   opacity: 0.55;
 }
 .agent-history-minimap-bar {
-  /* Bars always fill the strip width, so any horizontal position maps
-     linearly to a message index when scrubbing. */
+  /* Bars overflow the strip once they hit the min-width floor, so the strip
+     scrolls horizontally; the stride-based mapping then turns any horizontal
+     position into a message index. */
   flex: 1 1 0;
   min-width: 2px;
   height: 10px;

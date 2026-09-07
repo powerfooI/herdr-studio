@@ -16,6 +16,12 @@
 - Follow tab switches in the History view: re-pin the shown session to the
   newly active tab's agent (or the next available agent when the pinned pane
   closes) instead of showing a stale or missing session.
+- Let the History wavebar pan independently: horizontal gestures scroll only
+  the wavebar strip and its position indicator, so the timeline and wave no
+  longer move or snap back until a bar is tapped or clicked.
+- Keep the History wavebar smooth in long sessions: bars render once, the
+  wave highlight updates without re-rendering the strip, and the strip only
+  glides when the wave actually leaves its viewport.
 - Follow the terminal theme for the terminal loading overlay and delay its
   appearance during pastes, so pasting no longer flashes a dark layer over a
   light terminal.
