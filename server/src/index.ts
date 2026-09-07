@@ -131,6 +131,7 @@ const rpcOutcomes = new Map<string, { status: "error"; detail?: string }>();
 const IMPORTANT_RPC_METHODS = new Set([
   "bridge.pause_others",
   "agent_history.get",
+  "agent_history.entry",
   "agent_session.get",
   "file.read",
   "git.diff_file",
@@ -757,6 +758,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
   const {
     readHistory: readAgentMessageHistory,
     readSummary: readAgentSessionSummary,
+    readEntry: readAgentHistoryEntry,
   } = connection.agentSessions;
 
   if (method === "agent_history.get") {
@@ -765,6 +767,15 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       sendReply({ id, result }, "agent-history-get");
     } catch (e) {
       sendError("agent-history-get-error", e);
+    }
+    return;
+  }
+  if (method === "agent_history.entry") {
+    try {
+      const result = await readAgentHistoryEntry(params ?? {});
+      sendReply({ id, result }, "agent-history-entry");
+    } catch (e) {
+      sendError("agent-history-entry-error", e);
     }
     return;
   }

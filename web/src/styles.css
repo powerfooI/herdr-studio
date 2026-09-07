@@ -8005,6 +8005,26 @@ textarea:focus {
   border: none;
   border-radius: 0;
 }
+.agent-history-tool-load {
+  display: block;
+  width: 100%;
+  padding: 14px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.agent-history-tool-load:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.agent-history-tool-load:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
 .agent-history-card-open.is-truncated::after {
   content: "";
   position: absolute;

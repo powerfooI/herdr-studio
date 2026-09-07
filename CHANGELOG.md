@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Count only conversation messages toward the 200-entry History window so
+  tool-heavy turns no longer evict user messages, and fetch tool call/output
+  payloads on demand instead of transmitting them with every refresh. Tool
+  entries are now hidden by default and can be shown with the tool filter.
+
 ### Fixed
 
 - Follow the terminal theme for the terminal loading overlay and delay its

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AtifTrajectory, SessionFile } from "./session-types";
 import { isConversationStep } from "./session-messages";
+import { historyWindowEntries } from "./session-history-window";
 
 export type HistoryEntry = {
   id: string;
@@ -11,6 +12,9 @@ export type HistoryEntry = {
   tool_name?: string;
   source_call_id?: string;
   is_error?: boolean;
+  // Set on redacted wire entries: UTF-8 byte length of the withheld text,
+  // fetchable via agent_history.entry when the user expands the card.
+  text_bytes?: number;
 };
 export type HistoryCursor = { epoch: string; revision: number };
 export type HistoryUpdate = {
@@ -99,7 +103,25 @@ export function historyEntriesFromTrajectory(
       });
     }
   }
-  return entries.slice(-HISTORY_WINDOW_LIMIT);
+  return historyWindowEntries(entries, HISTORY_WINDOW_LIMIT);
+}
+
+function redactHistoryEntry(entry: HistoryEntry): HistoryEntry {
+  if (entry.role !== "tool" || entry.text.length === 0) return entry;
+  return {
+    ...entry,
+    text: "",
+    text_bytes: Buffer.byteLength(entry.text, "utf8"),
+  };
+}
+
+// Tool payloads are bulky and rarely read, so the wire format carries only
+// their metadata. The projection cache keeps full text for on-demand fetches.
+export function redactHistoryUpdate(update: HistoryUpdate): HistoryUpdate {
+  if (update.mode === "snapshot") {
+    return { ...update, entries: update.entries.map(redactHistoryEntry) };
+  }
+  return { ...update, upserts: update.upserts.map(redactHistoryEntry) };
 }
 
 export function historyUpdate(
