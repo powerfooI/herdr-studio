@@ -1184,3 +1184,208 @@ describe("worktree removal notices", () => {
     });
   });
 });
+
+describe("pending workspace focus settlement", () => {
+  function mockFocusConnection(workspacesFocused: () => unknown[]) {
+    const originalConnection = bridge.connection;
+    const focusDeferreds: Array<{
+      resolve: (value: unknown) => void;
+      promise: Promise<unknown>;
+    }> = [];
+    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
+      connectionId,
+      generation,
+      isCurrent: () => true,
+      call: (async (method: string) => {
+        if (method === "workspace.focus") {
+          const deferred = Promise.withResolvers<unknown>();
+          focusDeferreds.push(deferred);
+          return deferred.promise;
+        }
+        if (method === "workspace.list") {
+          return { workspaces: workspacesFocused() };
+        }
+        if (method === "tab.list") return { tabs: [] };
+        if (method === "pane.list") return { panes: [] };
+        if (method === "pane.layout") return { layout: null };
+        return {};
+      }) as ConnectionClient["call"],
+    })) as typeof bridge.connection;
+    return {
+      focusDeferreds,
+      async resolveFocus(index: number, value: unknown = {}) {
+        while (!focusDeferreds[index]) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        focusDeferreds[index].resolve(value);
+      },
+      restore() {
+        bridge.connection = originalConnection;
+      },
+    };
+  }
+
+  function unfocusedWorkspaces(): unknown[] {
+    return structuredClone(partitionState().workspaces);
+  }
+
+  test("releases a settled pending focus that a fresh observation still misses", async () => {
+    const mock = mockFocusConnection(unfocusedWorkspaces);
+    try {
+      __storeTesting.replaceState(partitionState());
+      const action = store.focusWorkspace("other-workspace");
+      await mock.resolveFocus(0);
+      await action;
+      await store.refresh();
+      await store.refresh();
+      expect(store.get().pendingFocusWorkspaceId).toBeNull();
+      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
+    } finally {
+      mock.restore();
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+
+  test("keeps an unsettled pending focus across mid-flight refreshes", async () => {
+    const mock = mockFocusConnection(unfocusedWorkspaces);
+    try {
+      __storeTesting.replaceState(partitionState());
+      const action = store.focusWorkspace("other-workspace");
+      await store.refresh();
+      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
+      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
+      await mock.resolveFocus(0);
+      await action;
+      await store.refresh();
+      await store.refresh();
+      expect(store.get().pendingFocusWorkspaceId).toBeNull();
+    } finally {
+      mock.restore();
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+
+  test("never lets a first same-id attempt settle or clear the second", async () => {
+    const mock = mockFocusConnection(unfocusedWorkspaces);
+    try {
+      __storeTesting.replaceState(partitionState());
+      const first = store.focusWorkspace("other-workspace");
+      const second = store.focusWorkspace("other-workspace");
+      await mock.resolveFocus(0);
+      await first;
+      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
+      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
+      await store.refresh();
+      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
+      await mock.resolveFocus(1);
+      await second;
+      await store.refresh();
+      await store.refresh();
+      expect(store.get().pendingFocusWorkspaceId).toBeNull();
+    } finally {
+      mock.restore();
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+
+  test("clears the pending focus as soon as the workspace is observed focused", async () => {
+    const mock = mockFocusConnection(() => [
+      { ...partitionState().workspaces[0], focused: false },
+      {
+        ...partitionState().workspaces[0],
+        workspace_id: "other-workspace",
+        focused: true,
+      },
+    ]);
+    try {
+      __storeTesting.replaceState(partitionState());
+      const action = store.focusWorkspace("other-workspace");
+      await mock.resolveFocus(0);
+      await action;
+      await store.refresh();
+      await store.refresh();
+      expect(store.get().pendingFocusWorkspaceId).toBeNull();
+    } finally {
+      mock.restore();
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+
+  test("marks a restored cached pending focus as settled", () => {
+    const withPending: State = {
+      ...partitionState(),
+      pendingFocusWorkspaceId: "alpha-pending",
+      pendingFocusWorkspaceSeq: 7,
+      pendingFocusWorkspaceSettledAt: null,
+    };
+    const beta = activateConnectionState(withPending, "beta", 11);
+    const restored = activateConnectionState(beta, "alpha", 12);
+    expect(restored.pendingFocusWorkspaceId).toBe("alpha-pending");
+    expect(restored.pendingFocusWorkspaceSettledAt).not.toBeNull();
+  });
+
+  test("clears a failed focus attempt even when the lease is already dead", async () => {
+    const originalConnection = bridge.connection;
+    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
+      connectionId,
+      generation,
+      isCurrent: () => false,
+      call: (async (method: string) => {
+        if (method === "workspace.focus") {
+          throw new Error("socket gone");
+        }
+        return {};
+      }) as ConnectionClient["call"],
+    })) as typeof bridge.connection;
+    try {
+      __storeTesting.replaceState(partitionState());
+      await store.focusWorkspace("other-workspace");
+      expect(store.get().pendingFocusWorkspaceId).toBeNull();
+      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
+    } finally {
+      bridge.connection = originalConnection;
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+
+  test("releases a stamped marker when the connection is paused", async () => {
+    const originalConnection = bridge.connection;
+    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
+      connectionId,
+      generation,
+      isCurrent: () => true,
+      call: (async () => ({})) as ConnectionClient["call"],
+    })) as typeof bridge.connection;
+    try {
+      __storeTesting.replaceState({
+        ...partitionState(),
+        connectionPaused: true,
+      });
+      await store.focusWorkspace("other-workspace");
+      expect(store.get().pendingFocusWorkspaceId).toBeNull();
+      expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
+    } finally {
+      bridge.connection = originalConnection;
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+
+  test("marks a completed focus attempt settled even when the lease is dead", async () => {
+    const originalConnection = bridge.connection;
+    bridge.connection = ((connectionId = "alpha", generation = 10) => ({
+      connectionId,
+      generation,
+      isCurrent: () => false,
+      call: (async () => ({})) as ConnectionClient["call"],
+    })) as typeof bridge.connection;
+    try {
+      __storeTesting.replaceState(partitionState());
+      await store.focusWorkspace("other-workspace");
+      expect(store.get().pendingFocusWorkspaceId).toBe("other-workspace");
+      expect(store.get().pendingFocusWorkspaceSettledAt).not.toBeNull();
+    } finally {
+      bridge.connection = originalConnection;
+      __storeTesting.replaceState(partitionState());
+    }
+  });
+});
