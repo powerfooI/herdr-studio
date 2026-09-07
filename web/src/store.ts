@@ -381,9 +381,10 @@ export function activateConnectionState(
   const newSession = {
     ...restored,
     // A restored pending focus outlived its action, so treat it as settled:
-    // the next fresh observation decides whether it still applies.
+    // the next fresh observation decides whether it still applies. Reuse the
+    // snapshot timestamp as a stable non-null token; wall-clock time is unused.
     pendingFocusWorkspaceSettledAt: restored.pendingFocusWorkspaceId
-      ? (restored.pendingFocusWorkspaceSettledAt ?? Date.now())
+      ? (restored.pendingFocusWorkspaceSettledAt ?? restored.lastRefresh)
       : restored.pendingFocusWorkspaceSettledAt,
     terminalAttachEpoch: restored.terminalAttachEpoch + 1,
   };

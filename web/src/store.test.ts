@@ -1374,17 +1374,21 @@ describe("pending workspace focus settlement", () => {
     }
   }
 
-  test("marks a restored cached pending focus as settled", () => {
-    const withPending: State = {
-      ...partitionState(),
-      pendingFocusWorkspaceId: "alpha-pending",
-      pendingFocusWorkspaceSeq: 7,
-      pendingFocusWorkspaceSettledAt: null,
-    };
-    const beta = activateConnectionState(withPending, "beta", 11);
-    const restored = activateConnectionState(beta, "alpha", 12);
-    expect(restored.pendingFocusWorkspaceId).toBe("alpha-pending");
-    expect(restored.pendingFocusWorkspaceSettledAt).not.toBeNull();
+  test("restores pending focus deterministically and preserves settled tokens", () => {
+    for (const settledAt of [null, 0, 123]) {
+      const withPending: State = {
+        ...partitionState(),
+        lastRefresh: 42,
+        pendingFocusWorkspaceId: "alpha-pending",
+        pendingFocusWorkspaceSeq: 7,
+        pendingFocusWorkspaceSettledAt: settledAt,
+      };
+      const beta = activateConnectionState(withPending, "beta", 11);
+      const restored = activateConnectionState(beta, "alpha", 12);
+      expect(restored.pendingFocusWorkspaceId).toBe("alpha-pending");
+      expect(restored.pendingFocusWorkspaceSettledAt).toBe(settledAt ?? 42);
+      expect(activateConnectionState(beta, "alpha", 12)).toEqual(restored);
+    }
   });
 
   test("clears a failed focus attempt even when the lease is already dead", async () => {
