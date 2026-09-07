@@ -74,6 +74,7 @@ import {
   sanitizeTerminalHttpUrl,
 } from "../terminalLinks";
 import {
+  createTerminalPasteRunner,
   type TerminalPasteTextareaSnapshot,
   terminalPasteInputText,
   terminalPasteRequest,
@@ -1002,6 +1003,7 @@ export function TerminalView({
       destinationPaneId: string | null = paneIdRef.current ?? null,
     ) => {
       if (!text || composerOpenRef.current) return;
+      imeCommitGuard.beginIndependentInput();
       if (destinationPaneId) {
         const request = terminalPasteRequest(destinationPaneId, text);
         await connectionClient.call(request.method, request.params);
@@ -1030,6 +1032,7 @@ export function TerminalView({
         imeTextareaTimer = null;
       }
       imeTextareaFallback.cancel();
+      imeCommitGuard.completeRecoveryCycle();
     };
     const cancelCompositionSettle = () => {
       if (compositionSettleTimer === null) return;
@@ -1046,26 +1049,11 @@ export function TerminalView({
       window.clearTimeout(pasteTextareaClearTimer);
       pasteTextareaClearTimer = null;
     };
-    let pasteOperationCount = 0;
-    const runPasteOperation = async <T,>(operation: () => Promise<T>) => {
-      if (!connectionClient.isCurrent()) {
-        throw new Error("connection changed during paste");
-      }
-      pasteOperationCount += 1;
-      setPasteLoading(true);
-      try {
-        const result = await operation();
-        if (!connectionClient.isCurrent()) {
-          throw new Error("connection changed during paste");
-        }
-        return result;
-      } finally {
-        pasteOperationCount -= 1;
-        if (pasteOperationCount === 0 && connectionClient.isCurrent()) {
-          setPasteLoading(false);
-        }
-      }
-    };
+    const { run: runPasteOperation, dispose: disposePasteOperations } =
+      createTerminalPasteRunner(
+        () => connectionClient.isCurrent(),
+        setPasteLoading,
+      );
     const pasteImage = async (blob: Blob, destinationPaneId: string | null) => {
       const file =
         blob instanceof File
@@ -1149,8 +1137,11 @@ export function TerminalView({
         e.stopPropagation();
         return false;
       }
-      if (applePlatform && e.type === "keydown") {
-        imeKeyEvent.begin();
+      // xterm's capture listener runs before our textarea keydown listener.
+      // Its custom handler is the boundary before any synchronous onData.
+      if (e.type === "keydown") {
+        imeCommitGuard.beginIndependentInput();
+        if (applePlatform) imeKeyEvent.begin();
       }
       if (e.type === "keydown" && e.keyCode !== 229) {
         imeTextareaFallback.cancelPending();
@@ -1230,6 +1221,9 @@ export function TerminalView({
         const eventAt = terminalImeEventTime(event, observedAt);
         sendMissingImeText(result.text, eventAt, observedAt);
       }
+      if (result.status === "handled") {
+        imeCommitGuard.completeRecoveryCycle();
+      }
       return result.status;
     };
     const scheduleImeTextareaFinal = (event: Event) => {
@@ -1238,6 +1232,7 @@ export function TerminalView({
         imeTextareaTimer = null;
         flushTextareaImeFallback(event, true);
         imeTextareaFallback.complete();
+        imeCommitGuard.completeRecoveryCycle();
       }, 0);
     };
     const onTerminalKeyDown = (event: KeyboardEvent) => {
@@ -1265,6 +1260,7 @@ export function TerminalView({
       scheduleImeTextareaFinal(event);
     };
     const onTerminalCompositionStart = () => {
+      imeCommitGuard.beginIndependentInput();
       imeKeyEvent.end();
       cancelCompositionSettle();
       terminalCompositionActive = true;
@@ -1298,6 +1294,7 @@ export function TerminalView({
       }, 0);
     };
     const onTerminalBlur = () => {
+      imeCommitGuard.beginIndependentInput();
       imeKeyEvent.end();
       cancelCompositionSettle();
       terminalCompositionActive = false;
@@ -1309,8 +1306,12 @@ export function TerminalView({
       cancelImeTextareaFallback();
     };
     const onTerminalBeforeInput = (e: Event) => {
+      // A new native mutation cannot recover the preceding input's duplicate.
+      // Do not disarm commit capture: OS replay can also have beforeinput.
+      imeCommitGuard.completeRecoveryCycle();
       const input = e as InputEvent;
       if (input.inputType === "insertFromPaste" && !input.isComposing) {
+        imeCommitGuard.beginIndependentInput();
         if (!pasteTextareaBeforeInput) {
           pasteTextareaBeforeInput = readTerminalTextareaSnapshot();
           pastePaneIdBeforeInput = paneIdRef.current ?? null;
@@ -1341,7 +1342,7 @@ export function TerminalView({
       input.stopPropagation();
       sendMissingImeText(fallbackText, eventAt, observedAt);
     };
-    const onTerminalTextInput = (e: Event) => {
+    const handleTerminalTextInput = (e: Event) => {
       const input = e as InputEvent;
       const xtermHandledCurrentInput = imeKeyEvent.consumeInput(input);
       const textareaSnapshot = readTerminalTextareaSnapshot();
@@ -1435,6 +1436,17 @@ export function TerminalView({
       const eventAt = terminalImeEventTime(input, observedAt);
       sendMissingImeText(fallbackText, eventAt, observedAt);
     };
+    const onTerminalTextInput = (e: Event) => {
+      try {
+        handleTerminalTextInput(e);
+      } finally {
+        // Without beforeinput, xterm has already emitted before this listener.
+        // Keep its tombstone through recovery, but never into the next input.
+        if (!imeTextareaFallback.hasPending()) {
+          imeCommitGuard.completeRecoveryCycle();
+        }
+      }
+    };
     term.textarea?.addEventListener("keydown", onTerminalKeyDown, {
       capture: true,
     });
@@ -1469,6 +1481,7 @@ export function TerminalView({
         container.contains(target as Node | null) ||
         (active ? container.contains(active) : false);
       if (!isTerminalPaste && isEditableElement(target)) return;
+      imeCommitGuard.beginIndependentInput();
       const destinationPaneId = paneIdRef.current ?? null;
       if (!img && appleTouchPlatform && isTerminalPaste) {
         cancelImeTextareaFallback();
@@ -1673,6 +1686,7 @@ export function TerminalView({
       cancelCompositionSettle();
       cancelNativePasteFallback();
       cancelPasteTextareaClear();
+      disposePasteOperations();
       term.textarea?.removeEventListener("keydown", onTerminalKeyDown, {
         capture: true,
       });

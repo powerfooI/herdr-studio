@@ -696,7 +696,7 @@ export function WorkspaceInspectorHost({
         </div>
       ) : (
         <div className="workspace-inspector-body">
-          {hasDetail ? (
+          {hasDetail && state.view === "changes" ? (
             <button
               type="button"
               className="workspace-inspector-back"
@@ -709,7 +709,7 @@ export function WorkspaceInspectorHost({
               }}
             >
               <ChevronLeft size={15} />
-              {state.view === "files" ? "Files" : "Changed files"}
+              Changed files
             </button>
           ) : null}
 
@@ -760,6 +760,20 @@ export function WorkspaceInspectorHost({
                 preview={fileSelection.preview}
                 loading={fileSelection.loading}
                 error={fileSelection.error}
+                backAction={
+                  compact && drillInByView.files && fileSelection.entry
+                    ? {
+                        label: "Files",
+                        onClick: () => {
+                          setDrillInByView((current) => ({
+                            ...current,
+                            files: false,
+                          }));
+                          onBack();
+                        },
+                      }
+                    : undefined
+                }
                 annotations={annotations}
                 onCreateAnnotation={addAnnotation}
                 onReanchorAnnotations={reanchorFileAnnotations}

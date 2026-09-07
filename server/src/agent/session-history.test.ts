@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { historyEntriesFromTrajectory, historyUpdate } from "./session-history";
+import {
+  HISTORY_WINDOW_LIMIT,
+  type HistoryEntry,
+  historyEntriesFromTrajectory,
+  historyUpdate,
+  redactHistoryUpdate,
+} from "./session-history";
 import { projectAgentTrajectory } from "./session-trajectory";
 
 const file = { path: "/tmp/history.jsonl", mtimeMs: 1000 };
@@ -255,6 +261,105 @@ test("external call IDs with commas are hashed before order comparison", () => {
     removed: [],
     order: reversed.map((entry) => entry.id),
   });
+});
+
+test("window counts conversation entries only; tool entries ride along", () => {
+  const records = [];
+  for (let index = 0; index < HISTORY_WINDOW_LIMIT + 5; index++) {
+    records.push({
+      type: "message",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: `turn ${index}` }],
+      },
+    });
+    records.push({
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: `call-${index}`,
+            name: "bash",
+            arguments: { command: `echo ${index}` },
+          },
+        ],
+      },
+    });
+  }
+  const entries = historyEntriesFromTrajectory(
+    file,
+    projectAgentTrajectory("pi", file, records),
+  );
+  const conversation = entries.filter((entry) => entry.role !== "tool");
+  expect(conversation).toHaveLength(HISTORY_WINDOW_LIMIT);
+  // The five oldest user turns are evicted; their tool calls drop with them.
+  expect(conversation[0].text).toBe("turn 5");
+  expect(entries.filter((entry) => entry.role === "tool")).toHaveLength(
+    HISTORY_WINDOW_LIMIT,
+  );
+  expect(entries[0].text).toBe("turn 5");
+  expect(entries[1].kind).toBe("tool_call");
+});
+
+test("redaction strips tool payloads but keeps metadata for on-demand fetches", () => {
+  const tool: HistoryEntry = {
+    id: "t:0",
+    role: "tool",
+    kind: "tool_result",
+    text: "bulk output",
+    sent_at: "2026-01-01T00:00:00Z",
+    tool_name: "bash",
+    is_error: false,
+  };
+  const user: HistoryEntry = {
+    id: "u:0",
+    role: "user",
+    kind: "message",
+    text: "keep me",
+    sent_at: "2026-01-01T00:00:00Z",
+  };
+  const snapshot = redactHistoryUpdate({
+    history_version: 2,
+    mode: "snapshot",
+    cursor: { epoch: "e", revision: 1 },
+    window_limit: HISTORY_WINDOW_LIMIT,
+    entries: [user, tool],
+  });
+  if (snapshot.mode !== "snapshot") throw new Error("Expected snapshot");
+  expect(snapshot.entries[0]).toEqual(user);
+  expect(snapshot.entries[1]).toMatchObject({
+    id: "t:0",
+    text: "",
+    text_bytes: "bulk output".length,
+    tool_name: "bash",
+  });
+  // Non-ASCII payloads report real UTF-8 bytes, not string length.
+  const nonAscii = redactHistoryUpdate({
+    history_version: 2,
+    mode: "snapshot",
+    cursor: { epoch: "e", revision: 1 },
+    window_limit: HISTORY_WINDOW_LIMIT,
+    entries: [{ ...tool, id: "t:1", text: "你好世界" }],
+  });
+  if (nonAscii.mode !== "snapshot") throw new Error("Expected snapshot");
+  expect(nonAscii.entries[0].text_bytes).toBe(
+    Buffer.byteLength("你好世界", "utf8"),
+  );
+  const delta = redactHistoryUpdate({
+    history_version: 2,
+    mode: "delta",
+    cursor: { epoch: "e", revision: 2 },
+    base_revision: 1,
+    window_limit: HISTORY_WINDOW_LIMIT,
+    upserts: [tool],
+    removed: [user.id],
+  });
+  if (delta.mode !== "delta") throw new Error("Expected delta");
+  expect(delta.upserts[0].text).toBe("");
+  expect(delta.upserts[0].text_bytes).toBe("bulk output".length);
+  expect(delta.removed).toEqual([user.id]);
 });
 
 test("content identities survive early step renumbering and disambiguate repeated messages", () => {

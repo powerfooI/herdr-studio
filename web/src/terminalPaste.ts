@@ -1,3 +1,57 @@
+// Quick pastes should finish before the loading overlay becomes visible.
+const PASTE_LOADING_DELAY_MS = 200;
+
+/** One runner per terminal effect; dispose it when that effect tears down. */
+export function createTerminalPasteRunner(
+  isCurrent: () => boolean,
+  setLoading: (loading: boolean) => void,
+) {
+  let pending = 0;
+  let disposed = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const cancelTimer = () => {
+    if (timer === null) return;
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  return {
+    async run<T>(operation: () => Promise<T>): Promise<T> {
+      if (disposed || !isCurrent()) {
+        throw new Error("paste cancelled");
+      }
+      pending += 1;
+      // Concurrent pastes share the first operation's delay, not a new one.
+      if (pending === 1) {
+        timer = setTimeout(() => {
+          timer = null;
+          if (!disposed && isCurrent()) setLoading(true);
+        }, PASTE_LOADING_DELAY_MS);
+      }
+      try {
+        const result = await operation();
+        if (disposed || !isCurrent()) {
+          throw new Error("paste cancelled");
+        }
+        return result;
+      } finally {
+        pending -= 1;
+        if (pending === 0) {
+          cancelTimer();
+          if (!disposed && isCurrent()) setLoading(false);
+        }
+      }
+    },
+    dispose() {
+      disposed = true;
+      cancelTimer();
+      // Reset even after the connection expires; old completions must not
+      // hide a newer effect's loading overlay on the same connection.
+      setLoading(false);
+    },
+  };
+}
+
 type TerminalPasteInputEvent = Pick<InputEvent, "inputType" | "isComposing">;
 
 export type TerminalPasteTextareaSnapshot = {

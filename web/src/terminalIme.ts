@@ -279,14 +279,14 @@ export class TerminalImeFallbackTracker {
  * re-delivery arrives without a beforeinput event. A canceled composition
  * (Escape) leaves no textarea delta and never arms the guard, and each
  * compositionend re-arms the capture so legitimately repeated commits always
- * pass. The guard is timer-free; windows expire lazily on the next check.
+ * pass. New keydown, paste, and composition sessions disarm the guard before
+ * xterm can emit their input. Tombstones last only through the original native
+ * input's recovery cycle, including a handled flush with no missing text.
+ * The guard is timer-free; windows expire lazily on the next check.
  *
- * Known limits, all benign by design: a same-text emission inside the
- * window is indistinguishable from the OS duplicate (e.g. a term.paste
- * fallback repeating the just-committed text); xterm-internal double
- * finalization from a non-229 keydown mid-composition is out of scope; and
- * a finalize emission delayed past the capture window simply leaves the
- * guard unarmed, i.e. the pre-fix behavior.
+ * xterm-internal double finalization from a non-229 keydown mid-composition
+ * remains out of scope. A finalize emission delayed past the capture window
+ * simply leaves the guard unarmed, i.e. the pre-fix behavior.
  */
 export class TerminalImeCommitGuard {
   private captureUntil = 0;
@@ -300,9 +300,8 @@ export class TerminalImeCommitGuard {
    * the guard, so a stray emission right after Escape cannot be captured.
    */
   endComposition(at: number, committedDelta: string | null): void {
+    this.beginIndependentInput();
     this.captureUntil = committedDelta ? at + COMMIT_CAPTURE_WINDOW_MS : 0;
-    this.committedText = null;
-    this.duplicateUntil = 0;
   }
 
   /**
@@ -310,19 +309,20 @@ export class TerminalImeCommitGuard {
    * duplicate of the captured commit and must not reach the terminal.
    */
   filterXtermData(data: string, at: number): boolean {
+    if (this.suppressedDuplicate?.text !== data) {
+      this.completeRecoveryCycle();
+    }
     if (this.committedText === null) {
-      if (at > this.captureUntil) return true;
+      if (!this.captureUntil || at > this.captureUntil) return true;
       this.captureUntil = 0;
       this.committedText = data;
       this.duplicateUntil = at + COMMIT_DUPLICATE_WINDOW_MS;
       return true;
     }
-    if (at > this.duplicateUntil) {
-      this.committedText = null;
-      this.duplicateUntil = 0;
+    if (at > this.duplicateUntil || data !== this.committedText) {
+      this.beginIndependentInput();
       return true;
     }
-    if (data !== this.committedText) return true;
     this.committedText = null;
     this.duplicateUntil = 0;
     this.suppressedDuplicate = {
@@ -347,10 +347,20 @@ export class TerminalImeCommitGuard {
     return true;
   }
 
-  dispose(): void {
+  /** Retires recovery even when xterm already accounted for the whole delta. */
+  completeRecoveryCycle(): void {
+    this.suppressedDuplicate = null;
+  }
+
+  /** Must run before xterm handles a new keydown, paste, or composition. */
+  beginIndependentInput(): void {
     this.captureUntil = 0;
     this.committedText = null;
     this.duplicateUntil = 0;
-    this.suppressedDuplicate = null;
+    this.completeRecoveryCycle();
+  }
+
+  dispose(): void {
+    this.beginIndependentInput();
   }
 }

@@ -15,7 +15,7 @@ import {
   readSessionProjection,
   type SessionProjectionCache,
 } from "./session-projection-cache";
-import { HISTORY_WINDOW_LIMIT } from "./session-history";
+import { HISTORY_WINDOW_LIMIT, redactHistoryUpdate } from "./session-history";
 
 const MAX_MESSAGES_PER_AGENT = 200;
 
@@ -61,8 +61,32 @@ export function createAgentSessionHandlers(args: {
         ...resolved,
         file: projection.file,
         updated_at: new Date(projection.file.mtimeMs).toISOString(),
-        ...update,
+        ...redactHistoryUpdate(update),
       };
+    },
+    readEntry: async (params: Record<string, unknown>) => {
+      const resolved = await resolveAgentSession(
+        params,
+        args.herdrCall,
+        args.files,
+        resolverContext,
+      );
+      if (!resolved.file) {
+        cache.invalidate(resolved);
+        throw new Error(resolved.detail || "Agent session is unavailable");
+      }
+      const projection = await cache.get(resolved);
+      const entryId =
+        typeof params.entry_id === "string" ? params.entry_id : "";
+      const entry = projection.entries.find(
+        (candidate) => candidate.id === entryId,
+      );
+      if (!entry) {
+        throw new Error(
+          "That history entry is no longer available; refresh the history and try again",
+        );
+      }
+      return { entry_id: entry.id, text: entry.text };
     },
     readSummary: (params: Record<string, unknown>) =>
       readAgentSessionSummary(

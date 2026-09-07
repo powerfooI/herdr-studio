@@ -159,6 +159,30 @@ test("filtering leaves hidden entries synchronized across delta updates and remo
   expect(next.cursor).toEqual({ epoch: "a", revision: 2 });
 });
 
+test("window counts conversation entries only; tool entries ride along", () => {
+  const tool = (id: string): HistoryEntry => ({
+    ...entry(id),
+    role: "tool",
+    kind: "tool_call",
+    tool_name: "bash",
+    text: "",
+    text_bytes: 10,
+  });
+  const interleaved: HistoryEntry[] = [];
+  for (let index = 0; index < 205; index++) {
+    interleaved.push(entry(`u${index}`), tool(`t${index}`));
+  }
+  const merged = mergeAgentHistory(null, response(interleaved), null)!;
+  expect(merged.messages.filter((item) => item.role !== "tool")).toHaveLength(
+    200,
+  );
+  expect(merged.messages[0].id).toBe("u5");
+  expect(merged.messages[1].id).toBe("t5");
+  expect(merged.messages.filter((item) => item.role === "tool")).toHaveLength(
+    200,
+  );
+});
+
 test("bounds snapshots and rejects malformed delta ordering", () => {
   const first = mergeAgentHistory(
     null,
