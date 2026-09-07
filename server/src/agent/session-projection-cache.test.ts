@@ -252,12 +252,39 @@ describe("session projection cache and history revisions", () => {
     });
     f.set([call("a")]);
     const first = snapshot(await f.history());
+    // Wire entries carry tool metadata only; the payload is fetched on demand.
+    expect(first.entries[0].text).toBe("");
+    expect(first.entries[0].text_bytes).toBe(
+      JSON.stringify({ command: "a" }, null, 2).length,
+    );
     f.set([call("longer")]);
     const next = delta(await f.history(first.cursor));
     expect(next.upserts[0].id).toBe(first.entries[0].id);
-    expect(next.upserts[0].text).toContain("longer");
+    expect(next.upserts[0].text).toBe("");
+    expect(next.upserts[0].text_bytes).toBe(
+      JSON.stringify({ command: "longer" }, null, 2).length,
+    );
     expect(next.removed).toEqual([]);
     expect(next.order).toBeUndefined();
+    const fetched = await f.handlers.readEntry({
+      pane_id: "p",
+      entry_id: first.entries[0].id,
+    });
+    expect(fetched.text).toContain("longer");
+  });
+
+  test("readEntry rejects unknown or evicted history entries", async () => {
+    const f = fixture();
+    f.set([message("one")]);
+    await f.history();
+    await expect(
+      f.handlers.readEntry({ pane_id: "p", entry_id: "missing:0" }),
+    ).rejects.toThrow("no longer available");
+    const fetched = await f.handlers.readEntry({
+      pane_id: "p",
+      entry_id: (await snapshot(await f.history())).entries[0].id,
+    });
+    expect(fetched.text).toBe("one");
   });
 
   test("recent window removes oldest entries; full export is not windowed", async () => {

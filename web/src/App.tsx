@@ -1919,6 +1919,42 @@ export default function App() {
     s.pendingFocusWorkspaceId,
     s.workspaces,
   ]);
+  // Follow tab switches while History is open: the view pins its session to
+  // originPaneId, which tab changes never update on their own. Pane focus
+  // changes within the same tab keep the current pin.
+  const inspectorHistoryTabRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const current = inspectorStateRef.current;
+    const workspace =
+      current?.open && current.view === "history"
+        ? resolveWorkspaceForScope(current.scope, s.workspaces)
+        : undefined;
+    const activeTabId = workspace?.active_tab_id ?? null;
+    const previousTabId = inspectorHistoryTabRef.current;
+    inspectorHistoryTabRef.current = activeTabId;
+    if (!current?.open || current.view !== "history" || !workspace) return;
+    if (s.pendingFocusWorkspaceId) return;
+    const originMissing =
+      !!current.originPaneId &&
+      !s.panes.some((pane) => pane.pane_id === current.originPaneId);
+    const tabSwitched =
+      previousTabId !== null &&
+      activeTabId !== null &&
+      previousTabId !== activeTabId;
+    if (!originMissing && !tabSwitched) return;
+    const workspacePanes = s.panes.filter(
+      (pane) => pane.workspace_id === workspace.workspace_id,
+    );
+    const activePaneId = activePaneIdForSnapshot(s);
+    const routedPane =
+      workspacePanes.find((pane) => pane.pane_id === activePaneId) ??
+      workspacePanes.find((pane) => pane.focused);
+    const historyPane = paneHasAgentHistory(routedPane)
+      ? routedPane
+      : workspacePanes.find(paneHasAgentHistory);
+    if (!historyPane || historyPane.pane_id === current.originPaneId) return;
+    commitInspectorState({ ...current, originPaneId: historyPane.pane_id });
+  }, [commitInspectorState, s]);
   useEffect(() => {
     if (paneJumpOpen && paneJumpOptions.length === 0) closePaneJump();
     if (paneJumpIndexRef.current >= paneJumpOptions.length) {

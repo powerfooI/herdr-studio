@@ -72,6 +72,7 @@ import {
   sanitizeTerminalHttpUrl,
 } from "../terminalLinks";
 import {
+  createTerminalPasteRunner,
   type TerminalPasteTextareaSnapshot,
   terminalPasteInputText,
   terminalPasteRequest,
@@ -1038,26 +1039,11 @@ export function TerminalView({
       window.clearTimeout(pasteTextareaClearTimer);
       pasteTextareaClearTimer = null;
     };
-    let pasteOperationCount = 0;
-    const runPasteOperation = async <T,>(operation: () => Promise<T>) => {
-      if (!connectionClient.isCurrent()) {
-        throw new Error("connection changed during paste");
-      }
-      pasteOperationCount += 1;
-      setPasteLoading(true);
-      try {
-        const result = await operation();
-        if (!connectionClient.isCurrent()) {
-          throw new Error("connection changed during paste");
-        }
-        return result;
-      } finally {
-        pasteOperationCount -= 1;
-        if (pasteOperationCount === 0 && connectionClient.isCurrent()) {
-          setPasteLoading(false);
-        }
-      }
-    };
+    const { run: runPasteOperation, dispose: disposePasteOperations } =
+      createTerminalPasteRunner(
+        () => connectionClient.isCurrent(),
+        setPasteLoading,
+      );
     const pasteImage = async (blob: Blob, destinationPaneId: string | null) => {
       const file =
         blob instanceof File
@@ -1654,6 +1640,7 @@ export function TerminalView({
       cancelCompositionSettle();
       cancelNativePasteFallback();
       cancelPasteTextareaClear();
+      disposePasteOperations();
       term.textarea?.removeEventListener("keydown", onTerminalKeyDown, {
         capture: true,
       });

@@ -196,6 +196,7 @@ export function WorkspaceTree({
       panes: state.panes,
       selectedPaneId: state.selectedPaneId,
       status: state.status,
+      tabs: state.tabs,
       workspaces: state.workspaces,
     }),
     shallowEqual,
@@ -260,6 +261,13 @@ export function WorkspaceTree({
     () => groupAgentPanesByWorkspace(s.panes),
     [s.panes],
   );
+  const tabCountsByWorkspace = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const tab of s.tabs) {
+      counts.set(tab.workspace_id, (counts.get(tab.workspace_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [s.tabs]);
   const defaultAgentPanes = useMemo(() => {
     const workspaceNumbers = new Map(
       s.workspaces.map((workspace) => [
@@ -545,6 +553,7 @@ export function WorkspaceTree({
                   ? agentsByWorkspace
                   : EMPTY_AGENT_PANES_BY_WORKSPACE
               }
+              tabCountsByWorkspace={tabCountsByWorkspace}
               activePaneId={activePaneId}
               pinnedWorkspaceKeys={pinnedWorkspaceSet}
               collapsedWorktreeGroupKeys={collapsedWorktreeGroupSet}
@@ -719,6 +728,7 @@ function WorkspaceRow({
   depth,
   childrenByParent,
   agentsByWorkspace,
+  tabCountsByWorkspace,
   activePaneId,
   pinnedWorkspaceKeys,
   collapsedWorktreeGroupKeys,
@@ -733,6 +743,7 @@ function WorkspaceRow({
   depth: number;
   childrenByParent: Map<string, Workspace[]>;
   agentsByWorkspace: ReadonlyMap<string, Pane[]>;
+  tabCountsByWorkspace: ReadonlyMap<string, number>;
   activePaneId: string | null;
   pinnedWorkspaceKeys: ReadonlySet<string>;
   collapsedWorktreeGroupKeys: ReadonlySet<string>;
@@ -745,6 +756,7 @@ function WorkspaceRow({
 }) {
   const children = childrenByParent.get(w.workspace_id) ?? [];
   const agents = agentsByWorkspace.get(w.workspace_id) ?? [];
+  const tabCount = tabCountsByWorkspace.get(w.workspace_id) ?? 0;
   const s = useStoreSelector(
     (state) => ({
       pendingFocusWorkspaceId: state.pendingFocusWorkspaceId,
@@ -825,7 +837,9 @@ function WorkspaceRow({
           hasActiveAgent ? "has-active-agent" : ""
         } ${isChild ? "is-child" : ""} ${pinned ? "is-pinned" : ""} ${
           isPendingFocus ? "is-loading" : ""
-        } ${workspaceDrag?.isDragging ? "is-dragging" : ""} ${
+        } ${tabCount > 1 ? "has-tab-count" : ""} ${
+          workspaceDrag?.isDragging ? "is-dragging" : ""
+        } ${
           workspaceDrag?.dropPosition
             ? `drop-${workspaceDrag.dropPosition}`
             : ""
@@ -949,6 +963,15 @@ function WorkspaceRow({
           <span className="twisty" aria-hidden="true" />
         )}
         <strong className="ws-label">{workspaceDisplayName(w)}</strong>
+        {tabCount > 1 ? (
+          <span
+            className="workspace-tab-count"
+            title={`${tabCount} tabs`}
+            aria-label={`${tabCount} tabs`}
+          >
+            {tabCount}
+          </span>
+        ) : null}
         {pinned ? (
           <Pin
             className="workspace-pin"
@@ -989,6 +1012,7 @@ function WorkspaceRow({
               depth={depth + 1}
               childrenByParent={childrenByParent}
               agentsByWorkspace={agentsByWorkspace}
+              tabCountsByWorkspace={tabCountsByWorkspace}
               activePaneId={activePaneId}
               pinnedWorkspaceKeys={pinnedWorkspaceKeys}
               collapsedWorktreeGroupKeys={collapsedWorktreeGroupKeys}

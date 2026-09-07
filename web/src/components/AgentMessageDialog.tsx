@@ -15,6 +15,7 @@ type AgentMessage = {
   is_error?: boolean;
   text: string;
   sent_at: string;
+  text_bytes?: number;
 };
 
 function formatMessageTime(sentAt: string) {
@@ -65,6 +66,9 @@ export function AgentMessageDialog({
 
   if (!message) return null;
   const isTool = message.role === "tool";
+  // Redacted tool entry whose on-demand content has not arrived (yet).
+  const contentPending =
+    isTool && message.text.length === 0 && (message.text_bytes ?? 0) > 0;
   const roleLabel = isTool
     ? `${message.kind === "tool_call" ? "Tool arguments" : message.is_error ? "Tool error" : "Tool output"}: ${message.tool_name ?? "tool"}`
     : message.role === "assistant"
@@ -114,19 +118,27 @@ export function AgentMessageDialog({
                 {viewMode === "rendered" ? "Raw" : "Rendered"}
               </button>
             ) : null}
-            <button
-              type="button"
-              className="agent-history-icon"
-              onClick={() => void navigator.clipboard?.writeText(message.text)}
-              aria-label="Copy message"
-              title="Copy"
-            >
-              <Copy size={15} />
-            </button>
+            {!contentPending ? (
+              <button
+                type="button"
+                className="agent-history-icon"
+                onClick={() =>
+                  void navigator.clipboard?.writeText(message.text)
+                }
+                aria-label="Copy message"
+                title="Copy"
+              >
+                <Copy size={15} />
+              </button>
+            ) : null}
             <CloseButton label="Close message" onClick={onClose} />
           </div>
         </div>
-        {!isTool && viewMode === "rendered" ? (
+        {contentPending ? (
+          <pre className="agent-message-modal-content">
+            Loading tool content…
+          </pre>
+        ) : !isTool && viewMode === "rendered" ? (
           <div className="agent-message-modal-content is-rendered">
             <MarkdownPreview
               text={message.text}

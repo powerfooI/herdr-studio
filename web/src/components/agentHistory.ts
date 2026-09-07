@@ -3,6 +3,7 @@ import type {
   HistoryEntry,
   HistoryUpdate,
 } from "../../../server/src/agent/session-history";
+import { historyWindowEntries } from "../../../server/src/agent/session-history-window";
 export type { HistoryCursor, HistoryEntry, HistoryUpdate };
 
 export type AgentHistory = {
@@ -103,6 +104,7 @@ export function mergeAgentHistory(
   )
     return current;
   // Never retain transport deltas or full snapshots beside the visible list.
+  // The window counts conversation entries only; tool entries ride along.
   return {
     status: response.status,
     detail: response.detail,
@@ -114,7 +116,7 @@ export function mergeAgentHistory(
     updated_at: response.updated_at,
     path: response.path,
     cursor: response.cursor,
-    messages: messages.slice(-limit),
+    messages: historyWindowEntries(messages, limit),
   };
 }
 
