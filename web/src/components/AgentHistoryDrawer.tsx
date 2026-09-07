@@ -252,8 +252,9 @@ function AgentHistoryMinimap({
     interactingRef.current = true;
     // Capture from the press so a release off the strip still delivers
     // pointerup; otherwise the interaction state would wedge until the
-    // pointer re-enters. Touch gets implicit capture already.
-    if (event.pointerType === "mouse") {
+    // pointer re-enters. Touch gets implicit capture already; pen devices
+    // are not necessarily direct-manipulation devices, so capture them too.
+    if (event.pointerType !== "touch") {
       event.currentTarget.setPointerCapture(event.pointerId);
     }
   };
