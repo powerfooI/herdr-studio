@@ -1091,6 +1091,10 @@ async function refreshNow(lease = captureConnectionLease()) {
       error: null,
       lastRefresh: Date.now(),
     };
+    const pendingFocusAtObservation = {
+      seq: state.pendingFocusWorkspaceSeq,
+      settledAt: state.pendingFocusWorkspaceSettledAt,
+    };
     if (
       state.pendingFocusWorkspaceId &&
       workspaces.some(
@@ -1150,6 +1154,17 @@ async function refreshNow(lease = captureConnectionLease()) {
       next.layout = null;
     }
 
+    // Layout fetching can overlap another focus attempt or its settlement.
+    // Drop only a stale marker clear, preserving the useful snapshot data.
+    if (
+      next.pendingFocusWorkspaceId === null &&
+      (state.pendingFocusWorkspaceSeq !== pendingFocusAtObservation.seq ||
+        state.pendingFocusWorkspaceSettledAt !==
+          pendingFocusAtObservation.settledAt)
+    ) {
+      delete next.pendingFocusWorkspaceId;
+      delete next.pendingFocusWorkspaceSettledAt;
+    }
     const patch = stabilizeRefreshPatch(state, next);
     if (patch) {
       if (!setForConnection(lease, patch)) return;

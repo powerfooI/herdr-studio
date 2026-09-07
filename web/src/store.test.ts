@@ -1311,6 +1311,69 @@ describe("pending workspace focus settlement", () => {
     }
   });
 
+  for (const observedFocused of [false, true]) {
+    for (const sameWorkspace of [false, true]) {
+      test(`layout publication preserves a newer ${sameWorkspace ? "same-id" : "different-id"} focus after a ${observedFocused ? "positive" : "negative"} observation`, async () => {
+        const originalConnection = bridge.connection;
+        const layoutEntered = Promise.withResolvers<void>();
+        const layoutResult = Promise.withResolvers<unknown>();
+        const focusResult = Promise.withResolvers<unknown>();
+        const snapshot = partitionState();
+        const oldTarget = observedFocused ? "same-workspace" : "old-target";
+        const newTarget = sameWorkspace ? oldTarget : "new-target";
+        const workspaces = snapshot.workspaces.map((workspace) => ({
+          ...workspace,
+          label: "fresh observation",
+        }));
+        let focus: Promise<unknown> | undefined;
+        let refresh: Promise<unknown> | undefined;
+        bridge.connection = ((connectionId = "alpha", generation = 10) => ({
+          connectionId,
+          generation,
+          isCurrent: () => true,
+          call: (async (method: string) => {
+            if (method === "workspace.list") return { workspaces };
+            if (method === "tab.list") return { tabs: snapshot.tabs };
+            if (method === "pane.list") return { panes: snapshot.panes };
+            if (method === "pane.layout") {
+              layoutEntered.resolve();
+              return layoutResult.promise;
+            }
+            if (method === "workspace.focus") return focusResult.promise;
+            return {};
+          }) as ConnectionClient["call"],
+        })) as typeof bridge.connection;
+        try {
+          __storeTesting.replaceState({
+            ...snapshot,
+            pendingFocusWorkspaceId: oldTarget,
+            pendingFocusWorkspaceSeq: -1,
+            pendingFocusWorkspaceSettledAt: 1,
+          });
+          refresh = store.refresh();
+          await layoutEntered.promise;
+          focus = store.focusWorkspace(newTarget);
+          const newSeq = store.get().pendingFocusWorkspaceSeq;
+          expect(newSeq).not.toBe(-1);
+          layoutResult.resolve({ layout: null });
+          await refresh;
+          expect(store.get().pendingFocusWorkspaceId).toBe(newTarget);
+          expect(store.get().pendingFocusWorkspaceSeq).toBe(newSeq);
+          expect(store.get().pendingFocusWorkspaceSettledAt).toBeNull();
+          expect(store.get().workspaces).toEqual(workspaces);
+        } finally {
+          layoutResult.resolve({ layout: null });
+          focusResult.resolve({});
+          await refresh;
+          await focus;
+          await store.refresh();
+          bridge.connection = originalConnection;
+          __storeTesting.replaceState(partitionState());
+        }
+      });
+    }
+  }
+
   test("marks a restored cached pending focus as settled", () => {
     const withPending: State = {
       ...partitionState(),
