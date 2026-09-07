@@ -2598,9 +2598,23 @@ textarea:focus {
 }
 .ws-label {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tree-row.has-tab-count > .ws-label {
+  flex: 0 1 auto;
+}
+.workspace-tab-count {
+  flex: 1 0 auto;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.tree-row.is-focused > .workspace-tab-count {
+  color: color-mix(in srgb, var(--muted) 85%, transparent);
 }
 .tree-row.is-child strong {
   font-weight: 500;
