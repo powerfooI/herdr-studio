@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { EditorView as CodeMirrorEditorView } from "@codemirror/view";
+import { ChevronLeft } from "lucide-react";
 import { fileReviewLineLabel, MAX_QUOTE_LENGTH } from "../annotations";
 import {
   FileAnnotationDrag,
@@ -164,6 +165,7 @@ export function FilePreviewContent({
   changesContent,
   changesKey,
   annotations = [],
+  backAction,
   onOpenChanges,
   onCreateAnnotation,
   onReanchorAnnotations,
@@ -174,6 +176,7 @@ export function FilePreviewContent({
   error: string | null;
   changesContent?: ReactNode;
   changesKey?: string;
+  backAction?: { label: string; onClick: () => void };
   annotations?: readonly ReviewAnnotation[];
   onOpenChanges?: () => void;
   onCreateAnnotation?: (annotation: NewReviewAnnotation) => void;
@@ -397,6 +400,16 @@ export function FilePreviewContent({
     >
       <div className="file-preview-head">
         <div className="file-preview-title-row">
+          {backAction ? (
+            <button
+              type="button"
+              className="file-preview-back"
+              onClick={backAction.onClick}
+            >
+              <ChevronLeft size={13} aria-hidden="true" />
+              {backAction.label}
+            </button>
+          ) : null}
           <div className="file-preview-title" title={entry?.name}>
             {entry?.name ?? "Preview"}
           </div>

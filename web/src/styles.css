@@ -5091,6 +5091,7 @@ textarea:focus {
   gap: 10px;
 }
 .file-preview-title {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--text-strong);
@@ -5104,6 +5105,23 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.file-preview-back {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 8px 0 5px;
+  border-radius: 7px;
+  background: var(--viewer-panel-bg);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.file-preview-back:hover {
+  background: var(--accent-soft);
+  color: var(--text-strong);
 }
 .file-preview-mode-toggle,
 .file-preview-copy,
