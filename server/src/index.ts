@@ -427,9 +427,6 @@ function runtimeFactoryForProfile(
       }
       throw error;
     }
-    if (profile.id === LEGACY_DEFAULT_CONNECTION_ID && !profileConfig.sshHost) {
-      return runtime;
-    }
     return {
       ...runtime,
       async startTransport() {

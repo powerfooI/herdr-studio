@@ -39,6 +39,8 @@ async function listen(server: net.Server, path: string): Promise<void> {
 async function fakeHerdr(
   root: string,
   id: string,
+  protocol: unknown = 14,
+  welcomeProtocol?: number,
 ): Promise<LocalConnectionProfile> {
   const controlPath = join(root, `${id}-control.sock`);
   const renderPath = join(root, `${id}-render.sock`);
@@ -57,7 +59,7 @@ async function fakeHerdr(
         controlCalls.set(id, calls);
         const result =
           request.method === "ping"
-            ? { version: `fake-${id}`, protocol: 14 }
+            ? { version: `fake-${id}`, protocol }
             : request.method === "workspace.list"
               ? {
                   workspaces: [
@@ -89,7 +91,7 @@ async function fakeHerdr(
         const protocol = reader.varint();
         const writer = new BinWriter();
         writer.variant(0);
-        writer.varint(protocol);
+        writer.varint(welcomeProtocol ?? protocol);
         writer.varint(1);
         writer.option<string>(undefined, (value) => writer.string(value));
         socket.write(encodeFrame(writer.toBuffer()));
@@ -416,3 +418,78 @@ test("production dispatcher isolates two local profiles and profile CRUD", async
     await child.exited;
   }
 }, 20_000);
+
+for (const { protocol, welcomeProtocol, accepted } of [
+  { protocol: 20, accepted: true },
+  { protocol: 22, accepted: true },
+  { protocol: 21, accepted: false },
+  { protocol: 23, accepted: false },
+  { protocol: "22", accepted: false },
+  { protocol: 22, welcomeProtocol: 23, accepted: false },
+]) {
+  test(`default local startup validates protocol ${JSON.stringify(protocol)} / Welcome ${welcomeProtocol ?? "same"} before background RPCs`, async () => {
+    if (process.platform === "win32") return;
+    const root = join(tmpdir(), `h090-default-${crypto.randomUUID()}`);
+    roots.push(root);
+    mkdirSync(root, { recursive: true, mode: 0o700 });
+    const profile = await fakeHerdr(root, "test", protocol, welcomeProtocol);
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      HOST: "127.0.0.1",
+      PORT: "0",
+      HERDR_GUI_CONNECTIONS_PATH: join(root, "connections.json"),
+      HERDR_SOCKET_PATH: profile.control_socket_path,
+      HERDR_CLIENT_SOCKET_PATH: profile.client_socket_path,
+    };
+    delete env.HERDR_SSH_HOST;
+    delete env.HERDR_SESSION;
+    const child = Bun.spawn(["bun", "server/src/index.ts"], {
+      cwd: join(import.meta.dir, "../../.."),
+      env,
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    let socket: WebSocket | undefined;
+    try {
+      const port = await bridgeListeningPort(child.stdout);
+      const browser = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+      socket = browser;
+      await new Promise<void>((resolve, reject) => {
+        browser.onopen = () => resolve();
+        browser.onerror = () => reject(new Error("websocket open failed"));
+      });
+      let timer!: ReturnType<typeof setTimeout>;
+      const reply = new Promise<any>((resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("connect RPC timed out")),
+          5_000,
+        );
+        browser.onmessage = (event) => {
+          const message = JSON.parse(String(event.data));
+          if (message.id === "connect-default") resolve(message);
+        };
+      });
+      socket.send(
+        JSON.stringify({
+          id: "connect-default",
+          method: "connections.connect",
+          params: { id: "legacy-default" },
+        }),
+      );
+      const response = await reply.finally(() => clearTimeout(timer));
+      const calls = controlCalls.get("test") ?? [];
+      expect(calls[0]).toBe("ping");
+      if (accepted) {
+        expect(response.error).toBeUndefined();
+        expect(response.result.state).toBe("ready");
+      } else {
+        expect(response.error?.message).toContain("protocol");
+        expect(calls.filter((method) => method !== "ping")).toEqual([]);
+      }
+    } finally {
+      socket?.close();
+      child.kill("SIGTERM");
+      await child.exited;
+    }
+  }, 10_000);
+}
