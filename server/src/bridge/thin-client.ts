@@ -398,18 +398,24 @@ export class ThinClient extends EventEmitter {
   }
 }
 
-function readFrameData(r: BinReader): FrameData {
+// Exported for the stable endpoint client (PaneSurface frames share the wire
+// FrameData layout).
+export function readCellData(r: BinReader): CellData {
+  return {
+    symbol: r.string(),
+    fg: r.varint(),
+    bg: r.varint(),
+    modifier: r.varint(),
+    skip: r.bool(),
+    hyperlink: r.option(() => r.varint()),
+  };
+}
+
+export function readFrameData(r: BinReader): FrameData {
   const cellCount = r.varint();
   const cells: CellData[] = new Array(cellCount);
   for (let i = 0; i < cellCount; i++) {
-    cells[i] = {
-      symbol: r.string(),
-      fg: r.varint(),
-      bg: r.varint(),
-      modifier: r.varint(),
-      skip: r.bool(),
-      hyperlink: r.option(() => r.varint()),
-    };
+    cells[i] = readCellData(r);
   }
   const width = r.varint();
   const height = r.varint();

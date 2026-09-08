@@ -7,6 +7,7 @@ import { type Logger, silentLogger } from "../utils/logger";
 import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
 import { isTerminalHelloProtocol } from "./protocol-compat";
+import { EndpointTerminalSession } from "./endpoint-terminal-session";
 
 type TerminalSession = {
   terminalId: string | null;
@@ -15,7 +16,7 @@ type TerminalSession = {
 };
 
 type SharedTerminalSession = {
-  thin: ThinClient;
+  thin: ThinClient | EndpointTerminalSession;
   connecting: Promise<void> | null;
   firstFrame: Promise<boolean>;
   resolveFirstFrame: ((seen: boolean) => void) | null;
@@ -52,6 +53,8 @@ export function createTerminalBridge(args: {
   formatError?: (error: unknown) => string;
   clientSocketPath: string;
   herdrProtocol: () => Promise<number>;
+  /** Resolve a terminal id to its owning pane id (control-socket pane.list). */
+  lookupPaneId?: (terminalId: string) => Promise<string | null>;
   safeSend: (
     ws: ServerWebSocket<unknown>,
     payload: string,
@@ -83,6 +86,15 @@ export function createTerminalBridge(args: {
   let clipboardRelaySkipped = false;
   let lifecycleRevision = 0;
   let disposed = false;
+  // Resolved once per bridge: the protocol is fixed for the server process,
+  // and a restart recreates this bridge.
+  let resolvedProtocol: number | null = null;
+  async function bridgeProtocol(): Promise<number> {
+    if (resolvedProtocol === null) {
+      resolvedProtocol = await args.herdrProtocol();
+    }
+    return resolvedProtocol;
+  }
 
   const serialize = (message: Record<string, unknown>) =>
     args.connectionId
@@ -420,13 +432,16 @@ export function createTerminalBridge(args: {
     }
   }
 
-  function getSharedTerminal(
+  async function getSharedTerminal(
     terminalId: string,
     cols: number,
     rows: number,
-  ): SharedTerminalSession {
+  ): Promise<SharedTerminalSession> {
     if (disposed) throw new Error("terminal bridge disposed");
     const creationRevision = lifecycleRevision;
+    // Resolve before checking the map so concurrent attaches for the same
+    // terminal cannot double-create while the first resolution is in flight.
+    const protocol = await bridgeProtocol();
     const existing = sharedTerminals.get(terminalId);
     if (existing && !existing.thin.isClosed) return existing;
     if (existing) {
@@ -434,7 +449,17 @@ export function createTerminalBridge(args: {
       sharedTerminals.delete(terminalId);
     }
 
-    const thin = new ThinClient(args.clientSocketPath, args.herdrProtocol);
+    const thin =
+      isTerminalHelloProtocol(protocol) &&
+      args.lookupPaneId &&
+      process.env.HERDR_GUI_DISABLE_ENDPOINT !== "1"
+        ? new EndpointTerminalSession(
+            args.clientSocketPath,
+            terminalId,
+            args.lookupPaneId,
+            logger,
+          )
+        : new ThinClient(args.clientSocketPath, args.herdrProtocol);
     let resolveFirstFrame!: (seen: boolean) => void;
     const firstFrame = new Promise<boolean>((resolve) => {
       resolveFirstFrame = resolve;
@@ -558,15 +583,24 @@ export function createTerminalBridge(args: {
         }
       }
     });
-    const terminalReady = thin
-      .connect(cols, rows, { launchMode: "terminal-attach", encoding: 1 })
-      .then(() => {
-        if (!isCurrent(creationRevision)) {
-          thin.close();
-          throw new Error("terminal bridge disposed");
-        }
-        thin.attach(terminalId, true);
-      });
+    const terminalReady = (
+      thin instanceof ThinClient
+        ? thin
+            .connect(cols, rows, { launchMode: "terminal-attach", encoding: 1 })
+            .then(() => {
+              if (!isCurrent(creationRevision)) {
+                thin.close();
+                throw new Error("terminal bridge disposed");
+              }
+              thin.attach(terminalId, true);
+            })
+        : thin.connect(cols, rows)
+    ).then(() => {
+      if (!isCurrent(creationRevision)) {
+        thin.close();
+        throw new Error("terminal bridge disposed");
+      }
+    });
     shared.connecting = terminalReady
       .then(() => undefined)
       .catch((e) => {
@@ -631,7 +665,7 @@ export function createTerminalBridge(args: {
         terminals.set(ws, { terminalId, cols, rows });
         viewed.add(terminalId);
         terminalViewers.set(ws, viewed);
-        const shared = getSharedTerminal(terminalId, cols, rows);
+        const shared = await getSharedTerminal(terminalId, cols, rows);
         shared.viewers.add(ws);
         try {
           await shared.connecting;

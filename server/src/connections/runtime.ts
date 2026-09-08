@@ -198,6 +198,28 @@ export function createLegacyConnectionRuntime(args: {
       assertSupportedHerdrProtocol(protocol);
       return protocol;
     },
+    lookupPaneId: async (terminalId) => {
+      try {
+        const result = await herdr.call("pane.list", {}, 5000);
+        const panes = (result as { panes?: unknown } | null)?.panes;
+        if (!Array.isArray(panes)) return null;
+        for (const pane of panes) {
+          if (!pane || typeof pane !== "object" || Array.isArray(pane))
+            continue;
+          const record = pane as { pane_id?: unknown; terminal_id?: unknown };
+          if (
+            record.terminal_id === terminalId &&
+            typeof record.pane_id === "string" &&
+            record.pane_id.length > 0
+          ) {
+            return record.pane_id;
+          }
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
     safeSend: args.safeSend,
     clientLabel: args.clientLabel,
     markRpcError: args.markRpcError,
