@@ -71,7 +71,7 @@ function isDefaultBlank(cell: CellData): boolean {
 
 /** Serialize one frame as a full repaint: home, styled rows, cursor. */
 export function frameToAnsi(frame: FrameData): string {
-  let out = `${RESET}\x1b[H`;
+  let out = `${RESET}\x1b[H\x1b[2J`;
   for (let y = 0; y < frame.height; y++) {
     const rowStart = y * frame.width;
     let rowEnd = frame.width;

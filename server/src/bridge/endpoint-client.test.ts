@@ -7,8 +7,11 @@ import { EndpointClient, type EndpointSurface } from "./endpoint-client";
 import type { CellData, FrameData } from "./thin-client";
 
 const servers: net.Server[] = [];
+const sockets = new Set<net.Socket>();
 
 afterEach(async () => {
+  for (const socket of sockets) socket.destroy();
+  sockets.clear();
   await Promise.all(
     servers
       .splice(0)
@@ -152,12 +155,15 @@ function controlFrame(kind: string, data: string): Buffer {
 async function startEndpointServer(
   onHello: (hello: any, socket: net.Socket) => void,
   onMessage?: (variant: number, reader: BinReader, socket: net.Socket) => void,
+  sendSnapshot = true,
 ) {
   const socketPath = path.join(
     tmpdir(),
     `herdr-gui-endpoint-${process.pid}-${crypto.randomUUID()}.sock`,
   );
   const server = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
     let input = Buffer.alloc(0);
     let greeted = false;
     socket.on("data", (chunk) => {
@@ -182,6 +188,16 @@ async function startEndpointServer(
               controlFrame("endpoint.welcome.v1", JSON.stringify(WELCOME)),
             ),
           );
+          if (sendSnapshot) {
+            socket.write(
+              encodeFrame(
+                controlFrame(
+                  "shell.snapshot.v1",
+                  JSON.stringify({ boot_id: "boot-1", revision: 1 }),
+                ),
+              ),
+            );
+          }
           onHello(hello, socket);
           continue;
         }
@@ -210,6 +226,96 @@ describe("EndpointClient (endpoint generation 1)", () => {
     expect(w.capabilities).toEqual(["surface_interest", "health_check"]);
     client.close();
   });
+
+  test("waits for a valid snapshot after welcome before becoming ready", async () => {
+    let peer!: net.Socket;
+    const socketPath = await startEndpointServer(
+      (_hello, socket) => {
+        peer = socket;
+      },
+      undefined,
+      false,
+    );
+    const client = new EndpointClient(socketPath);
+    const welcome = new Promise<void>((resolve) =>
+      client.once("welcome", resolve),
+    );
+    let ready = false;
+    const connecting = client.connect(80, 24).then(() => {
+      ready = true;
+    });
+    try {
+      await welcome;
+      expect(ready).toBe(false);
+      const invalidSnapshot = new Promise<void>((resolve) =>
+        client.once("snapshot", resolve),
+      );
+      peer.write(
+        encodeFrame(controlFrame("shell.snapshot.v1", '{"boot_id":42}')),
+      );
+      await invalidSnapshot;
+      expect(ready).toBe(false);
+      peer.write(
+        encodeFrame(controlFrame("shell.snapshot.v1", '{"boot_id":"boot-1"}')),
+      );
+      await connecting;
+      expect(ready).toBe(true);
+    } finally {
+      client.close();
+    }
+  });
+
+  test("rejects startup when the peer closes before the snapshot", async () => {
+    const socketPath = await startEndpointServer(
+      (_hello, socket) => socket.end(),
+      undefined,
+      false,
+    );
+    const client = new EndpointClient(socketPath);
+    try {
+      await expect(client.connect(80, 24)).rejects.toThrow("closed");
+    } finally {
+      client.close();
+    }
+  });
+
+  test("times out if welcome is not followed by a snapshot", async () => {
+    const socketPath = await startEndpointServer(() => {}, undefined, false);
+    const client = new EndpointClient(socketPath);
+    try {
+      await expect(client.connect(80, 24)).rejects.toThrow(
+        "welcome and snapshot",
+      );
+      expect(client.isClosed).toBe(true);
+    } finally {
+      client.close();
+    }
+  }, 12_000);
+
+  test.each(["peer", "client"])(
+    "rejects pending and new requests when the %s closes",
+    async (closer) => {
+      const socketPath = await startEndpointServer(
+        () => {},
+        (variant, _reader, socket) => {
+          if (variant === 15 && closer === "peer") socket.end();
+        },
+      );
+      const client = new EndpointClient(socketPath);
+      try {
+        await client.connect(80, 24);
+        const pending = client.callEndpoint("pane.focus", { pane_id: "w1:p1" });
+        if (closer === "client") client.close();
+        await expect(pending).rejects.toThrow("closed");
+        expect(client.isClosed).toBe(true);
+        await expect(client.callEndpoint("pane.scroll", {})).rejects.toThrow(
+          "closed",
+        );
+      } finally {
+        client.close();
+      }
+    },
+  );
 
   test("composes full surfaces and applies patches on the matching base", async () => {
     const base: FrameData = {

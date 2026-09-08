@@ -80,8 +80,8 @@ export interface EndpointSurface {
  * bincode-envelope `EndpointControl` with JSON payloads, plus the frozen
  * PaneSurface/PaneSurfacePatch codecs.
  *
- * After `connect` resolves (welcome received), the server pushes one
- * shell.snapshot.v1 and a stream of surfaces. Full surfaces replace the
+ * `connect` waits for both the welcome and the first valid shell.snapshot.v1
+ * so endpoint methods can use its boot ID. Full surfaces replace the
  * composed frame; patches are applied to it. Consumers only ever see a
  * complete `FrameData` per `surface` event.
  *
@@ -92,6 +92,7 @@ export class EndpointClient extends EventEmitter {
   private sock: net.Socket | null = null;
   private buf = Buffer.alloc(0);
   private closed = false;
+  private welcomed = false;
   private pendingWelcome:
     | {
         resolve: () => void;
@@ -132,7 +133,9 @@ export class EndpointClient extends EventEmitter {
       this.sock = sock;
       const timer = setTimeout(() => {
         this.rejectWelcome(
-          new Error("timed out waiting for Herdr endpoint welcome"),
+          new Error(
+            "timed out waiting for Herdr endpoint welcome and snapshot",
+          ),
         );
         this.close();
       }, HANDSHAKE_TIMEOUT_MS);
@@ -146,10 +149,7 @@ export class EndpointClient extends EventEmitter {
         this.emit("error", e);
       });
       sock.on("close", () => {
-        this.closed = true;
-        this.rejectWelcome(
-          new Error("endpoint connection closed during handshake"),
-        );
+        this.close();
         this.emit("close");
       });
     });
@@ -209,6 +209,9 @@ export class EndpointClient extends EventEmitter {
     method: string,
     params: Record<string, unknown>,
   ): Promise<unknown> {
+    if (this.closed) {
+      return Promise.reject(new Error("endpoint client closed"));
+    }
     if (!this.bootId) {
       return Promise.reject(new Error("endpoint snapshot has not arrived yet"));
     }
@@ -217,9 +220,9 @@ export class EndpointClient extends EventEmitter {
     w.variant(CM.ClientShellEndpointRequest);
     w.string(this.bootId);
     w.string(JSON.stringify({ id: requestId, method, params }));
-    this.write(w.toBuffer());
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(requestId, { resolve, reject, chunks: [] });
+      this.write(w.toBuffer());
     });
   }
 
@@ -238,6 +241,7 @@ export class EndpointClient extends EventEmitter {
   }
 
   private resolveWelcome() {
+    if (!this.welcomed || !this.bootId) return;
     const pending = this.pendingWelcome;
     if (!pending) return;
     this.pendingWelcome = undefined;
@@ -358,6 +362,7 @@ export class EndpointClient extends EventEmitter {
         methods: parsed.methods ?? [],
         capabilities: parsed.capabilities ?? [],
       };
+      this.welcomed = true;
       this.emit("welcome", welcome);
       this.resolveWelcome();
       return;
@@ -366,12 +371,13 @@ export class EndpointClient extends EventEmitter {
       try {
         const raw = JSON.parse(data);
         const snapshot: EndpointSnapshot = {
-          bootId: raw.boot_id ?? "",
+          bootId: typeof raw.boot_id === "string" ? raw.boot_id : "",
           revision: raw.revision ?? 0,
           raw,
         };
         this.bootId = snapshot.bootId;
         this.emit("snapshot", snapshot);
+        this.resolveWelcome();
       } catch (e) {
         this.emit("error", e instanceof Error ? e : new Error(String(e)));
       }
