@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.3 - 2026-09-08
+
 ### Changed
 
 - Add basic terminal compatibility with Herdr 0.9.0 (protocol 22), retaining
