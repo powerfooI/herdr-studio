@@ -31,8 +31,10 @@ still receive their conversation-only `messages` response.
   membership/order changes, the complete ordered ID list `order`. It does not
   also include `messages`, `entries`, or a trajectory. A no-change delta has empty
   changes and the same revision.
-- The window holds the most recent 200 conversation/tool/error entries. Window
-  eviction is represented by removals; ATIF and raw exports remain complete.
+- The window counts the most recent 200 conversation entries (user/assistant
+  messages and errors). Tool calls and results stay with the retained
+  conversation entries without counting toward that limit. Window eviction is
+  represented by removals; ATIF and raw exports remain complete.
 
 IDs identify projected content occurrences (or tool call IDs), **not durable
 source records or ATIF step numbers**. Diffs compare full projected windows, so
@@ -49,11 +51,11 @@ them away from their transcript position.
 
 ## Message type filters
 
-The User, Agent, and Tool toggle buttons independently filter the current
-200-entry window. All types start enabled. Agent includes assistant errors;
-Tool includes calls, outputs, and tool errors. Button counts describe the
-unfiltered window; the History badge shows visible/total when filtered.
-The minimap and card numbering follow the visible list. Hidden entries still
+The User, Agent, and Tool toggle buttons independently filter the loaded History
+window. User and Agent start enabled; Tool starts disabled. Agent includes
+assistant errors; Tool includes calls, outputs, and tool errors. Button counts
+describe the unfiltered window; the History badge shows visible/total when
+filtered. The minimap and card numbering follow the visible list. Hidden entries still
 receive incremental updates, and exports are unaffected. Selections survive
 pane switches and close/reopen while the drawer stays mounted; they are not
 saved across page reloads. If no entries match, Show all types restores the view.
