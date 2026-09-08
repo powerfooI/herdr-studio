@@ -1496,7 +1496,25 @@ describe("basic Herdr 0.9 compatibility", () => {
       const previousState = store.get();
       const originalConnection = bridge.connection;
       const snapshot = partitionState();
+      const refreshedWorkspaces = snapshot.workspaces.map((workspace) => ({
+        ...workspace,
+        label: "after-layout-event",
+      }));
       let lists = 0;
+      let published!: () => void;
+      let publicationTimer!: ReturnType<typeof setTimeout>;
+      const publication = new Promise<void>((resolve, reject) => {
+        published = resolve;
+        publicationTimer = setTimeout(
+          () => reject(new Error("follow-up snapshot was not published")),
+          2_000,
+        );
+      });
+      const unsubscribe = store.subscribe(() => {
+        if (store.get().workspaces[0]?.label === "after-layout-event") {
+          published();
+        }
+      });
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
@@ -1509,7 +1527,10 @@ describe("basic Herdr 0.9 compatibility", () => {
           if (method === "workspace.list") {
             lists += 1;
             if (lists === 1) await gate;
-            return { workspaces: snapshot.workspaces };
+            return {
+              workspaces:
+                lists === 1 ? snapshot.workspaces : refreshedWorkspaces,
+            };
           }
           if (method === "tab.list") return { tabs: snapshot.tabs };
           if (method === "pane.list") return { panes: snapshot.panes };
@@ -1530,9 +1551,11 @@ describe("basic Herdr 0.9 compatibility", () => {
         expect(lists).toBe(1);
         release();
         await refreshing;
-        await Bun.sleep(10);
+        await publication;
         expect(lists).toBe(2); // No five-second metadata poll needed.
       } finally {
+        clearTimeout(publicationTimer);
+        unsubscribe();
         release();
         bridge.connection = originalConnection;
         __storeTesting.replaceState(previousState);
