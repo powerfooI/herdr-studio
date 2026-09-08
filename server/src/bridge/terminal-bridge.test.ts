@@ -22,9 +22,9 @@ afterEach(async () => {
   );
 });
 
-function terminalFrame(width = 100, height = 30) {
+function terminalFrame(width = 100, height = 30, protocol = 17) {
   const writer = new BinWriter();
-  writer.variant(2);
+  writer.variant(protocol === 22 ? 1 : 2);
   writer.varint(1);
   writer.varint(width);
   writer.varint(height);
@@ -42,6 +42,7 @@ function clipboardFrame(data: string) {
 
 async function startThinServer(
   options: {
+    protocol?: number;
     clipboardData?: string;
     appWelcomeDelayMs?: number;
     appWelcomeError?: string;
@@ -91,9 +92,15 @@ async function startThinServer(
           const helloRows = reader.varint();
           reader.varint(); // cell width
           reader.varint(); // cell height
-          reader.varint(); // encoding
-          reader.varint(); // keybindings
-          const launchMode = reader.varint();
+          let launchMode = 2;
+          if (protocol === 22) {
+            expect(reader.bool()).toBe(false); // pixel_mouse
+          } else {
+            reader.varint(); // encoding
+            reader.varint(); // keybindings
+            launchMode = reader.varint();
+          }
+          expect(reader.remaining).toBe(0);
           socketCols = helloCols;
           socketRows = helloRows;
           if (launchMode === 0 && options.tracker) {
@@ -116,7 +123,9 @@ async function startThinServer(
             if (launchMode === 0) appSocket = socket;
             socket.write(encodeFrame(writer.toBuffer()));
             if (launchMode === 0) {
-              socket.write(terminalFrame(socketCols, socketRows));
+              socket.write(
+                terminalFrame(socketCols, socketRows, options.protocol),
+              );
             }
           };
           if (launchMode === 0 && (options.appWelcomeDelayMs ?? 0) > 0) {
@@ -147,7 +156,9 @@ async function startThinServer(
           }
           const sendTerminalFrame = () => {
             if (!socket.destroyed) {
-              socket.write(terminalFrame(socketCols, socketRows));
+              socket.write(
+                terminalFrame(socketCols, socketRows, options.protocol),
+              );
             }
           };
           if (variant !== 5 || !options.skipDirectFrame) {
@@ -197,6 +208,54 @@ async function waitForCondition(
 }
 
 describe("terminal bridge sharing", () => {
+  for (const protocol of [20, 22]) {
+    test(`protocol ${protocol} ${protocol === 22 ? "skips OSC52 relay" : "retains legacy relay"} while sharing terminal rendering`, async () => {
+      const tracker = {
+        appConnects: 0,
+        appCloses: 0,
+        appSizes: [] as string[],
+        events: [] as string[],
+      };
+      const socketPath = await startThinServer({ protocol, tracker });
+      const browser = {} as ServerWebSocket<unknown>;
+      const messages: string[] = [];
+      const bridge = createTerminalBridge({
+        clientSocketPath: socketPath,
+        herdrProtocol: async () => protocol,
+        safeSend: (_ws, payload) => {
+          messages.push(payload);
+          return true;
+        },
+        clientLabel: () => "test",
+        markRpcError: () => undefined,
+      });
+      try {
+        await bridge.handleTerminalRpc(browser, "attach", "terminal.attach", {
+          terminal_id: "term_1",
+          cols: 100,
+          rows: 30,
+        });
+        await waitForTerminalFrame(messages);
+        expect(
+          tracker.events.filter((event) => event === "attach"),
+        ).toHaveLength(1);
+        expect(tracker.appConnects).toBe(protocol === 22 ? 0 : 1);
+        const viewer = {} as ServerWebSocket<unknown>;
+        await bridge.handleTerminalRpc(viewer, "second", "terminal.attach", {
+          terminal_id: "term_1",
+          cols: 100,
+          rows: 30,
+        });
+        expect(
+          tracker.events.filter((event) => event === "attach"),
+        ).toHaveLength(1);
+        expect(tracker.appConnects).toBe(protocol === 22 ? 0 : 1);
+      } finally {
+        bridge.dispose();
+      }
+    });
+  }
+
   test("refreshes a reused terminal for a newly attached browser", async () => {
     const socketPath = await startThinServer();
     const firstBrowser = {} as ServerWebSocket<unknown>;

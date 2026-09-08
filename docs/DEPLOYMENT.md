@@ -14,6 +14,39 @@ see the [hands-on tutorial](./TUTORIAL.md#networking).
 - [Bun](https://bun.sh) 1.4 or newer for source builds. Standalone binaries do
   not require Bun on the target machine.
 
+### Herdr compatibility
+
+This source build supports the verified legacy protocols 14-20 (including
+Herdr 0.8.2 / protocol 20) and **tagged Herdr 0.9.0 / protocol 22**. Protocol
+21 and unknown versions are rejected at the control probe and binary handshake.
+Use a Studio build explicitly supporting your server, or a separate compatible
+server; do not downgrade a live server. These changes target a future Studio
+0.5.3 and do not change already-published binaries.
+
+Herdr 0.9.0 support is **basic direct-terminal compatibility**, not migration to
+stable endpoint generation 1 (which is distinct from terminal protocol 22):
+
+- ANSI rendering, ordinary input/paste, cell-based resizing, and Studio's shared
+  browser terminal sessions retain the existing per-terminal attachment path.
+  Attaching uses takeover and can disconnect another direct-terminal owner.
+- Terminal-program OSC 52 clipboard delivery is unavailable on 0.9.0: the legacy
+  app relay is disabled because only shell endpoints receive these messages.
+  Ordinary browser selection copy and paste remain available. Legacy servers
+  retain their clipboard relay and input-owner filtering.
+- Public JSON workspace/tab/pane focus remains session-wide; Studio does not
+  promise independent navigation alongside other Herdr clients. Enhanced Kitty
+  keyboard / modifyOtherKeys parity, pixel mouse and semantic endpoint rendering
+  are not supported. Keyboard-mode messages are decoded, not applied in-browser.
+- Closing a workspace does not implicitly close its linked group. If Herdr
+  requires group closure, Studio leaves it intact and directs you to the CLI:
+  `herdr --session <name> workspace close <workspace_id> --group`. Review all
+  linked workspaces first; this explicitly closes the entire group.
+
+Layout updates use the existing event-driven refresh path. Every subscription
+acknowledgement, including reconnect, requests a fresh browser snapshot to
+reconcile changes missed before subscription; events during a refresh queue a
+follow-up refresh. This is reconciliation, not an atomic or replayable event log.
+
 ## Install a release
 
 Prebuilt standalone binaries are available for Linux, macOS, and Windows on

@@ -2,6 +2,7 @@ import type { ServerWebSocket } from "bun";
 import { createAgentSessionHandlers } from "../agent/agent-sessions";
 import { createAgentSessionFileAccess } from "../agent/session-file-access";
 import { HerdrClient } from "../bridge/herdr-client";
+import { assertSupportedHerdrProtocol } from "../bridge/protocol-compat";
 import { createSettingsRpcHandler } from "../bridge/settings-rpc";
 import {
   createSshTunnelManager,
@@ -60,6 +61,7 @@ const DEFAULT_EVENTS = [
   "pane.moved",
   "pane.exited",
   "pane.agent_detected",
+  "layout.updated",
   "worktree.created",
   "worktree.opened",
   "worktree.removed",
@@ -191,7 +193,11 @@ export function createLegacyConnectionRuntime(args: {
     connectionGeneration: args.connectionGeneration,
     formatError: sanitizeConnectionError,
     clientSocketPath,
-    herdrProtocol: async () => Number((await herdr.ping()).protocol),
+    herdrProtocol: async () => {
+      const protocol: unknown = (await herdr.ping()).protocol;
+      assertSupportedHerdrProtocol(protocol);
+      return protocol;
+    },
     safeSend: args.safeSend,
     clientLabel: args.clientLabel,
     markRpcError: args.markRpcError,
@@ -299,6 +305,10 @@ export function createLegacyConnectionRuntime(args: {
   const subscriptionLoop = createEventSubscriptionLoop({
     subscribe: () => herdr.subscribe(DEFAULT_EVENTS),
     onReady: () => {
+      // Browser snapshots may start before the subscription ACK. Reconcile
+      // after every ACK (including reconnect) to close that missed-event gap.
+      // The browser's generic refresh path queues another snapshot if busy.
+      args.onEvent({ event: "session.resync_required", data: {} }, identity);
       if (!eventSubscriptionRecovery.recovered({ connection: identity.id })) {
         logger.info("subscribed to Herdr events", { connection: identity.id });
       }

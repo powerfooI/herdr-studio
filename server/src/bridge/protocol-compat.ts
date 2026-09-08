@@ -1,41 +1,45 @@
 export const MINIMUM_HERDR_PROTOCOL = 14;
-const MAXIMUM_HERDR_PROTOCOL = 0xffffffff;
+export const MAXIMUM_HERDR_PROTOCOL = 22;
 
-// Herdr requires clients to echo the server's exact protocol in Hello. Versions
-// 14-17 kept the terminal wire variants used by the GUI stable, so optimistically
-// allow newer versions as well instead of rejecting them solely for a newer
-// number. A future release that changes a used wire layout will require a GUI
-// codec update.
-export function isSupportedHerdrProtocol(protocol: number): boolean {
+export class HerdrCompatibilityError extends Error {}
+
+// Retain the verified legacy codecs (14-20) and add only tagged v0.9.0 (22).
+// Protocol 21 and future versions must never be echoed through either codec.
+export function isSupportedHerdrProtocol(
+  protocol: unknown,
+): protocol is number {
   return (
+    typeof protocol === "number" &&
     Number.isSafeInteger(protocol) &&
-    protocol >= MINIMUM_HERDR_PROTOCOL &&
-    protocol <= MAXIMUM_HERDR_PROTOCOL
+    ((protocol >= MINIMUM_HERDR_PROTOCOL && protocol <= 20) || protocol === 22)
   );
 }
 
-// Herdr 0.8.2 (protocol 20) inserted ClientLaunchMode::AppDirectGraphics at
-// wire index 1, moving ClientLaunchMode::TerminalAttach from 1 to 2. Map the
-// semantic terminal-attach launch mode onto the negotiated protocol's wire
-// value; App stays 0 on every protocol.
+// Private terminal protocol 22 is distinct from stable endpoint generation 1.
+export function isTerminalHelloProtocol(protocol: number): boolean {
+  return protocol === 22;
+}
+
+// Herdr 0.8.2 inserted AppDirectGraphics before TerminalAttach.
 export const APP_DIRECT_GRAPHICS_LAUNCH_MODE_PROTOCOL = 20;
 
 export function terminalAttachLaunchModeWireValue(protocol: number): number {
   return protocol >= APP_DIRECT_GRAPHICS_LAUNCH_MODE_PROTOCOL ? 2 : 1;
 }
 
-export function assertSupportedHerdrProtocol(protocol: number): void {
-  if (
-    !Number.isSafeInteger(protocol) ||
-    protocol < 0 ||
-    protocol > MAXIMUM_HERDR_PROTOCOL
-  ) {
-    throw new Error(`Herdr returned an invalid protocol version: ${protocol}`);
-  }
-  if (!isSupportedHerdrProtocol(protocol)) {
-    throw new Error(
-      `Herdr protocol ${protocol} is not supported by this Herdr Studio build ` +
-        `(requires protocol ${MINIMUM_HERDR_PROTOCOL} or newer)`,
-    );
-  }
+export function assertSupportedHerdrProtocol(
+  protocol: unknown,
+): asserts protocol is number {
+  if (isSupportedHerdrProtocol(protocol)) return;
+  const actual =
+    typeof protocol === "number" || typeof protocol === "string"
+      ? String(protocol)
+          .replace(/[\u0000-\u001f\u007f-\u009f]/g, "?")
+          .slice(0, 20)
+      : "unknown";
+  throw new HerdrCompatibilityError(
+    `Herdr protocol ${actual} is not supported by this Studio build ` +
+      "(supports protocols 14-20 and 22). Use a Studio release explicitly " +
+      "supporting this server, or a separate compatible server. Do not downgrade a live server.",
+  );
 }

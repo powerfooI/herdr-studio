@@ -23,7 +23,11 @@ afterEach(async () => {
 });
 
 async function startHandshakeServer(
-  welcome: (protocol: number) => { version: number; error?: string },
+  welcome: (protocol: number) => {
+    version: number;
+    encoding?: number;
+    error?: string;
+  },
   onConnection: () => void = () => undefined,
   onHello: (hello: { protocol: number; launchMode: number }) => void = () =>
     undefined,
@@ -50,15 +54,23 @@ async function startHandshakeServer(
       reader.varint(); // rows
       reader.varint(); // cell_width_px
       reader.varint(); // cell_height_px
-      reader.varint(); // requested_encoding
-      reader.varint(); // keybindings
-      const launchMode = reader.varint();
+      let launchMode = 0;
+      if (protocol === 22) {
+        // TerminalHello: requested_encoding, keybindings, and launch_mode
+        // were removed; only pixel_mouse remains.
+        expect(reader.bool()).toBe(false);
+      } else {
+        reader.varint(); // requested_encoding
+        reader.varint(); // keybindings
+        launchMode = reader.varint();
+      }
+      expect(reader.remaining).toBe(0);
       onHello({ protocol, launchMode });
       const response = welcome(protocol);
       const writer = new BinWriter();
       writer.variant(0);
       writer.varint(response.version);
-      writer.varint(1);
+      writer.varint(response.encoding ?? 1);
       writer.option(response.error, (value) => writer.string(value));
       socket.write(encodeFrame(writer.toBuffer()));
     });
@@ -112,25 +124,20 @@ async function startMessageServer(
 }
 
 describe("Herdr thin-client protocol compatibility", () => {
-  test("supports the compatible floor and future protocol versions", () => {
-    expect([14, 15, 16, 17, 18, 999].map(isSupportedHerdrProtocol)).toEqual([
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-    ]);
+  test("supports verified legacy codecs and exact tagged protocol 22, not 21", () => {
+    expect(
+      [14, 15, 16, 17, 18, 19, 20, 21, 22].map(isSupportedHerdrProtocol),
+    ).toEqual([true, true, true, true, true, true, true, false, true]);
     expect(isSupportedHerdrProtocol(13)).toBe(false);
-    expect(() => assertSupportedHerdrProtocol(13)).toThrow(
-      "requires protocol 14 or newer",
-    );
-    expect(() => assertSupportedHerdrProtocol(17.5)).toThrow(
-      "invalid protocol version",
-    );
-    expect(() => assertSupportedHerdrProtocol(0x1_0000_0000)).toThrow(
-      "invalid protocol version",
-    );
+    // Protocols newer than 22 have an unknown wire layout and must fail
+    // loudly instead of mis-decoding.
+    expect(isSupportedHerdrProtocol(23)).toBe(false);
+    expect(isSupportedHerdrProtocol(999)).toBe(false);
+    for (const protocol of [13, 21, 23, 999, 17.5, 0x1_0000_0000, "22", null]) {
+      expect(() => assertSupportedHerdrProtocol(protocol)).toThrow(
+        "supports protocols 14-20 and 22",
+      );
+    }
   });
 
   for (const protocol of [14, 15, 16, 17, 18]) {
@@ -158,7 +165,6 @@ describe("Herdr thin-client protocol compatibility", () => {
     for (const [protocol, expectedLaunchMode] of [
       [19, 1],
       [20, 2],
-      [21, 2],
     ] as const) {
       const seen: Array<{ protocol: number; launchMode: number }> = [];
       const socketPath = await startHandshakeServer(
@@ -193,6 +199,79 @@ describe("Herdr thin-client protocol compatibility", () => {
     client.close();
   });
 
+  test("uses the TerminalHello layout on protocol 22", async () => {
+    const seen: Array<{ protocol: number; launchMode: number }> = [];
+    const socketPath = await startHandshakeServer(
+      (requestedProtocol) => ({ version: requestedProtocol }),
+      () => undefined,
+      (hello) => seen.push(hello),
+    );
+    const client = new ThinClient(socketPath, async () => 22);
+
+    await client.connect(100, 30, {
+      launchMode: "terminal-attach",
+      encoding: 1,
+    });
+
+    // The 6-field TerminalHello carries no launch mode at all.
+    expect(seen).toEqual([{ protocol: 22, launchMode: 0 }]);
+    client.close();
+  });
+
+  test("decodes terminal frames at the protocol 22 variant index", async () => {
+    const socketPath = await startMessageServer((variant, socket) => {
+      if (variant !== 5) return;
+      const writer = new BinWriter();
+      writer.variant(1); // ServerMessage::Terminal on protocol 22
+      writer.varint(7); // seq
+      writer.varint(100); // width
+      writer.varint(30); // height
+      writer.bool(true); // full
+      writer.bytes(Buffer.from("hello"));
+      socket.write(encodeFrame(writer.toBuffer()));
+    });
+    const client = new ThinClient(socketPath, async () => 22);
+    const terminal = new Promise<{
+      seq: number;
+      width: number;
+      height: number;
+      full: boolean;
+      bytes: Buffer;
+    }>((resolve) => client.once("terminal", resolve));
+
+    await client.connect(100, 30, { launchMode: "terminal-attach" });
+    client.attach("term_1", true);
+
+    expect(await terminal).toEqual({
+      seq: 7,
+      width: 100,
+      height: 30,
+      full: true,
+      bytes: Buffer.from("hello"),
+    });
+    client.close();
+  });
+
+  test("appends pixel_mouse to resize only on protocol 22", async () => {
+    const resizes: number[] = [];
+    const socketPath = await startMessageServer((variant, _socket, reader) => {
+      if (variant !== 3) return;
+      reader.varint(); // cols
+      reader.varint(); // rows
+      reader.varint(); // cell_width_px
+      reader.varint(); // cell_height_px
+      resizes.push(reader.bool() ? 1 : 0);
+    });
+    const client = new ThinClient(socketPath, async () => 22);
+
+    await client.connect(100, 30, { launchMode: "terminal-attach" });
+    client.resize(120, 40);
+    await Bun.sleep(10);
+
+    expect(resizes).toEqual([0]);
+    client.close();
+  });
+
   test("rejects a welcome error instead of treating the socket as attached", async () => {
     const socketPath = await startHandshakeServer((protocol) => ({
       version: 16,
@@ -205,12 +284,56 @@ describe("Herdr thin-client protocol compatibility", () => {
     );
   });
 
-  test("rejects unsupported protocols before opening a thin socket", async () => {
-    const client = new ThinClient("/missing.sock", async () => 13);
+  for (const protocol of [13, 21, 23, 999]) {
+    test(`rejects protocol ${protocol} before opening a thin socket`, async () => {
+      const client = new ThinClient("/missing.sock", async () => protocol);
+      await expect(client.connect(100, 30)).rejects.toThrow(
+        `Herdr protocol ${protocol} is not supported`,
+      );
+    });
+    test(`rejects unsupported Welcome protocol ${protocol}`, async () => {
+      const socketPath = await startHandshakeServer(() => ({
+        version: protocol,
+      }));
+      const client = new ThinClient(socketPath, async () => 22);
+      client.on("error", () => undefined);
+      await expect(client.connect(100, 30)).rejects.toThrow(
+        `Herdr protocol ${protocol} is not supported`,
+      );
+      expect(client.isClosed).toBe(true);
+    });
+  }
 
+  test("rejects a supported but mismatched Welcome protocol", async () => {
+    const socketPath = await startHandshakeServer(() => ({ version: 20 }));
+    const client = new ThinClient(socketPath, async () => 22);
     await expect(client.connect(100, 30)).rejects.toThrow(
-      "Herdr protocol 13 is not supported",
+      "welcomed protocol 20, expected 22",
     );
+  });
+
+  test("requires TerminalAnsi encoding in protocol 22 Welcome", async () => {
+    const socketPath = await startHandshakeServer(() => ({
+      version: 22,
+      encoding: 0,
+    }));
+    const client = new ThinClient(socketPath, async () => 22);
+    await expect(client.connect(100, 30)).rejects.toThrow(
+      "unsupported encoding 0",
+    );
+  });
+
+  test("rejects an oversized frame before accepting a coalesced Welcome", async () => {
+    const socketPath = await startMessageServer((variant, socket) => {
+      if (variant !== 0) return;
+      const header = Buffer.alloc(4);
+      header.writeUInt32LE(32 * 1024 * 1024 + 1);
+      socket.write(header);
+    });
+    const client = new ThinClient(socketPath, async () => 22);
+    client.on("error", () => undefined);
+    await expect(client.connect(100, 30)).rejects.toThrow("oversized frame");
+    expect(client.isClosed).toBe(true);
   });
 
   test("does not open a socket when closed during protocol resolution", async () => {

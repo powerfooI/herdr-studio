@@ -131,3 +131,66 @@ test("runtime stop drains an in-flight completion and suppresses publication", a
     baselines.captureWorkspace("w1", async () => "/repo"),
   ).rejects.toMatchObject({ code: "LAST_STEP_STORE_DISPOSED" });
 });
+
+test("layout subscription ACK and reconnect request browser reconciliation", async () => {
+  const events: unknown[] = [];
+  const subscriptions: Array<{ ack: () => void; close: () => void }> = [];
+  const runtime = createLegacyConnectionRuntime({
+    config: {
+      socketPath: "/tmp/unused-layout-contract-control.sock",
+      clientSocketPath: "/tmp/unused-layout-contract-client.sock",
+      hasExplicitSocketPath: true,
+      hasExplicitClientSocketPath: true,
+    },
+    safeSend: () => true,
+    clientLabel: () => "test",
+    markRpcError: () => undefined,
+    onEvent: (event) => events.push(event),
+  });
+  // No real sockets, settings-driven git operations, or pane processes.
+  runtime.workspaceAutoSync.start = () => undefined;
+  runtime.herdr.call = async () => ({ panes: [] });
+  runtime.herdr.subscribe = (types) => {
+    expect(types).toContain("layout.updated");
+    let ack!: () => void;
+    let close!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      ack = resolve;
+    });
+    const closed = new Promise<void>((resolve) => {
+      close = resolve;
+    });
+    subscriptions.push({ ack, close });
+    return { ready, closed, close };
+  };
+  try {
+    runtime.startBackground();
+    expect(subscriptions).toHaveLength(1);
+    expect(events).toEqual([]); // No snapshot invalidation before the ACK.
+    subscriptions[0]!.ack();
+    await Bun.sleep(10);
+    expect(events).toEqual([{ event: "session.resync_required", data: {} }]);
+    // Subscription name is dotted; tagged event envelopes use snake_case.
+    const layout = {
+      event: "layout_updated",
+      data: { layout: { tab_id: "tab_1" } },
+    };
+    runtime.herdr.emit("event", layout);
+    expect(events.at(-1)).toEqual(layout);
+    subscriptions[0]!.close();
+    const deadline = Date.now() + 3000;
+    while (subscriptions.length < 2 && Date.now() < deadline)
+      await Bun.sleep(10);
+    expect(subscriptions).toHaveLength(2);
+    expect(events).toHaveLength(2);
+    subscriptions[1]!.ack();
+    await Bun.sleep(10);
+    expect(events.at(-1)).toEqual({
+      event: "session.resync_required",
+      data: {},
+    });
+    expect(events).toHaveLength(3);
+  } finally {
+    await runtime.stop();
+  }
+});

@@ -4,6 +4,7 @@ import {
   type ConnectionClient,
   type ConnectionStatus,
   type ConnectionSummary,
+  type HerdrEventMsg,
   parseConnectionSummary,
 } from "./api";
 import {
@@ -1777,6 +1778,25 @@ export function worktreeRemovalCompletionNotice(
   };
 }
 
+function handleHerdrEvent(event: HerdrEventMsg) {
+  if (
+    !state.connectionPaused &&
+    connectionEventIsActive(
+      state,
+      event.connection_id,
+      event.connection_generation,
+    )
+  ) {
+    if (
+      event.event === "workspace.last_step_completed" &&
+      typeof event.data.workspace_id === "string"
+    ) {
+      publishLastStepCompletion(event.connection_id, event.data.workspace_id);
+    }
+    scheduleRefresh();
+  }
+}
+
 export const store = {
   get: () => state,
   subscribe(l: () => void) {
@@ -1859,27 +1879,7 @@ export const store = {
         }
       }
     });
-    bridge.onEvent((event) => {
-      if (
-        !state.connectionPaused &&
-        connectionEventIsActive(
-          state,
-          event.connection_id,
-          event.connection_generation,
-        )
-      ) {
-        if (
-          event.event === "workspace.last_step_completed" &&
-          typeof event.data.workspace_id === "string"
-        ) {
-          publishLastStepCompletion(
-            event.connection_id,
-            event.data.workspace_id,
-          );
-        }
-        scheduleRefresh();
-      }
-    });
+    bridge.onEvent(handleHerdrEvent);
     bridge.onControl((control) => {
       if (control.type === "pause_connection") {
         store.pauseConnection(
@@ -2181,8 +2181,20 @@ export const store = {
   },
 
   closeWorkspace(workspaceId: string) {
-    return action((lease) =>
-      lease.client.call("workspace.close", { workspace_id: workspaceId }),
+    return action(
+      (lease) =>
+        lease.client.call("workspace.close", { workspace_id: workspaceId }),
+      {
+        failureNotice: (error) => ({
+          kind: "error",
+          message: error.message.startsWith("workspace_group_close_required:")
+            ? "Workspace belongs to a group"
+            : "Workspace close failed",
+          detail: error.message.startsWith("workspace_group_close_required:")
+            ? "Nothing was closed. To close this workspace and its linked workspaces, explicitly close the group in the Herdr CLI with --group."
+            : error.message,
+        }),
+      },
     );
   },
 
@@ -2881,6 +2893,7 @@ export const store = {
 
 /** Test-only singleton seam for deterministic deferred production-store tests. */
 export const __storeTesting = {
+  handleHerdrEvent,
   startUpdatePolling,
   updatePollingActive: () => updateTimer !== null,
   refreshBridgeStatus,

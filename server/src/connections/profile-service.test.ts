@@ -139,6 +139,8 @@ function runtimeFactory(created: Map<string, FakeRuntime[]>) {
 async function startProbeServers(
   id: string,
   renderMode: "valid" | "malformed" = "valid",
+  pingProtocol: unknown = 14,
+  welcomeProtocol?: number,
 ) {
   const key = crypto.randomUUID();
   const root = join(tmpdir(), `herdr-gui-profile-probe-${key}`);
@@ -167,7 +169,7 @@ async function startProbeServers(
           id: request.id,
           result: {
             version: `fake-${id}`,
-            protocol: 14,
+            protocol: pingProtocol,
             workspace_id: "shared-workspace",
             pane_id: "shared-pane",
             terminal_id: "shared-terminal",
@@ -191,9 +193,22 @@ async function startProbeServers(
       const reader = new BinReader(input.subarray(4, 4 + length));
       expect(reader.variant()).toBe(0);
       const protocol = reader.varint();
+      expect(pingProtocol).toBe(protocol);
+      expect(reader.varint()).toBe(80);
+      expect(reader.varint()).toBe(24);
+      expect(reader.varint()).toBe(0);
+      expect(reader.varint()).toBe(0);
+      if (protocol === 22) {
+        expect(reader.bool()).toBe(false);
+      } else {
+        reader.varint(); // encoding
+        expect(reader.varint()).toBe(0); // keybindings
+        expect(reader.varint()).toBe(0); // app
+      }
+      expect(reader.remaining).toBe(0);
       const writer = new BinWriter();
       writer.variant(0);
-      writer.varint(protocol);
+      writer.varint(welcomeProtocol ?? protocol);
       writer.varint(1);
       writer.option<string>(undefined, (value) => writer.string(value));
       socket.write(encodeFrame(writer.toBuffer()));
@@ -323,6 +338,55 @@ describe("connection profile bootstrap", () => {
 });
 
 describe("connection profile service", () => {
+  for (const protocol of [20, 22]) {
+    test(`probes protocol ${protocol} with a complete Hello/Welcome`, async () => {
+      const server = await startProbeServers("tagged", "valid", protocol);
+      expect(await testLocalConnectionProfile(server.profile)).toMatchObject({
+        ok: true,
+        protocol,
+      });
+      expect(server.counts()).toEqual({
+        controlConnections: 1,
+        renderConnections: 1,
+      });
+    });
+  }
+
+  for (const protocol of [13, 21, 23, 999, "22", null]) {
+    test(`rejects unsupported control probe ${JSON.stringify(protocol)} without opening render socket`, async () => {
+      const server = await startProbeServers("unsupported", "valid", protocol);
+      await expect(
+        testLocalConnectionProfile(server.profile),
+      ).rejects.toMatchObject({
+        retryable: false,
+        message: expect.stringContaining("supports protocols 14-20 and 22"),
+      });
+      expect(server.counts()).toEqual({
+        controlConnections: 1,
+        renderConnections: 0,
+      });
+    });
+  }
+
+  for (const protocol of [21, 23, 999]) {
+    test(`classifies unsupported binary Welcome ${protocol} as permanent`, async () => {
+      const server = await startProbeServers(
+        "unsupported-welcome",
+        "valid",
+        22,
+        protocol,
+      );
+      await expect(
+        testLocalConnectionProfile(server.profile),
+      ).rejects.toMatchObject({
+        retryable: false,
+        message: expect.stringContaining(
+          `Herdr protocol ${protocol} is not supported`,
+        ),
+      });
+    });
+  }
+
   test("probes two colliding-ID local servers through their own control and render sockets", async () => {
     const alpha = await startProbeServers("alpha");
     const beta = await startProbeServers("beta");
@@ -365,9 +429,12 @@ describe("connection profile service", () => {
     ).rejects.toThrow();
 
     const malformed = await startProbeServers("malformed-render", "malformed");
-    await expect(testLocalConnectionProfile(malformed.profile)).rejects.toThrow(
-      "closed during handshake",
-    );
+    await expect(
+      testLocalConnectionProfile(malformed.profile),
+    ).rejects.toMatchObject({
+      retryable: false,
+      message: expect.stringContaining("bincode: short read"),
+    });
   });
 
   test("first create persists a restart-consistent default and retires synthetic runtime", async () => {

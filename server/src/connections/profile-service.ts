@@ -1,4 +1,8 @@
 import { HerdrClient } from "../bridge/herdr-client";
+import {
+  assertSupportedHerdrProtocol,
+  HerdrCompatibilityError,
+} from "../bridge/protocol-compat";
 import { createSshTunnelManager, SshTunnelError } from "../bridge/ssh-tunnel";
 import { ThinClient } from "../bridge/thin-client";
 import { runProcess } from "../utils/process-utils";
@@ -139,12 +143,13 @@ export async function testConnectionSockets(
   let thinClient: ThinClient | null = null;
   try {
     const ping = await herdr.call("ping", {}, 8_000);
-    const protocol = Number(ping?.protocol);
-    if (!Number.isFinite(protocol)) {
-      throw new ConnectionProbeError(
-        "Herdr ping did not return a protocol version",
-        false,
-      );
+    const protocol: unknown = ping?.protocol;
+    try {
+      assertSupportedHerdrProtocol(protocol);
+    } catch (error) {
+      throw new ConnectionProbeError((error as Error).message, false, {
+        cause: error,
+      });
     }
     thinClient = new ThinClient(clientSocketPath, async () => protocol);
     // ThinClient mirrors runtime failures through EventEmitter in addition to
@@ -157,7 +162,8 @@ export async function testConnectionSockets(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const permanent =
-        /(?:protocol .*not supported|rejected thin-client protocol|bincode:|invalid protocol version)/i.test(
+        error instanceof HerdrCompatibilityError ||
+        /(?:protocol .*not supported|rejected thin-client protocol|welcomed protocol|unsupported encoding|bincode:|invalid protocol version)/i.test(
           message,
         );
       throw new ConnectionProbeError(message, !permanent, { cause: error });

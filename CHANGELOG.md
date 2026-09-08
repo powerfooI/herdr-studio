@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Add basic terminal compatibility with Herdr 0.9.0 (protocol 22), retaining
+  legacy support and rejecting unknown protocols. Terminal-program OSC 52 and
+  independent client navigation remain unsupported on 0.9.0.
+- Refresh external layout changes and reconcile event subscription reconnects;
+  explain grouped-workspace close refusals without silently closing the group.
 - Count only conversation messages toward the 200-entry History window so
   tool-heavy turns no longer evict user messages, and fetch tool call/output
   payloads on demand instead of transmitting them with every refresh. Tool
