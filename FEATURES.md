@@ -50,8 +50,9 @@ Closed panes are removed from the history automatically.
 - Paste multiline text through terminal paste handling.
 - Paste a clipboard image to upload it on the Herdr host and insert the resulting
   path into the terminal. This also works through `--ssh-host`.
-- Relay OSC 52 clipboard writes from local or remote terminal applications to
-  the initiating browser.
+- Relay OSC 52 clipboard writes from local or remote terminal applications.
+  On Herdr 0.9.0 endpoints, delivery follows the foreground recipient, not
+  proven originating-pane ownership; see [clipboard compatibility](docs/DEPLOYMENT.md#herdr-compatibility).
 - `Cmd/Ctrl`-click HTTP(S) links to open them safely in a new tab.
 - `Cmd/Ctrl`-click workspace-relative or absolute file paths in terminal output
   to preview text, Markdown, or images without leaving the terminal.

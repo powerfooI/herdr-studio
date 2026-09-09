@@ -8,6 +8,7 @@ import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
 import { isTerminalHelloProtocol } from "./protocol-compat";
 import { EndpointTerminalSession } from "./endpoint-terminal-session";
+import { isTerminalClipboardPayload } from "./terminal-clipboard";
 
 type TerminalSession = {
   terminalId: string | null;
@@ -36,13 +37,12 @@ type ClipboardTarget = {
   ws: ServerWebSocket<unknown>;
   terminalId: string;
   inputAt: number;
+  session: SharedTerminalSession;
 };
 
 const CLIPBOARD_INPUT_WINDOW_MS = 30_000;
 const CLIPBOARD_RELAY_READY_WAIT_MS = 500;
 const TERMINAL_FIRST_FRAME_WAIT_MS = 20_000;
-// Herdr rejects OSC 52 bodies above 256 KiB before emitting Clipboard.
-const MAX_TERMINAL_CLIPBOARD_BASE64_CHARS = 256 * 1024;
 const STANDARD_BASE64_RE =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
@@ -124,11 +124,7 @@ export function createTerminalBridge(args: {
 
   function forwardClipboard(data: string, terminalId?: string) {
     if (disposed) return;
-    if (
-      !data ||
-      data.length > MAX_TERMINAL_CLIPBOARD_BASE64_CHARS ||
-      !STANDARD_BASE64_RE.test(data)
-    ) {
+    if (!isTerminalClipboardPayload(data)) {
       logger.warn("dropped invalid terminal clipboard payload", {
         connection: args.connectionId ?? "legacy-default",
       });
@@ -139,6 +135,9 @@ export function createTerminalBridge(args: {
     const recentTarget =
       clipboardTarget &&
       now - clipboardTarget.inputAt <= CLIPBOARD_INPUT_WINDOW_MS &&
+      !clipboardTarget.session.thin.isClosed &&
+      sharedTerminals.get(clipboardTarget.terminalId) ===
+        clipboardTarget.session &&
       terminalViewers
         .get(clipboardTarget.ws)
         ?.has(clipboardTarget.terminalId) &&
@@ -253,23 +252,30 @@ export function createTerminalBridge(args: {
       // OSC 52 only to the foreground *shell* (endpoint-protocol) client;
       // direct terminal connections like this relay are never foreground and
       // can never receive ServerMessage::Clipboard there. Skip the relay and
-      // log the limitation instead of idling silently. Browser copy/paste
-      // remains available; terminal-program OSC 52 needs a shell endpoint.
+      // use the endpoint session's clipboard events instead. Only the explicit
+      // legacy fallback still lacks OSC 52; browser copy/paste is unaffected.
       const protocol = await args.herdrProtocol();
       if (disposed) return;
       if (isTerminalHelloProtocol(protocol)) {
         clipboardRelaySkipped = true;
-        logger.warn(
-          "terminal-program OSC 52 unavailable: Herdr protocol 22 routes clipboard only to endpoint shell clients; browser copy/paste is unaffected",
-          { connection: args.connectionId ?? "legacy-default" },
-        );
+        if (
+          !args.lookupPaneId ||
+          process.env.HERDR_GUI_DISABLE_ENDPOINT === "1"
+        ) {
+          logger.warn(
+            "terminal-program OSC 52 unavailable on the legacy fallback: Herdr protocol 22 routes clipboard only to endpoint shell clients; browser copy/paste is unaffected",
+            { connection: args.connectionId ?? "legacy-default" },
+          );
+        }
         return;
       }
 
       const relay = new ThinClient(args.clientSocketPath, args.herdrProtocol);
       clipboardRelay = relay;
       clipboardRelaySize = { cols, rows };
-      relay.on("clipboard", ({ data }) => forwardClipboard(data));
+      relay.on("clipboard", ({ data }) => {
+        if (clipboardRelay === relay && !relay.isClosed) forwardClipboard(data);
+      });
       relay.on("error", (error) =>
         logger.warn("clipboard relay error", {
           connection: args.connectionId ?? "legacy-default",
@@ -409,6 +415,9 @@ export function createTerminalBridge(args: {
       ? [terminalId]
       : Array.from(viewed ?? (current?.terminalId ? [current.terminalId] : []));
     for (const id of terminalIds) {
+      if (clipboardTarget?.ws === ws && clipboardTarget.terminalId === id) {
+        clipboardTarget = null;
+      }
       const shared = sharedTerminals.get(id);
       shared?.viewers.delete(ws);
       if (shared && shared.viewers.size === 0) {
@@ -530,9 +539,18 @@ export function createTerminalBridge(args: {
         args.safeSend(viewer, payload, "terminal-frame");
       }
     });
-    // Keep compatibility with a future Herdr version that may route clipboard
-    // side effects directly to the terminal attachment.
-    thin.on("clipboard", ({ data }) => forwardClipboard(data, terminalId));
+    // Bind to the receiving session, NOT the producing PTY: Herdr 0.9.0 sends
+    // clipboard to its foreground shell without source attribution. The global
+    // recent input owner must still match this session; never broadcast.
+    thin.on("clipboard", ({ data }) => {
+      if (
+        isCurrent(creationRevision) &&
+        !thin.isClosed &&
+        sharedTerminals.get(terminalId) === shared
+      ) {
+        forwardClipboard(data, terminalId);
+      }
+    });
     thin.on("welcome", (w) => {
       logger.debug("terminal stream welcome", {
         connection: args.connectionId ?? "legacy-default",
@@ -551,6 +569,7 @@ export function createTerminalBridge(args: {
       });
     });
     thin.on("close", () => {
+      if (clipboardTarget?.session === shared) clipboardTarget = null;
       const resolve = shared.resolveFirstFrame;
       if (resolve) {
         shared.resolveFirstFrame = null;
@@ -780,7 +799,7 @@ export function createTerminalBridge(args: {
         return reply({ ok: true });
       }
       if (method === "terminal.input") {
-        if (!thin || !requestedTerminalId) {
+        if (!thin || thin.isClosed || !shared || !requestedTerminalId) {
           return fail(NO_TERMINAL_ATTACHED_MESSAGE);
         }
         const b64 = String(params.data ?? "");
@@ -793,6 +812,7 @@ export function createTerminalBridge(args: {
           ws,
           terminalId: requestedTerminalId,
           inputAt: Date.now(),
+          session: shared,
         };
         thin.input(input);
         return reply({ ok: true });

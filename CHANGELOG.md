@@ -13,6 +13,11 @@
 
 ### Fixed
 
+- Restore terminal-program OSC 52 clipboard writes on Herdr 0.9.0 endpoints,
+  using its foreground recipient and Studio's recent-input filtering. Herdr
+  does not identify the producing pane; delayed/background writes can reach
+  the new foreground recipient. The legacy fallback remains unsupported.
+
 - Preserve endpoint text and cursor alignment for Chinese and other Unicode
   graphemes, including halfwidth kana, without adding wide-character spacing.
 - Restore cell-based clicks, drags and wheel input in endpoint terminal apps;

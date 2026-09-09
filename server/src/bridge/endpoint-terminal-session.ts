@@ -43,6 +43,9 @@ export class EndpointTerminalSession extends EventEmitter {
     super();
     this.client = new EndpointClient(socketPath);
     this.client.on("surface", (s) => this.onSurface(s));
+    this.client.on("clipboard", (clipboard) => {
+      if (!this.closed && this.paneId) this.emit("clipboard", clipboard);
+    });
     this.client.on("error", (e) => this.emit("error", e));
     this.client.on("close", () => {
       this.pressedMouseButtons.clear();

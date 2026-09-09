@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
 import { createTerminalBridge } from "./terminal-bridge";
+import { silentLogger } from "../utils/logger";
 
 test("explicit half-page history retains legacy Wheel source and line count", async () => {
   const sources: number[] = [];
@@ -260,8 +261,10 @@ describe("terminal bridge sharing", () => {
       const socketPath = await startThinServer({ protocol, tracker });
       const browser = {} as ServerWebSocket<unknown>;
       const messages: string[] = [];
+      const warnings: string[] = [];
       const bridge = createTerminalBridge({
         clientSocketPath: socketPath,
+        logger: { ...silentLogger, warn: (message) => warnings.push(message) },
         herdrProtocol: async () => protocol,
         safeSend: (_ws, payload) => {
           messages.push(payload);
@@ -281,6 +284,11 @@ describe("terminal bridge sharing", () => {
           tracker.events.filter((event) => event === "attach"),
         ).toHaveLength(1);
         expect(tracker.appConnects).toBe(protocol === 22 ? 0 : 1);
+        expect(
+          warnings.filter((message) =>
+            message.includes("OSC 52 unavailable on the legacy fallback"),
+          ),
+        ).toHaveLength(protocol === 22 ? 1 : 0);
         const viewer = {} as ServerWebSocket<unknown>;
         await bridge.handleTerminalRpc(viewer, "second", "terminal.attach", {
           terminal_id: "term_1",

@@ -10,6 +10,7 @@ import {
 } from "./thin-client";
 
 import { type PaneInputEvent, encodePaneInput } from "./vt-input-classifier";
+import { isTerminalClipboardPayload } from "./terminal-clipboard";
 
 const HANDSHAKE_TIMEOUT_MS = 8_000;
 
@@ -26,6 +27,7 @@ const CM = {
 // ServerMessage tags (frozen for endpoint generation 1).
 const SM = {
   Welcome: 0,
+  Clipboard: 5,
   ClientShellSnapshot: 12,
   PaneSurface: 13,
   ClientShellError: 15,
@@ -279,11 +281,18 @@ export class EndpointClient extends EventEmitter {
   }
 
   private handlePayload(payload: Buffer) {
+    if (this.closed) return;
     try {
       const r = new BinReader(payload);
       const variant = r.variant();
       if (variant === SM.EndpointControl) {
         this.handleControl(r.string(), r.string());
+      } else if (variant === SM.Clipboard) {
+        // Tagged 0.9.0: one base64 String, with no producing pane identity.
+        const data = r.string();
+        if (r.remaining === 0 && isTerminalClipboardPayload(data)) {
+          this.emit("clipboard", { data });
+        }
       } else if (variant === SM.PaneSurface) {
         this.handleSurface(r);
       } else if (variant === SM.PaneSurfacePatch) {
@@ -327,7 +336,7 @@ export class EndpointClient extends EventEmitter {
         this.close();
         this.emit("error", error);
       }
-      // Terminal/Notify/Clipboard/graphics variants are not used by shells.
+      // Other optional server messages are ignored.
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
       this.rejectWelcome(error);

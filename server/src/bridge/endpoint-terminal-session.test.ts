@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as net from "node:net";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import {
 import type { CellData, FrameData } from "./thin-client";
 import type { ServerWebSocket } from "bun";
 import { createTerminalBridge } from "./terminal-bridge";
+import { silentLogger } from "../utils/logger";
 
 const servers: net.Server[] = [];
 
@@ -144,6 +145,7 @@ async function startSessionServer(handlers: {
   onPaneInput?: (paneId: string, reader: BinReader) => void;
   panes?: TestPane[];
   onConnection?: (sendSurface: (panes: TestPane[]) => void) => void;
+  onClipboardConnection?: (send: (data: string) => void) => void;
 }) {
   const socketPath = path.join(
     tmpdir(),
@@ -160,6 +162,12 @@ async function startSessionServer(handlers: {
     hyperlinks: [],
   };
   const server = net.createServer((socket) => {
+    handlers.onClipboardConnection?.((data) => {
+      const w = new BinWriter();
+      w.variant(5);
+      w.string(data);
+      socket.write(encodeFrame(w.toBuffer()));
+    });
     let input = Buffer.alloc(0);
     let greeted = false;
     let revision = 1;
@@ -549,6 +557,184 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
     expect(inputs).toHaveLength(2);
   } finally {
     bridge.dispose();
+  }
+});
+
+test("endpoint clipboard follows foreground-recipient ownership, not producing PTY identity", async () => {
+  const peers: Array<(data: string) => void> = [];
+  const sessions: EndpointTerminalSession[] = [];
+  const originalConnect = EndpointTerminalSession.prototype.connect;
+  const connect = spyOn(
+    EndpointTerminalSession.prototype,
+    "connect",
+  ).mockImplementation(function (
+    this: EndpointTerminalSession,
+    cols: number,
+    rows: number,
+  ) {
+    sessions.push(this);
+    return originalConnect.call(this, cols, rows);
+  });
+  const socketPath = await startSessionServer({
+    panes: [
+      { paneId: "w1:p1", x: 0, mouseReporting: false },
+      { paneId: "w1:p2", x: 10, mouseReporting: false },
+    ],
+    onClipboardConnection: (send) => peers.push(send),
+  });
+  const ownerA = {} as ServerWebSocket<unknown>;
+  const ownerB = {} as ServerWebSocket<unknown>;
+  const passive = {} as ServerWebSocket<unknown>;
+  const received: Array<{ ws: ServerWebSocket<unknown>; message: any }> = [];
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const makeBridge = (connectionId: string, connectionGeneration = 1) =>
+    createTerminalBridge({
+      connectionId,
+      connectionGeneration,
+      clientSocketPath: socketPath,
+      herdrProtocol: async () => 22,
+      lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
+      logger: { ...silentLogger, warn: (message) => warnings.push(message) },
+      safeSend: (ws, payload) => {
+        const message = JSON.parse(payload);
+        if (message.terminal_clipboard) received.push({ ws, message });
+        return true;
+      },
+      clientLabel: () => "test",
+      markRpcError: (_ws, _id, detail) => errors.push(detail ?? "error"),
+    });
+  const alpha = makeBridge("alpha");
+  const beta = makeBridge("beta");
+  const attach = (
+    bridge: typeof alpha,
+    ws: typeof ownerA,
+    terminal_id: string,
+  ) =>
+    bridge.handleTerminalRpc(ws, "attach", "terminal.attach", {
+      terminal_id,
+      cols: 20,
+      rows: 5,
+    });
+  const input = (
+    bridge: typeof alpha,
+    ws: typeof ownerA,
+    terminal_id: string,
+  ) =>
+    bridge.handleTerminalRpc(ws, "input", "terminal.input", {
+      terminal_id,
+      data: "eA==",
+    });
+  const deliver = async (peer: number, data = "Y29weQ==") => {
+    peers[peer](data);
+    await Bun.sleep(20);
+  };
+  try {
+    await attach(alpha, ownerA, "left");
+    await attach(alpha, passive, "left");
+    await attach(alpha, ownerB, "right");
+    await attach(beta, ownerA, "left"); // duplicate ids and same browser, separate connection
+    expect(warnings.some((message) => message.includes("unavailable"))).toBe(
+      false,
+    );
+    await deliver(0); // no recent input
+    expect(received).toEqual([]);
+    await input(alpha, ownerA, "left");
+    await deliver(0);
+    expect(received).toEqual([
+      {
+        ws: ownerA,
+        message: {
+          connection_id: "alpha",
+          connection_generation: 1,
+          terminal_clipboard: { terminal_id: "left", data: "Y29weQ==" },
+        },
+      },
+    ]);
+    received.length = 0;
+    await input(alpha, ownerB, "right");
+    await deliver(0); // receiving left session no longer matches global input owner
+    await deliver(2); // beta has no owner, despite same terminal/browser ids
+    expect(received).toEqual([]);
+    // Herdr may send a delayed/background LEFT PTY write to foreground RIGHT.
+    // The wire has no source id: approved semantics deliver to B, not A.
+    const delayedLeft = Buffer.from("delayed left PTY content").toString(
+      "base64",
+    );
+    await deliver(1, delayedLeft);
+    expect(received).toEqual([
+      {
+        ws: ownerB,
+        message: {
+          connection_id: "alpha",
+          connection_generation: 1,
+          terminal_clipboard: { terminal_id: "right", data: delayedLeft },
+        },
+      },
+    ]);
+    received.length = 0;
+    for (const data of ["?", "invalid", "A".repeat(256 * 1024 + 4)])
+      await deliver(1, data);
+    expect(received).toEqual([]);
+    const now = Date.now();
+    const clock = spyOn(Date, "now").mockReturnValue(now + 30_001);
+    try {
+      sessions[1].emit("clipboard", { data: "Y29weQ==" });
+    } finally {
+      clock.mockRestore();
+    }
+    expect(received).toEqual([]);
+    await input(beta, ownerA, "left");
+    await deliver(2);
+    expect(received[0].message.connection_id).toBe("beta");
+    received.length = 0;
+    // Detach one pane while this browser still views another; reattach must
+    // not resurrect its prior input owner, even with the same shared session.
+    await attach(alpha, ownerA, "right");
+    await input(alpha, ownerA, "left");
+    await alpha.handleTerminalRpc(ownerA, "detach", "terminal.detach", {
+      terminal_id: "left",
+    });
+    await attach(alpha, ownerA, "left");
+    await deliver(0);
+    expect(received).toEqual([]);
+    await input(alpha, ownerA, "left");
+    // A closed transport cannot pass a queued clipboard event to a replacement.
+    sessions[0].close();
+    await Bun.sleep(20);
+    await attach(alpha, ownerA, "left");
+    sessions[0].emit("clipboard", { data: "Y29weQ==" });
+    await deliver(3);
+    expect(received).toEqual([]);
+    await input(alpha, ownerA, "left");
+    sessions[0].emit("clipboard", { data: "Y29weQ==" });
+    expect(received).toEqual([]);
+    await deliver(3);
+    expect(received).toHaveLength(1);
+    expect(received[0].ws).toBe(ownerA);
+    received.length = 0;
+    alpha.cleanupWs(ownerA);
+    sessions[3].emit("clipboard", { data: "Y29weQ==" });
+    expect(received).toEqual([]);
+    alpha.dispose();
+    const replacement = makeBridge("alpha", 2);
+    try {
+      await attach(replacement, ownerA, "left");
+      await input(replacement, ownerA, "left");
+      sessions[3].emit("clipboard", { data: "Y29weQ==" });
+      expect(received).toEqual([]);
+      await deliver(4);
+      expect(received[0].message.connection_generation).toBe(2);
+      expect(received).toHaveLength(1);
+    } finally {
+      replacement.dispose();
+    }
+    expect(received.some(({ ws }) => ws === passive)).toBe(false);
+    expect(errors).toEqual([]);
+  } finally {
+    alpha.dispose();
+    beta.dispose();
+    connect.mockRestore();
   }
 });
 

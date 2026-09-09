@@ -220,6 +220,103 @@ async function startEndpointServer(
 }
 
 describe("EndpointClient (endpoint generation 1)", () => {
+  test.each([
+    Buffer.from("OSC52 \u4e2d\u6587").toString("base64"),
+    "A".repeat(256 * 1024),
+  ])(
+    "decodes tagged 0.9.0 Clipboard tag 5 as unchanged base64 (case %#)",
+    async (data) => {
+      const socketPath = await startEndpointServer((_hello, socket) => {
+        const w = new BinWriter();
+        w.variant(5);
+        w.string(data);
+        socket.write(encodeFrame(w.toBuffer()));
+      });
+      const client = new EndpointClient(socketPath);
+      const clipboard = new Promise((resolve) =>
+        client.once("clipboard", resolve),
+      );
+      try {
+        await client.connect(80, 24);
+        expect(await clipboard).toEqual({ data });
+      } finally {
+        client.close();
+      }
+    },
+  );
+
+  test.each([
+    "",
+    "?",
+    "not base64",
+    "YQ=",
+    "YQ==\n",
+    "A".repeat(256 * 1024 + 4),
+  ])("drops invalid or oversized Clipboard bodies (case %#)", async (data) => {
+    const socketPath = await startEndpointServer((_hello, socket) => {
+      const w = new BinWriter();
+      w.variant(5);
+      w.string(data);
+      socket.write(encodeFrame(w.toBuffer()));
+    });
+    const client = new EndpointClient(socketPath);
+    const received: unknown[] = [];
+    client.on("clipboard", (value) => received.push(value));
+    try {
+      await client.connect(80, 24);
+      await Bun.sleep(20);
+      expect(received).toEqual([]);
+      expect(client.isClosed).toBe(false);
+    } finally {
+      client.close();
+    }
+  });
+
+  test("drops trailing Clipboard fields and ignores buffered messages after close", async () => {
+    const socketPath = await startEndpointServer((_hello, socket) => {
+      const w = new BinWriter();
+      w.variant(5);
+      w.string("YQ==");
+      const valid = encodeFrame(w.toBuffer());
+      w.u8(0); // Clipboard has exactly one string field, no tail.
+      socket.write(Buffer.concat([encodeFrame(w.toBuffer()), valid, valid]));
+    });
+    const client = new EndpointClient(socketPath);
+    const received: unknown[] = [];
+    client.on("clipboard", (value) => {
+      received.push(value);
+      client.close();
+    });
+    try {
+      await client.connect(80, 24);
+      await Bun.sleep(20);
+      expect(received).toEqual([{ data: "YQ==" }]);
+      expect(client.isClosed).toBe(true);
+    } finally {
+      client.close();
+    }
+  });
+
+  test("rejects truncated Clipboard wire strings without delivering data", async () => {
+    const socketPath = await startEndpointServer((_hello, socket) => {
+      socket.write(encodeFrame(Buffer.from([5, 8, 65])));
+    });
+    const client = new EndpointClient(socketPath);
+    const received: unknown[] = [];
+    client.on("clipboard", (value) => received.push(value));
+    const error = new Promise<Error>((resolve) =>
+      client.once("error", resolve),
+    );
+    try {
+      await client.connect(80, 24);
+      expect((await error).message).toContain("short read");
+      expect(client.isClosed).toBe(true);
+      expect(received).toEqual([]);
+    } finally {
+      client.close();
+    }
+  });
+
   test("sends a generation-1 hello with the required codecs", async () => {
     const socketPath = await startEndpointServer(() => {});
     const client = new EndpointClient(socketPath);
