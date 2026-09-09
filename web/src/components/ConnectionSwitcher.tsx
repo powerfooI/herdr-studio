@@ -159,6 +159,7 @@ function BrowserTransportStatus({ onAction }: { onAction?: () => void }) {
       bridgeStatus: snapshot.bridgeStatus,
       connectionPaused: snapshot.connectionPaused,
       status: snapshot.status,
+      navigationMode: snapshot.navigationMode,
     }),
     shallowEqual,
   );
@@ -190,6 +191,17 @@ function BrowserTransportStatus({ onAction }: { onAction?: () => void }) {
           }`}
         />
         <span>{statusLabel}</span>
+        <span
+          title={
+            state.navigationMode === "browser-local"
+              ? "Workspace, tab and pane selection stays in this browser. Topology and sizes are shared."
+              : "Legacy navigation follows shared Herdr focus and can move other clients."
+          }
+        >
+          {state.navigationMode === "browser-local"
+            ? "Local navigation"
+            : "Shared navigation"}
+        </span>
       </div>
       {onAction ? (
         <div className="connection-browser-actions">

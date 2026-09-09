@@ -758,6 +758,25 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     readEntry: readAgentHistoryEntry,
   } = connection.agentSessions;
 
+  if (
+    (method === "tab.create" || method === "workspace.create") &&
+    params &&
+    Object.hasOwn(params, "browser_source")
+  ) {
+    try {
+      const result = await terminalBridge.createFromTerminal(
+        ws,
+        method,
+        params,
+        requestIsCurrent,
+      );
+      sendReply({ id, result }, method);
+    } catch (error) {
+      sendError(`${method}-error`, error);
+    }
+    return;
+  }
+
   if (method === "agent_history.get") {
     try {
       const result = await readAgentMessageHistory(params ?? {});
@@ -1040,6 +1059,10 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
     if (method === "workspace.list") {
       result = await worktreeParents.enrichWorkspaceList(result);
       result = await enrichWorkspacesWithGitStatus(result);
+      result = {
+        ...result,
+        navigation_mode: await terminalBridge.navigationMode(),
+      };
     }
     sendReply({ id, result }, method);
   } catch (e) {

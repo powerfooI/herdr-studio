@@ -1,3 +1,7 @@
+import {
+  assertEndpointCreationSource,
+  createEmptyWorkspaceCreator,
+} from "../bridge/endpoint-creation";
 import type { ServerWebSocket } from "bun";
 import { createAgentSessionHandlers } from "../agent/agent-sessions";
 import { createAgentSessionFileAccess } from "../agent/session-file-access";
@@ -197,6 +201,17 @@ export function createLegacyConnectionRuntime(args: {
       const protocol: unknown = (await herdr.ping()).protocol;
       assertSupportedHerdrProtocol(protocol);
       return protocol;
+    },
+    createEmptyWorkspace: createEmptyWorkspaceCreator(
+      (method, params, timeoutMs) => herdr.call(method, params, timeoutMs),
+    ),
+    validateCreationSource: async (source) => {
+      const result = await herdr.call(
+        "pane.get",
+        { pane_id: source.pane_id },
+        5000,
+      );
+      assertEndpointCreationSource(source, result?.pane);
     },
     lookupPaneId: async (terminalId) => {
       try {

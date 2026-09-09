@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { EndpointClient, type EndpointSurface } from "./endpoint-client";
+import { EndpointCreationDeadline } from "./endpoint-creation";
 import { frameToAnsi } from "./frame-to-ansi";
 import type { FrameData } from "./thin-client";
 import type { Logger } from "../utils/logger";
@@ -32,6 +33,8 @@ export class EndpointTerminalSession extends EventEmitter {
   } | null = null;
   private closed = false;
   private seq = 0;
+  private advertisedMethods = new Set<string>();
+  private commandChain: Promise<unknown> = Promise.resolve();
   connecting: Promise<void> | null = null;
 
   constructor(
@@ -52,13 +55,16 @@ export class EndpointTerminalSession extends EventEmitter {
       this.closed = true;
       this.emit("close");
     });
-    this.client.on("welcome", (w) =>
+    this.client.on("welcome", (w) => {
+      this.advertisedMethods = new Set(
+        Array.isArray(w.methods) ? w.methods : [],
+      );
       this.emit("welcome", {
         version: w.serverVersion,
         encoding: 1,
         error: null,
-      }),
-    );
+      });
+    });
   }
 
   get isClosed() {
@@ -77,7 +83,9 @@ export class EndpointTerminalSession extends EventEmitter {
       this.paneId = paneId;
       // Focus scopes this shell's surface to the pane's tab; per-client
       // focus in Herdr 0.9.0 keeps this from moving other clients.
-      await this.client.callEndpoint("pane.focus", { pane_id: paneId });
+      await this.enqueueCommand(() =>
+        this.client.callEndpoint("pane.focus", { pane_id: paneId }),
+      );
       // A surface may have arrived before the lookup resolved; process it
       // now if it already contains the pane.
       const current = this.client.currentSurface;
@@ -95,6 +103,72 @@ export class EndpointTerminalSession extends EventEmitter {
         this.connecting = null;
       });
     return this.connecting;
+  }
+
+  private enqueueCommand<T>(run: () => Promise<T>): Promise<T> {
+    const bounded = async () => {
+      if (this.closed) throw new Error("Endpoint terminal is closed");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          run(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              reject(
+                new Error(
+                  "Endpoint command timed out; check Herdr before retrying. Creation may have succeeded.",
+                ),
+              );
+              this.close();
+            }, 10_000);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    };
+    const task = this.commandChain.then(bounded, bounded);
+    this.commandChain = task.catch(() => undefined);
+    return task;
+  }
+
+  /** Reuse the attached shell/clipboard lane; never refocus it for creation. */
+  create(
+    method: "tab.create" | "workspace.create",
+    params: Record<string, unknown>,
+    sourcePaneId: string,
+    validateSource: () => Promise<void>,
+    deadline = new EndpointCreationDeadline(),
+  ): Promise<unknown> {
+    return deadline.wait(
+      this.enqueueCommand(async () => {
+        deadline.assertBeforeDispatch();
+        const ready = () =>
+          !this.closed &&
+          !this.connecting &&
+          this.paneId === sourcePaneId &&
+          this.hasPane(this.latestSurface(), sourcePaneId);
+        if (!ready())
+          throw new Error(
+            "Source terminal is not ready. Open its tab and retry creation.",
+          );
+        for (const requiredMethod of ["pane.focus", method]) {
+          if (!this.advertisedMethods.has(requiredMethod))
+            throw new Error(
+              `Herdr endpoint does not advertise ${requiredMethod}`,
+            );
+        }
+        await validateSource();
+        if (!ready())
+          throw new Error(
+            "Source terminal changed before creation. Open its tab and retry.",
+          );
+        return deadline.dispatch(() =>
+          this.client.callEndpoint(method, { ...params, focus: false }),
+        );
+      }),
+      () => this.close(),
+    );
   }
 
   private waitForSurface(paneId: string): Promise<void> {
@@ -255,16 +329,17 @@ export class EndpointTerminalSession extends EventEmitter {
     );
     if (offset === this.lastScroll.offsetFromBottom) return;
     this.lastScroll.offsetFromBottom = offset;
-    this.client
-      .callEndpoint("pane.scroll", {
-        pane_id: this.paneId,
+    const paneId = this.paneId;
+    this.enqueueCommand(() =>
+      this.client.callEndpoint("pane.scroll", {
+        pane_id: paneId,
         offset_from_bottom: offset,
-      })
-      .catch((e) =>
-        this.logger.debug("endpoint pane.scroll failed", {
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      );
+      }),
+    ).catch((e) =>
+      this.logger.debug("endpoint pane.scroll failed", {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
   }
 
   close() {

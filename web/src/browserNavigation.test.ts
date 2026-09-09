@@ -1,0 +1,655 @@
+import { describe, expect, test } from "bun:test";
+import {
+  browserPaneInDirection,
+  emptyBrowserNavigation,
+  projectBrowserLayout,
+  projectBrowserNavigation,
+  selectBrowserTarget,
+} from "./browserNavigation";
+import type { Pane, PaneLayout, Tab, Workspace } from "./types";
+
+function navigationTopology() {
+  const workspaces: Workspace[] = ["a", "b"].map((id, i) => ({
+    workspace_id: id,
+    number: i + 1,
+    label: id,
+    focused: id === "a",
+    pane_count: 3,
+    tab_count: 2,
+    active_tab_id: `${id}1`,
+    agent_status: "idle",
+    cwd: `/tmp/${id}`,
+  }));
+  const tabs: Tab[] = ["a1", "a2", "b1"].map((id, i) => ({
+    tab_id: id,
+    workspace_id: id[0],
+    number: i + 1,
+    label: id,
+    focused: id === "a1",
+    pane_count: 2,
+    agent_status: "idle",
+  }));
+  const panes: Pane[] = ["a1p", "a1q", "a2p", "b1p"].map((id) => ({
+    pane_id: id,
+    terminal_id: `${id}-terminal`,
+    workspace_id: id[0],
+    tab_id: id.slice(0, 2),
+    focused: id === "a1p",
+    agent_status: "idle",
+    revision: 1,
+    cwd: `/tmp/${id}`,
+    foreground_cwd: `/tmp/${id}-foreground`,
+  }));
+  return { workspaces, tabs, panes };
+}
+
+function navigationLayout(pane: Pane, panes: Pane[]): PaneLayout {
+  return {
+    workspace_id: pane.workspace_id,
+    tab_id: pane.tab_id,
+    zoomed: false,
+    area: { x: 0, y: 0, width: 100, height: 30 },
+    focused_pane_id: pane.pane_id,
+    panes: panes
+      .filter((p) => p.tab_id === pane.tab_id)
+      .map((p, i) => ({
+        pane_id: p.pane_id,
+        focused: i === 0,
+        rect: { x: i * 50, y: 0, width: 50, height: 30 },
+      })),
+    splits: [],
+  };
+}
+
+describe("browser navigation projection", () => {
+  test("reproduces shared snapshot clobber but isolates two browser selections", () => {
+    const { workspaces, tabs, panes } = navigationTopology();
+    const a = selectBrowserTarget(emptyBrowserNavigation(), "a", "a2", "a2p");
+    const b = selectBrowserTarget(emptyBrowserNavigation(), "b", "b1", "b1p");
+    const native = JSON.stringify({ workspaces, tabs, panes });
+    // The old refresh published shared focus a/a1 for both browsers.
+    expect(workspaces.find((w) => w.focused)?.active_tab_id).toBe("a1");
+    const projectedA = projectBrowserNavigation(a, workspaces, tabs, panes);
+    const projectedB = projectBrowserNavigation(b, workspaces, tabs, panes);
+    expect(projectedA.selectedPaneId).toBe("a2p");
+    expect(projectedB.selectedPaneId).toBe("b1p");
+    expect(JSON.stringify({ workspaces, tabs, panes })).toBe(native);
+    workspaces[0].focused = false;
+    workspaces[1].focused = true;
+    expect(
+      projectBrowserNavigation(
+        projectedA.browserNavigation,
+        workspaces,
+        tabs,
+        panes,
+      ).selectedPaneId,
+    ).toBe("a2p");
+  });
+
+  test("closed and moved panes stay within the selected tab; missing tabs/workspaces fall back", () => {
+    const { workspaces, tabs, panes } = navigationTopology();
+    const selected = selectBrowserTarget(
+      emptyBrowserNavigation(),
+      "a",
+      "a1",
+      "a1q",
+    );
+    const moved = panes.map((p) =>
+      p.pane_id === "a1q" ? { ...p, workspace_id: "b", tab_id: "b1" } : p,
+    );
+    const projection = projectBrowserNavigation(
+      selected,
+      workspaces,
+      tabs,
+      moved,
+    );
+    expect(projection.selectedPaneId).toBe("a1p");
+    expect(projection.browserNavigation.paneIds.a1).toBe("a1p");
+    expect(
+      projectBrowserNavigation(
+        selected,
+        workspaces,
+        tabs,
+        panes.filter((p) => p.pane_id !== "a1q"),
+      ).selectedPaneId,
+    ).toBe("a1p");
+    expect(
+      projectBrowserNavigation(
+        selected,
+        workspaces,
+        tabs.filter((t) => t.tab_id !== "a1"),
+        moved,
+      ).selectedPaneId,
+    ).toBe("a2p");
+    expect(
+      projectBrowserNavigation(
+        selected,
+        workspaces.slice(1),
+        tabs.slice(2),
+        moved,
+      ).selectedPaneId,
+    ).toBe("a1q");
+    expect(
+      projectBrowserNavigation(selected, [], [], []).browserNavigation,
+    ).toEqual(emptyBrowserNavigation());
+  });
+
+  test("remembers per-workspace tabs and per-tab panes without adopting later focus", () => {
+    const topology = navigationTopology();
+    let selection = selectBrowserTarget(
+      emptyBrowserNavigation(),
+      "a",
+      "a1",
+      "a1q",
+    );
+    selection = selectBrowserTarget(selection, "b", "b1", "b1p");
+    selection = selectBrowserTarget(selection, "a");
+    const projected = projectBrowserNavigation(
+      selection,
+      topology.workspaces,
+      topology.tabs,
+      topology.panes,
+    );
+    expect(projected.selectedPaneId).toBe("a1q");
+    const layout = navigationLayout(topology.panes[0], topology.panes);
+    expect(
+      projectBrowserLayout(layout, projected.selectedPaneId)?.focused_pane_id,
+    ).toBe("a1q");
+    expect(layout.focused_pane_id).toBe("a1p");
+    expect(browserPaneInDirection(layout, "a1p", "right")).toBe("a1q");
+    expect(browserPaneInDirection(layout, "a1q", "left")).toBe("a1p");
+    expect(browserPaneInDirection(layout, "a1p", "up")).toBeNull();
+  });
+});
+
+import { bridge, type ConnectionClient } from "./api";
+import {
+  __storeTesting,
+  activateConnectionState,
+  emptyServerSessionState,
+  store,
+  type State,
+} from "./store";
+
+function browserState(): State {
+  const topology = navigationTopology();
+  const session = {
+    ...emptyServerSessionState(1),
+    navigationMode: "browser-local" as const,
+    ...projectBrowserNavigation(
+      emptyBrowserNavigation(),
+      topology.workspaces,
+      topology.tabs,
+      topology.panes,
+    ),
+    layout: navigationLayout(topology.panes[0], topology.panes),
+  };
+  return {
+    ...store.get(),
+    ...session,
+    status: "connected",
+    connectionPaused: false,
+    activeConnectionId: "test",
+    connectionGeneration: 1,
+    connections: ["test", "other"].map((id) => ({
+      id,
+      label: id,
+      source: "test",
+      is_default: id === "test",
+      state: "ready" as const,
+      generation: 1,
+    })),
+    sessionsByConnectionId: {
+      test: session,
+      other: emptyServerSessionState(1),
+    },
+  };
+}
+
+async function withBrowserStore(
+  run: (
+    calls: Array<{ method: string; params: Record<string, unknown> }>,
+    topology: ReturnType<typeof navigationTopology>,
+    control: {
+      mode: string;
+      layoutWait?: Promise<void>;
+      createWait?: Promise<void>;
+      actionWait?: (method: string) => Promise<void>;
+    },
+  ) => Promise<void>,
+) {
+  const previous = store.get();
+  const original = bridge.connection;
+  const topology = navigationTopology();
+  const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+  const control: {
+    mode: string;
+    layoutWait?: Promise<void>;
+    createWait?: Promise<void>;
+    actionWait?: (method: string) => Promise<void>;
+  } = {
+    mode: "browser-local",
+  };
+  bridge.connection = ((connectionId = "test") =>
+    ({
+      connectionId,
+      generation: 1,
+      serverRuntimeGeneration: 1,
+      isCurrent: () => true,
+      acceptsServerGeneration: () => true,
+      call: async (method: string, params: Record<string, unknown> = {}) => {
+        calls.push({ method, params });
+        await control.actionWait?.(method);
+        if (method === "workspace.list")
+          return {
+            workspaces: topology.workspaces,
+            navigation_mode: control.mode,
+          };
+        if (method === "tab.list") return { tabs: topology.tabs };
+        if (method === "pane.list") return { panes: topology.panes };
+        if (method === "pane.layout") {
+          const pane = topology.panes.find(
+            (p) => p.pane_id === params.pane_id,
+          )!;
+          await control.layoutWait;
+          return { layout: navigationLayout(pane, topology.panes) };
+        }
+        if (method === "pane.get")
+          return {
+            pane: topology.panes.find((p) => p.pane_id === params.pane_id),
+          };
+        if (method === "tab.create" || method === "workspace.create")
+          await control.createWait;
+        if (method === "tab.create")
+          return {
+            type: "tab_created",
+            tab: topology.tabs[1],
+            root_pane: topology.panes[2],
+          };
+        if (
+          method === "workspace.create" ||
+          method === "worktree.create" ||
+          method === "worktree.open"
+        )
+          return {
+            workspace: topology.workspaces[1],
+            tab: topology.tabs[2],
+            root_pane: topology.panes[3],
+          };
+        if (method === "pane.split") return { pane: topology.panes[1] };
+        return {};
+      },
+    }) satisfies ConnectionClient) as typeof bridge.connection;
+  __storeTesting.replaceState(browserState());
+  try {
+    await run(calls, topology, control);
+  } finally {
+    __storeTesting.replaceState(previous);
+    bridge.connection = original;
+  }
+}
+
+describe("store browser-local navigation", () => {
+  test("all navigation routes avoid shared focus and target input explicitly", async () => {
+    await withBrowserStore(async (calls) => {
+      await store.focusWorkspace("b");
+      expect(store.get().selectedPaneId).toBe("b1p");
+      await store.focusTab("a2");
+      expect(store.get().selectedPaneId).toBe("a2p");
+      await store.focusPane("a1p");
+      await store.focusPaneDirection("a1p", "right");
+      expect(store.get().selectedPaneId).toBe("a1q");
+      await store.selectPane("a1p");
+      await store.focusTaskNotificationTarget({
+        connectionId: "test",
+        runtimeGeneration: 1,
+        workspaceId: "b",
+        paneId: "b1p",
+      });
+      expect(store.get().selectedPaneId).toBe("b1p");
+      await store.sendText(store.get().selectedPaneId!, "targeted");
+      await store.sendKeys(store.get().selectedPaneId!, "Enter");
+      expect(calls.filter((call) => /focus/.test(call.method))).toEqual([]);
+      expect(
+        calls.filter((call) => call.method.startsWith("pane.send")),
+      ).toEqual([
+        {
+          method: "pane.send_text",
+          params: { pane_id: "b1p", text: "targeted" },
+        },
+        {
+          method: "pane.send_keys",
+          params: { pane_id: "b1p", keys: ["Enter"] },
+        },
+      ]);
+    });
+  });
+
+  test("event/resync snapshots and reconnect preserve selection; connection switches restore it", async () => {
+    await withBrowserStore(async (_calls, topology) => {
+      await store.focusTab("a2");
+      topology.workspaces[0].focused = false;
+      topology.workspaces[1].focused = true;
+      __storeTesting.handleHerdrEvent({
+        connection_id: "test",
+        connection_generation: 1,
+        event: "session.resync_required",
+        data: {},
+      });
+      await Bun.sleep(120);
+      expect(store.get().selectedPaneId).toBe("a2p");
+      const before = store.get();
+      __storeTesting.markTerminalReattachPending();
+      __storeTesting.applyCatalog(before.connections, "test");
+      __storeTesting.rearmTerminalAttachmentsAfterCatalog(true);
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a2p");
+      const other = activateConnectionState(store.get(), "other", 2);
+      const restored = activateConnectionState(other, "test", 3);
+      expect(restored.browserNavigation).toEqual(store.get().browserNavigation);
+      expect(restored.selectedPaneId).toBe("a2p");
+    });
+  });
+
+  test("a deferred layout cannot overwrite a newer local click", async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      let resolve!: () => void;
+      control.layoutWait = new Promise<void>((r) => {
+        resolve = r;
+      });
+      const refresh = store.refresh();
+      await Bun.sleep(1);
+      await store.focusTab("b1");
+      expect(store.get().layout).toBeNull();
+      resolve();
+      await refresh;
+      await Bun.sleep(5);
+      expect(store.get().selectedPaneId).toBe("b1p");
+      expect(store.get().layout?.tab_id).toBe("b1");
+    });
+  });
+
+  test("closed/moved snapshots reconcile action targets without following remote focus", async () => {
+    await withBrowserStore(async (calls, topology) => {
+      await store.focusPane("a1q");
+      Object.assign(topology.panes[1], { workspace_id: "b", tab_id: "b1" });
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a1p");
+      await store.closePane(store.get().selectedPaneId!);
+      expect(calls[calls.length - 1]).toEqual({
+        method: "pane.close",
+        params: { pane_id: "a1p" },
+      });
+      topology.panes = topology.panes.filter((pane) => pane.pane_id !== "a1p");
+      topology.tabs = topology.tabs.filter((tab) => tab.tab_id !== "a1");
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a2p");
+    });
+  });
+
+  test("notification activation follows an explicitly moved pane and falls back when closed", async () => {
+    await withBrowserStore(async (calls, topology) => {
+      Object.assign(topology.panes[1], { workspace_id: "b", tab_id: "b1" });
+      const target = {
+        connectionId: "test",
+        runtimeGeneration: 1,
+        workspaceId: "a",
+        paneId: "a1q",
+      };
+      await store.focusTaskNotificationTarget(target);
+      expect(store.get().browserNavigation.workspaceId).toBe("b");
+      expect(store.get().selectedPaneId).toBe("a1q");
+      topology.panes = topology.panes.filter((pane) => pane.pane_id !== "a1q");
+      await store.focusTaskNotificationTarget(target);
+      expect(store.get().browserNavigation.workspaceId).toBe("a");
+      expect(store.get().selectedPaneId).toBe("a1p");
+      expect(calls.filter((call) => /focus/.test(call.method))).toEqual([]);
+    });
+  });
+
+  test("a pane moved while its layout is in flight never publishes the destination tab", async () => {
+    await withBrowserStore(async (_calls, topology, control) => {
+      let resolve!: () => void;
+      control.layoutWait = new Promise<void>((r) => {
+        resolve = r;
+      });
+      const refresh = store.refresh();
+      await Bun.sleep(1);
+      Object.assign(topology.panes[0], { workspace_id: "b", tab_id: "b1" });
+      const publishedTabs: Array<string | undefined> = [];
+      const unsubscribe = store.subscribe(() =>
+        publishedTabs.push(store.get().layout?.tab_id),
+      );
+      resolve();
+      await refresh;
+      await Bun.sleep(5);
+      unsubscribe();
+      expect(publishedTabs).not.toContain("b1");
+      expect(store.get().selectedPaneId).toBe("a1q");
+      expect(store.get().layout?.tab_id).toBe("a1");
+    });
+  });
+
+  test("creation suppresses shared focus, inherits local context and selects returned objects", async () => {
+    await withBrowserStore(async (calls) => {
+      await store.focusPane("a1q");
+      await store.createTab("a");
+      expect(
+        calls.find((call) => call.method === "tab.create")?.params,
+      ).toEqual({
+        workspace_id: "a",
+        focus: false,
+        browser_source: {
+          workspace_id: "a",
+          tab_id: "a1",
+          pane_id: "a1q",
+          terminal_id: "a1q-terminal",
+        },
+      });
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a2p");
+      await store.createWorkspace("new");
+      expect(
+        calls.find((call) => call.method === "workspace.create")?.params,
+      ).toMatchObject({
+        browser_source: {
+          workspace_id: "a",
+          tab_id: "a2",
+          pane_id: "a2p",
+          terminal_id: "a2p-terminal",
+        },
+        focus: false,
+      });
+      expect(
+        calls.find((call) => call.method === "workspace.create")?.params.cwd,
+      ).toBeUndefined();
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("b1p");
+      await store.splitPane("a1p", "right");
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a1q");
+      expect(
+        calls.find((call) => call.method === "pane.split")?.params,
+      ).toEqual({ target_pane_id: "a1p", direction: "right", focus: false });
+      await store.openWorktree("a", "topic");
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("b1p");
+      expect(
+        calls.find((call) => call.method === "worktree.open")?.params.focus,
+      ).toBe(false);
+    });
+  });
+
+  test("creation never synthesizes cwd and carries nonactive workspace context", async () => {
+    await withBrowserStore(async (calls) => {
+      await store.createTab("b");
+      const tabCreate = calls.find((call) => call.method === "tab.create")!;
+      expect(tabCreate.params).not.toHaveProperty("cwd");
+      expect(tabCreate.params.browser_source).toEqual({
+        workspace_id: "b",
+        tab_id: "b1",
+        pane_id: "b1p",
+        terminal_id: "b1p-terminal",
+      });
+      await store.createWorkspace("explicit", "/chosen");
+      expect(
+        calls.find((call) => call.method === "workspace.create")?.params.cwd,
+      ).toBe("/chosen");
+    });
+  });
+
+  test("a delayed create response does not navigate away from a newer local choice", async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      let resolve!: () => void;
+      control.createWait = new Promise<void>((r) => {
+        resolve = r;
+      });
+      const creation = store.createTab("a");
+      await store.focusWorkspace("b");
+      resolve();
+      await creation;
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("b1p");
+    });
+  });
+
+  for (const kind of [
+    "worktree-create",
+    "worktree-open",
+    "worktree-cwd",
+    "split",
+    "notification",
+    "notification-fallback",
+  ] as const) {
+    test(`delayed ${kind} preserves a newer browser selection`, async () => {
+      await withBrowserStore(async (_calls, topology, control) => {
+        let release!: () => void;
+        const waiting = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const worktree = kind.startsWith("worktree");
+        const method =
+          kind === "worktree-create"
+            ? "worktree.create"
+            : worktree
+              ? "worktree.open"
+              : kind === "split"
+                ? "pane.split"
+                : "pane.get";
+        control.actionWait = (call) =>
+          call === method ? waiting : Promise.resolve();
+        if (worktree) await store.focusWorkspace("b");
+        if (kind === "notification-fallback")
+          topology.panes = topology.panes.filter(
+            (pane) => pane.pane_id !== "a1q",
+          );
+        const pending =
+          kind === "worktree-create"
+            ? store.createWorktree("b", "topic")
+            : kind === "worktree-open"
+              ? store.openWorktree("b", "topic")
+              : kind === "worktree-cwd"
+                ? store.openWorktreeFromCwd("/tmp/b", "main")
+                : kind === "split"
+                  ? store.splitPane("a1p", "right")
+                  : store.focusTaskNotificationTarget({
+                      connectionId: "test",
+                      runtimeGeneration: 1,
+                      workspaceId: "a",
+                      paneId: "a1q",
+                    });
+        await store.focusWorkspace(worktree ? "a" : "b");
+        release();
+        await pending;
+        await store.refresh();
+        expect(store.get().selectedPaneId).toBe(worktree ? "a1p" : "b1p");
+      });
+    });
+  }
+
+  test("reverse mutation completion cannot let an older split steal selection", async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      control.actionWait = (method) =>
+        method === "pane.split" ? waiting : Promise.resolve();
+      const split = store.splitPane("a1p", "right");
+      await store.openWorktree("a", "topic");
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("b1p");
+      release();
+      await split;
+      expect(store.get().selectedPaneId).toBe("b1p");
+    });
+  });
+
+  test("legacy or endpoint-disabled metadata explicitly restores shared behavior", async () => {
+    await withBrowserStore(async (calls, _topology, control) => {
+      await store.focusWorkspace("b");
+      control.mode = "shared";
+      await store.refresh();
+      expect(store.get().navigationMode).toBe("shared");
+      expect(store.get().workspaces.find((w) => w.focused)?.workspace_id).toBe(
+        "a",
+      );
+      await store.focusTab("b1");
+      expect(
+        calls
+          .filter((call) => /focus/.test(call.method))
+          .map((call) => call.method),
+      ).toEqual(["workspace.focus", "tab.focus"]);
+    });
+  });
+});
+
+for (const kind of [
+  "worktree-create",
+  "worktree-open",
+  "worktree-cwd",
+  "split",
+  "notification",
+] as const) {
+  test(`delayed ${kind} cannot adopt into a replacement runtime on the same connection`, async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const method =
+        kind === "worktree-create"
+          ? "worktree.create"
+          : kind.startsWith("worktree")
+            ? "worktree.open"
+            : kind === "split"
+              ? "pane.split"
+              : "pane.get";
+      control.actionWait = (call) =>
+        call === method ? waiting : Promise.resolve();
+      const pending =
+        kind === "worktree-create"
+          ? store.createWorktree("a", "topic")
+          : kind === "worktree-open"
+            ? store.openWorktree("a", "topic")
+            : kind === "worktree-cwd"
+              ? store.openWorktreeFromCwd("/tmp/a", "main")
+              : kind === "split"
+                ? store.splitPane("a1p", "right")
+                : store.focusTaskNotificationTarget({
+                    connectionId: "test",
+                    runtimeGeneration: 1,
+                    workspaceId: "a",
+                    paneId: "a1q",
+                  });
+      __storeTesting.replaceState({
+        ...activateConnectionState(store.get(), "test", 2),
+        serverRuntimeGeneration: 2,
+      });
+      release();
+      await pending;
+      expect(store.get().selectedPaneId).toBe("a1p");
+      expect(store.get().browserNavigation.workspaceId).toBe("a");
+    });
+  });
+}

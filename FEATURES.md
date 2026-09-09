@@ -13,6 +13,18 @@ the [hands-on tutorial](./docs/TUTORIAL.md).
 
 - Browse all Herdr workspaces and their recognized agents from one sidebar.
 - Create, rename, focus, pin, and close workspaces.
+- On Herdr 0.9.0 endpoints, each browser remembers its workspace, tab and pane
+  selection per connection; workspace/tab navigation does not move other
+  browsers or native clients.
+  Reconnect preserves live selections; closing or moving a selected pane picks
+  a remaining pane in the selected tab, then a remaining tab/workspace if needed.
+  Reload starts from Herdr's current selection. The connection menu labels
+  **Local navigation** versus the legacy **Shared navigation** fallback.
+  Create/close/move operations and terminal sizes remain shared. Herdr's
+  same-tab pane focus remains shared, including the pane supplying `follow` cwd.
+  Creating tabs/workspaces preserves Herdr's cwd policy and requires the source
+  terminal tab to be open and connected; unavailable sources show an error.
+  An empty session can create its first workspace directly from Studio.
 - Group linked Git worktrees under their parent repository workspace. Groups can
   be collapsed, while individual workspaces or worktrees can be pinned to the
   top. Pin and collapse preferences are stored in the current browser.

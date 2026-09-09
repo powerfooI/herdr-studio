@@ -1,3 +1,8 @@
+import {
+  EndpointCreationDeadline,
+  parseEndpointCreationSource,
+  type EndpointCreationSource,
+} from "./endpoint-creation";
 import type { ServerWebSocket } from "bun";
 import {
   CONNECTION_CHANGED_DURING_REQUEST,
@@ -55,6 +60,12 @@ export function createTerminalBridge(args: {
   herdrProtocol: () => Promise<number>;
   /** Resolve a terminal id to its owning pane id (control-socket pane.list). */
   lookupPaneId?: (terminalId: string) => Promise<string | null>;
+  validateCreationSource?: (source: EndpointCreationSource) => Promise<void>;
+  createEmptyWorkspace?: (
+    params: Record<string, unknown>,
+    isCurrent: () => boolean,
+    deadline: EndpointCreationDeadline,
+  ) => Promise<unknown>;
   safeSend: (
     ws: ServerWebSocket<unknown>,
     payload: string,
@@ -76,6 +87,10 @@ export function createTerminalBridge(args: {
   const terminals = new Map<ServerWebSocket<unknown>, TerminalSession>();
   const terminalViewers = new Map<ServerWebSocket<unknown>, Set<string>>();
   const sharedTerminals = new Map<string, SharedTerminalSession>();
+  const attachmentTokens = new Map<
+    ServerWebSocket<unknown>,
+    Map<string, object>
+  >();
   let clipboardRelay: ThinClient | null = null;
   let clipboardRelayConnecting: Promise<void> | null = null;
   let clipboardTarget: ClipboardTarget | null = null;
@@ -94,6 +109,15 @@ export function createTerminalBridge(args: {
       resolvedProtocol = await args.herdrProtocol();
     }
     return resolvedProtocol;
+  }
+
+  // Use the same verified backend decision for browser navigation and rendering.
+  async function navigationMode(): Promise<"browser-local" | "shared"> {
+    return isTerminalHelloProtocol(await bridgeProtocol()) &&
+      args.lookupPaneId &&
+      process.env.HERDR_GUI_DISABLE_ENDPOINT !== "1"
+      ? "browser-local"
+      : "shared";
   }
 
   const serialize = (message: Record<string, unknown>) =>
@@ -415,6 +439,7 @@ export function createTerminalBridge(args: {
       ? [terminalId]
       : Array.from(viewed ?? (current?.terminalId ? [current.terminalId] : []));
     for (const id of terminalIds) {
+      attachmentTokens.get(ws)?.delete(id);
       if (clipboardTarget?.ws === ws && clipboardTarget.terminalId === id) {
         clipboardTarget = null;
       }
@@ -428,6 +453,7 @@ export function createTerminalBridge(args: {
     }
     if (!viewed || viewed.size === 0) {
       terminalViewers.delete(ws);
+      attachmentTokens.delete(ws);
       terminals.delete(ws);
       if (clipboardTarget?.ws === ws) clipboardTarget = null;
       return;
@@ -450,7 +476,7 @@ export function createTerminalBridge(args: {
     const creationRevision = lifecycleRevision;
     // Resolve before checking the map so concurrent attaches for the same
     // terminal cannot double-create while the first resolution is in flight.
-    const protocol = await bridgeProtocol();
+    const mode = await navigationMode();
     const existing = sharedTerminals.get(terminalId);
     if (existing && !existing.thin.isClosed) return existing;
     if (existing) {
@@ -459,9 +485,7 @@ export function createTerminalBridge(args: {
     }
 
     const thin =
-      isTerminalHelloProtocol(protocol) &&
-      args.lookupPaneId &&
-      process.env.HERDR_GUI_DISABLE_ENDPOINT !== "1"
+      mode === "browser-local" && args.lookupPaneId
         ? new EndpointTerminalSession(
             args.clientSocketPath,
             terminalId,
@@ -640,6 +664,123 @@ export function createTerminalBridge(args: {
     return shared;
   }
 
+  async function waitForOwnedTerminal(
+    ws: ServerWebSocket<unknown>,
+    terminalId: string,
+    shared: SharedTerminalSession,
+    requestIsCurrent: () => boolean,
+  ): Promise<() => void> {
+    const token = attachmentTokens.get(ws)?.get(terminalId);
+    const revision = lifecycleRevision;
+    const validate = () => {
+      if (
+        !requestIsCurrent() ||
+        !isCurrent(revision) ||
+        !token ||
+        attachmentTokens.get(ws)?.get(terminalId) !== token ||
+        !terminalViewers.get(ws)?.has(terminalId) ||
+        sharedTerminals.get(terminalId) !== shared ||
+        shared.thin.isClosed
+      ) {
+        throw new Error(
+          "Source terminal attachment changed; retry after it reconnects.",
+        );
+      }
+    };
+    validate();
+    if (shared.connecting) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          shared.connecting,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Source terminal is still connecting; retry when ready.",
+                  ),
+                ),
+              20_000,
+            );
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    validate();
+    return validate;
+  }
+
+  async function createFromTerminal(
+    ws: ServerWebSocket<unknown>,
+    method: "tab.create" | "workspace.create",
+    params: Record<string, unknown>,
+    requestIsCurrent: () => boolean,
+  ) {
+    const deadline = new EndpointCreationDeadline();
+    return deadline.wait(
+      (async () => {
+        if ((await navigationMode()) !== "browser-local")
+          throw new Error("Client-scoped creation requires Herdr endpoints.");
+        deadline.assertBeforeDispatch();
+        if (method === "workspace.create" && params.browser_source === null) {
+          if (!args.createEmptyWorkspace)
+            throw new Error("Empty-session creation is unavailable.");
+          return args.createEmptyWorkspace(
+            params,
+            () => !disposed && requestIsCurrent(),
+            deadline,
+          );
+        }
+        const source = parseEndpointCreationSource(params.browser_source);
+        if (
+          method === "tab.create" &&
+          params.workspace_id !== source.workspace_id
+        ) {
+          throw new Error(
+            "Creation source does not belong to the requested workspace.",
+          );
+        }
+        const shared = sharedTerminals.get(source.terminal_id);
+        if (!shared || !(shared.thin instanceof EndpointTerminalSession)) {
+          throw new Error(
+            "Open the source terminal tab and wait for it to connect before creating.",
+          );
+        }
+        const validateAttachment = await waitForOwnedTerminal(
+          ws,
+          source.terminal_id,
+          shared,
+          requestIsCurrent,
+        );
+        const creationParams = { ...params };
+        delete creationParams.browser_source;
+        const result = await shared.thin.create(
+          method,
+          {
+            ...creationParams,
+            ...(method === "workspace.create"
+              ? { source_workspace_id: source.workspace_id }
+              : {}),
+            focus: false,
+          },
+          source.pane_id,
+          async () => {
+            validateAttachment();
+            if (!args.validateCreationSource)
+              throw new Error("Creation source validation is unavailable.");
+            await args.validateCreationSource(source);
+            validateAttachment();
+          },
+          deadline,
+        );
+        return result;
+      })(),
+    );
+  }
+
   async function handleTerminalRpc(
     ws: ServerWebSocket<unknown>,
     id: string,
@@ -687,6 +828,9 @@ export function createTerminalBridge(args: {
         terminals.set(ws, { terminalId, cols, rows });
         viewed.add(terminalId);
         terminalViewers.set(ws, viewed);
+        const tokens = attachmentTokens.get(ws) ?? new Map<string, object>();
+        tokens.set(terminalId, {});
+        attachmentTokens.set(ws, tokens);
         const shared = await getSharedTerminal(terminalId, cols, rows);
         shared.viewers.add(ws);
         try {
@@ -808,6 +952,12 @@ export function createTerminalBridge(args: {
         }
         const input = Buffer.from(b64, "base64");
         if (input.length === 0) return fail("terminal input required");
+        await waitForOwnedTerminal(
+          ws,
+          requestedTerminalId,
+          shared,
+          requestIsCurrent,
+        );
         clipboardTarget = {
           ws,
           terminalId: requestedTerminalId,
@@ -884,10 +1034,13 @@ export function createTerminalBridge(args: {
     for (const shared of sharedTerminals.values()) shared.thin.close();
     sharedTerminals.clear();
     terminalViewers.clear();
+    attachmentTokens.clear();
     terminals.clear();
   }
 
   return {
+    createFromTerminal,
+    navigationMode,
     handleTerminalRpc,
     cleanupWs,
     viewedTerminals,

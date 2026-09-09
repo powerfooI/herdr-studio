@@ -40,10 +40,25 @@ direct-terminal fallback:
   existing copy-retry UI. Ordinary browser selection copy and paste are unchanged.
   OSC 52 remains unavailable on the **0.9.0 legacy fallback** because only shell
   endpoints receive it. Legacy servers retain their existing clipboard relay.
-- Public JSON workspace/tab/pane focus remains session-wide; Studio does not
-  promise independent navigation alongside other Herdr clients. Enhanced Kitty
-  keyboard / modifyOtherKeys parity and pixel mouse are not supported. Legacy
-  keyboard-mode messages are decoded, not applied in-browser.
+- Endpoint navigation is browser-local, partitioned by connection. Studio
+  projects workspace/tab/pane selection locally and sends terminal input to
+  explicit pane targets; it does not issue public JSON focus calls for navigation.
+  Selection survives browser reconnect but not page reload or connection-runtime
+  replacement. Create/close/move are shared topology changes; creation selects
+  its result only in the initiating browser. Tab/workspace creation reuses the
+  source tab's attached endpoint, preserving `terminal.new_cwd` (`follow`,
+  `home`, `current`, or a fixed path); explicit cwd still wins. Herdr's focused
+  pane within a tab is shared, so `follow` is not browser-source-pane isolation.
+  Open the source terminal tab before creating; unattached/offscreen sources
+  fail explicitly. A server-verified empty session can create its first workspace
+  directly; competing first creations must retry against the resulting topology.
+  Terminal sizing remains shared and follows Herdr's last-interacting client
+  behavior.
+- Legacy servers and `HERDR_GUI_DISABLE_ENDPOINT=1` retain **Shared navigation**:
+  public JSON focus can move other clients. The connection menu shows the mode,
+  using the bridge's actual backend selection, not browser version guesses.
+  Enhanced Kitty keyboard / modifyOtherKeys parity and pixel mouse are not
+  supported. Legacy keyboard-mode messages are decoded, not applied in-browser.
 - Closing a workspace does not implicitly close its linked group. If Herdr
   requires group closure, Studio leaves it intact and directs you to the CLI:
   `herdr --session <name> workspace close <workspace_id> --group`. Review all

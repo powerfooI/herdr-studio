@@ -45,6 +45,35 @@ and mobile controls. WebSocket events keep multiple authenticated browsers in
 sync with server-side Herdr state, while each browser retains its own view and
 connection selection.
 
+With Herdr 0.9.0 endpoints, the store also owns workspace/tab/pane navigation
+per connection/runtime. `browserNavigation.ts` projects local choices into the
+existing focused fields, so desktop, mobile, inspectors and action targets use
+one selection. Shared snapshots supply topology, not subsequent navigation;
+stale in-flight layouts are discarded after local selection changes. Creation
+uses explicit context and `focus: false`, then adopts returned IDs locally only
+if the initiating selection and connection lease are still current. Delayed
+worktree/split/notification results cannot steal newer navigation.
+For tab/workspace creation, Studio-only `browser_source` identifies the caller's
+attached terminal, pane, tab and workspace. The bridge validates ownership and
+live topology, strips that field, and invokes the advertised create method on
+the existing endpoint, serialized with its focus/scroll command lane. No extra
+focus call or endpoint client is created. Omitting synthesized cwd preserves
+Herdr's policy; its same-tab pane focus (and `follow` cwd source) remains shared.
+Missing attachments fail explicitly rather than using shared control context.
+The sole exception is first-workspace bootstrap: each runtime serializes a valid
+empty `workspace.list` check and control creation, rechecking lease and deadline
+before dispatch. A competing request observes nonempty topology and must retry.
+Creation has a 20-second admission deadline spanning readiness, validation and
+queue residence, below the browser RPC timeout. Expired undispatched mutations
+never execute; dispatched timeouts warn about uncertain completion.
+Input waits for attachment readiness and revalidates its attachment token,
+session and routing lease before forwarding or assigning clipboard ownership;
+input is never replayed into a detached/replaced terminal.
+The bridge adds `workspace.list.navigation_mode` from the same verified backend
+choice used for terminal sessions. Legacy/endpoint-disabled paths remain shared.
+Endpoint terminal sessions still focus and send input to their explicit pane;
+no browser-session backend or upstream wire extension is needed.
+
 ## Connection isolation
 
 One bridge may manage multiple existing Herdr servers. Profiles are shared by

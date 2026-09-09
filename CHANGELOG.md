@@ -13,6 +13,12 @@
 
 ### Fixed
 
+- Keep workspace and tab navigation local to each browser on Herdr 0.9.0
+  endpoints, including reconnect and closed-pane fallback. Legacy navigation,
+  native same-tab pane focus, topology and terminal sizes remain shared.
+  Preserve Herdr's cwd policy for client-scoped creation, and wait for terminal
+  attachment readiness instead of silently dropping early input.
+
 - Restore terminal-program OSC 52 clipboard writes on Herdr 0.9.0 endpoints,
   using its foreground recipient and Studio's recent-input filtering. Herdr
   does not identify the producing pane; delayed/background writes can reach

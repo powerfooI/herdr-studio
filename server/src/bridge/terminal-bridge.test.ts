@@ -1212,3 +1212,31 @@ describe("terminal bridge sharing", () => {
     bridge.dispose();
   });
 });
+
+test("navigation mode uses exactly the terminal backend decision", async () => {
+  const disabled = process.env.HERDR_GUI_DISABLE_ENDPOINT;
+  try {
+    for (const [protocol, lookup, disable, expected] of [
+      [22, true, false, "browser-local"],
+      [22, true, true, "shared"],
+      [22, false, false, "shared"],
+      [20, true, false, "shared"],
+    ] as const) {
+      if (disable) process.env.HERDR_GUI_DISABLE_ENDPOINT = "1";
+      else delete process.env.HERDR_GUI_DISABLE_ENDPOINT;
+      const bridge = createTerminalBridge({
+        clientSocketPath: "/unused",
+        herdrProtocol: async () => protocol,
+        lookupPaneId: lookup ? async () => "pane" : undefined,
+        safeSend: () => true,
+        clientLabel: () => "test",
+        markRpcError: () => {},
+      });
+      expect(await bridge.navigationMode()).toBe(expected);
+      bridge.dispose();
+    }
+  } finally {
+    if (disabled === undefined) delete process.env.HERDR_GUI_DISABLE_ENDPOINT;
+    else process.env.HERDR_GUI_DISABLE_ENDPOINT = disabled;
+  }
+});
