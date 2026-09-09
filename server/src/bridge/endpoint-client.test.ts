@@ -70,7 +70,12 @@ function writeFrame(w: BinWriter, frame: FrameData) {
   w.bytes(Buffer.alloc(0)); // graphics
 }
 
-function writePane(w: BinWriter, paneId: string, focused = true) {
+function writePane(
+  w: BinWriter,
+  paneId: string,
+  focused = true,
+  mouseReporting = false,
+) {
   w.string(paneId);
   w.varint(1); // content_revision
   for (const rect of [
@@ -85,7 +90,7 @@ function writePane(w: BinWriter, paneId: string, focused = true) {
   w.bool(false); // scrollbar_rect
   w.bool(false); // scroll metrics
   w.bool(focused);
-  w.bool(false); // mouse_reporting
+  w.bool(mouseReporting); // mouse_reporting
   w.bool(false); // sgr_pixel_mouse
   w.bool(false); // alternate_screen_active
   w.varint(0); // pixel_width
@@ -115,6 +120,7 @@ function patchFrame(payload: {
   surfaceRevision: number;
   rows: Array<{ x: number; y: number; cells: CellData[] }>;
   cursor?: { x: number; y: number; visible: boolean; shape: number };
+  mouseReporting?: boolean;
 }): Buffer {
   const w = new BinWriter();
   w.variant(19); // PaneSurfacePatch
@@ -130,7 +136,7 @@ function patchFrame(payload: {
     for (const c of row.cells) writeCell(w, c);
   }
   w.varint(1);
-  writePane(w, "w1:p1");
+  writePane(w, "w1:p1", true, payload.mouseReporting);
   w.option(payload.cursor, (cur) => {
     w.varint(cur.x);
     w.varint(cur.y);
@@ -334,6 +340,7 @@ describe("EndpointClient (endpoint generation 1)", () => {
           patchFrame({
             baseSurfaceRevision: 1,
             surfaceRevision: 2,
+            mouseReporting: true,
             rows: [{ x: 2, y: 1, cells: [cell("h"), cell("i")] }],
             cursor: { x: 4, y: 1, visible: true, shape: 1 },
           }),
@@ -365,9 +372,11 @@ describe("EndpointClient (endpoint generation 1)", () => {
         innerRect: { x: 0, y: 0, width: 10, height: 5 },
         scroll: null,
         focused: true,
+        mouseReporting: false,
       },
     ]);
     const patched = surfaces[1];
+    expect(patched.panes[0].mouseReporting).toBe(true);
     expect(patched.surfaceRevision).toBe(2);
     expect(patched.frame.cells[12].symbol).toBe("h");
     expect(patched.frame.cells[13].symbol).toBe("i");

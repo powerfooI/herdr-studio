@@ -516,6 +516,9 @@ export function createTerminalBridge(args: {
           width: t.width,
           height: t.height,
           full: t.full,
+          ...(typeof t.mouseReporting === "boolean"
+            ? { mouse_reporting: t.mouseReporting }
+            : {}),
           bytes: Buffer.from(t.bytes).toString("base64"),
         },
       });
@@ -821,7 +824,14 @@ export function createTerminalBridge(args: {
         const column =
           typeof params.column === "number" ? Number(params.column) : null;
         const row = typeof params.row === "number" ? Number(params.row) : null;
-        const source = params.source === "page-key" ? "page-key" : "wheel";
+        // Explicit half-page shortcuts use pane.scroll on endpoints, while
+        // legacy AttachScroll keeps its original Wheel source and line count.
+        const source =
+          params.source === "page-key" ||
+          (params.source === "history" &&
+            thin instanceof EndpointTerminalSession)
+            ? "page-key"
+            : "wheel";
         thin.scroll(direction, lines, column, row, source);
         return reply({ ok: true });
       }

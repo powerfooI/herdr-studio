@@ -9,11 +9,13 @@
   browser terminal now renders the pane cropped from the server-rendered tab
   surface, input is classified into semantic key events, and scrollback goes
   through `pane.scroll`. Set `HERDR_GUI_DISABLE_ENDPOINT=1` to fall back to
-  the legacy path. Known gaps on the endpoint path: mouse input is not yet
-  classified, and panes sharing a tab render at their layout size.
+  the legacy path. Panes sharing a tab still render at their layout size.
 
 ### Fixed
 
+- Restore cell-based clicks, drags and wheel input in endpoint terminal apps;
+  retain browser selection/copy and history scrolling outside mouse-aware apps.
+  Selected endpoint output pauses visually until selection clears.
 - Clear stale terminal text on endpoint repaints, wait for the initial snapshot
   before attaching, and reject pending endpoint requests when disconnected.
 

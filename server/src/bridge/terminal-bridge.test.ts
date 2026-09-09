@@ -6,6 +6,45 @@ import { tmpdir } from "node:os";
 import { BinReader, BinWriter, encodeFrame } from "./bincode";
 import { createTerminalBridge } from "./terminal-bridge";
 
+test("explicit half-page history retains legacy Wheel source and line count", async () => {
+  const sources: number[] = [];
+  const socketPath = await startThinServer({
+    onScroll: (reader) => {
+      sources.push(reader.variant());
+      expect(reader.variant()).toBe(0); // Up
+      expect(reader.varint()).toBe(14);
+      expect(reader.bool()).toBe(false); // no column
+      expect(reader.bool()).toBe(false); // no row
+    },
+  });
+  const ws = {} as ServerWebSocket<unknown>;
+  const bridge = createTerminalBridge({
+    clientSocketPath: socketPath,
+    herdrProtocol: async () => 17,
+    safeSend: () => true,
+    clientLabel: () => "test",
+    markRpcError: () => {},
+  });
+  try {
+    await bridge.handleTerminalRpc(ws, "attach", "terminal.attach", {
+      terminal_id: "legacy",
+      cols: 80,
+      rows: 30,
+      relay_active: false,
+    });
+    await bridge.handleTerminalRpc(ws, "scroll", "terminal.scroll", {
+      terminal_id: "legacy",
+      direction: "up",
+      lines: 14,
+      source: "history",
+    });
+    await Bun.sleep(40);
+    expect(sources).toEqual([0]);
+  } finally {
+    bridge.dispose();
+  }
+});
+
 const servers: net.Server[] = [];
 const serverConnections = new Set<net.Socket>();
 
@@ -51,6 +90,7 @@ async function startThinServer(
     directFrameDelayMs?: number;
     skipDirectFrame?: boolean;
     onDirectAttach?: (socket: net.Socket) => void;
+    onScroll?: (reader: BinReader) => void;
     tracker?: {
       appConnects: number;
       appCloses: number;
@@ -173,6 +213,7 @@ async function startThinServer(
           }
         } else if (variant === 6) {
           options.tracker?.events.push("scroll");
+          options.onScroll?.(reader);
         }
       }
     });

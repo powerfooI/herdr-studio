@@ -35,15 +35,11 @@ describe("terminal wheel scrolling", () => {
   });
 
   test("supports half-page scrollback with a readable overlap", () => {
-    expect(terminalPageScroll("up", 30, "half")).toEqual({
-      direction: "up",
-      lines: 14,
-      source: "wheel",
-    });
-    expect(terminalPageScroll("down", 2, "half")).toEqual({
-      direction: "down",
-      lines: 1,
-      source: "wheel",
-    });
+    const up = terminalPageScroll("up", 30, "half");
+    const down = terminalPageScroll("down", 2, "half");
+    expect(up.lines).toBe(14);
+    expect(down.lines).toBe(1);
+    expect(String(up.source)).toBe("history");
+    expect(String(down.source)).toBe("history");
   });
 });

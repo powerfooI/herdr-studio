@@ -4,7 +4,7 @@ import { frameToAnsi } from "./frame-to-ansi";
 import type { FrameData } from "./thin-client";
 import type { Logger } from "../utils/logger";
 import { silentLogger } from "../utils/logger";
-import { VtInputClassifier } from "./vt-input-classifier";
+import { MOUSE_KIND, VtInputClassifier } from "./vt-input-classifier";
 
 const ESC_FLUSH_MS = 25;
 const FIRST_SURFACE_WAIT_MS = 10_000;
@@ -23,6 +23,7 @@ const FIRST_SURFACE_WAIT_MS = 10_000;
 export class EndpointTerminalSession extends EventEmitter {
   private client: EndpointClient;
   private classifier = new VtInputClassifier();
+  private pressedMouseButtons = new Set<number>();
   private escFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private paneId: string | null = null;
   private lastScroll: {
@@ -44,6 +45,7 @@ export class EndpointTerminalSession extends EventEmitter {
     this.client.on("surface", (s) => this.onSurface(s));
     this.client.on("error", (e) => this.emit("error", e));
     this.client.on("close", () => {
+      this.pressedMouseButtons.clear();
       this.closed = true;
       this.emit("close");
     });
@@ -132,6 +134,7 @@ export class EndpointTerminalSession extends EventEmitter {
   private onSurface(surface: EndpointSurface) {
     if (!this.paneId) return; // connect() replays once the lookup resolves
     const pane = surface.panes.find((p) => p.paneId === this.paneId);
+    if (!pane?.mouseReporting) this.pressedMouseButtons.clear();
     if (!pane) return;
     this.lastScroll = pane.scroll
       ? {
@@ -147,6 +150,7 @@ export class EndpointTerminalSession extends EventEmitter {
       width: cropped.width,
       height: cropped.height,
       full: true,
+      mouseReporting: pane.mouseReporting,
       bytes,
     });
   }
@@ -156,8 +160,40 @@ export class EndpointTerminalSession extends EventEmitter {
   }
 
   input(data: Buffer) {
-    if (!this.paneId) return;
-    const events = this.classifier.feed(data);
+    if (!this.paneId || this.closed) return;
+    const pane = this.latestSurface()?.panes.find(
+      (p) => p.paneId === this.paneId,
+    );
+    const events = this.classifier.feed(data).filter((event) => {
+      if (event.type !== "mouse") return true;
+      if (
+        !pane?.mouseReporting ||
+        pane.innerRect.width < 1 ||
+        pane.innerRect.height < 1
+      ) {
+        this.pressedMouseButtons.clear();
+        return false;
+      }
+      const inside =
+        event.column < pane.innerRect.width &&
+        event.row < pane.innerRect.height;
+      if (event.kind === MOUSE_KIND.Down) {
+        this.pressedMouseButtons.delete(event.button!);
+        if (inside) this.pressedMouseButtons.add(event.button!);
+        return inside;
+      }
+      if (event.kind === MOUSE_KIND.Drag || event.kind === MOUSE_KIND.Up) {
+        if (!this.pressedMouseButtons.has(event.button!)) return false;
+        // The browser canvas can exceed the crop. A gesture that began inside
+        // still owns its release when it crosses into that blank canvas area.
+        event.column = Math.min(event.column, pane.innerRect.width - 1);
+        event.row = Math.min(event.row, pane.innerRect.height - 1);
+        if (event.kind === MOUSE_KIND.Up)
+          this.pressedMouseButtons.delete(event.button!);
+        return true;
+      }
+      return inside;
+    });
     this.client.sendPaneInput(this.paneId, events);
     if (this.escFlushTimer) clearTimeout(this.escFlushTimer);
     this.escFlushTimer = setTimeout(() => {
@@ -168,10 +204,44 @@ export class EndpointTerminalSession extends EventEmitter {
     }, ESC_FLUSH_MS);
   }
 
-  // Extra ThinClient scroll params (column/row/source) are accepted by the
-  // bridge but unused here: endpoint scrolls by absolute offset.
-  scroll(direction: "up" | "down", lines: number) {
-    if (!this.paneId || !this.lastScroll) return;
+  scroll(
+    direction: "up" | "down",
+    lines: number,
+    column?: number | null,
+    row?: number | null,
+    source: "wheel" | "page-key" = "wheel",
+  ) {
+    if (!this.paneId || !Number.isFinite(lines) || lines <= 0) return;
+    lines = Math.max(1, Math.min(65535, Math.floor(lines)));
+    const pane = this.latestSurface()?.panes.find(
+      (p) => p.paneId === this.paneId,
+    );
+    // Touch scrolling uses the same bridge RPC as wheels. A page key remains
+    // an explicit history action, as it was before endpoint mouse support.
+    if (source === "wheel" && pane?.mouseReporting) {
+      if (
+        !Number.isInteger(column) ||
+        !Number.isInteger(row) ||
+        column! < 0 ||
+        row! < 0 ||
+        column! >= pane.innerRect.width ||
+        row! >= pane.innerRect.height
+      )
+        return;
+      this.client.sendPaneInput(this.paneId, [
+        {
+          type: "mouse",
+          kind:
+            direction === "up" ? MOUSE_KIND.ScrollUp : MOUSE_KIND.ScrollDown,
+          column: column!,
+          row: row!,
+          modifiers: 0,
+          lines,
+        },
+      ]);
+      return;
+    }
+    if (!this.lastScroll) return;
     const delta = direction === "up" ? lines : -lines;
     const offset = Math.max(
       0,
@@ -197,6 +267,7 @@ export class EndpointTerminalSession extends EventEmitter {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.pressedMouseButtons.clear();
     if (this.escFlushTimer) clearTimeout(this.escFlushTimer);
     this.client.close();
   }

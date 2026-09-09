@@ -8,6 +8,8 @@ import {
   cropFrame,
 } from "./endpoint-terminal-session";
 import type { CellData, FrameData } from "./thin-client";
+import type { ServerWebSocket } from "bun";
+import { createTerminalBridge } from "./terminal-bridge";
 
 const servers: net.Server[] = [];
 
@@ -59,7 +61,18 @@ function writeFrame(w: BinWriter, frame: FrameData) {
   w.bytes(Buffer.alloc(0));
 }
 
-function writePane(w: BinWriter, paneId: string, x = 0, y = 0) {
+type TestPane = { paneId: string; x: number; mouseReporting: boolean };
+const DEFAULT_PANES: TestPane[] = [
+  { paneId: "w1:p1", x: 0, mouseReporting: false },
+];
+
+function writePane(
+  w: BinWriter,
+  paneId: string,
+  x = 0,
+  y = 0,
+  mouseReporting = false,
+) {
   w.string(paneId);
   w.varint(1);
   for (const rect of [
@@ -77,22 +90,27 @@ function writePane(w: BinWriter, paneId: string, x = 0, y = 0) {
   w.varint(100); // max_offset_from_bottom
   w.varint(3); // viewport_rows
   w.bool(true); // focused
-  w.bool(false);
+  w.bool(mouseReporting);
   w.bool(false);
   w.bool(false);
   w.varint(0);
   w.varint(0);
 }
 
-function surfaceFrame(revision: number, frame: FrameData): Buffer {
+function surfaceFrame(
+  revision: number,
+  frame: FrameData,
+  panes = DEFAULT_PANES,
+): Buffer {
   const w = new BinWriter();
   w.variant(13);
   w.string("boot-1");
   w.varint(1);
   w.varint(revision);
   writeFrame(w, frame);
-  w.varint(1);
-  writePane(w, "w1:p1");
+  w.varint(panes.length);
+  for (const pane of panes)
+    writePane(w, pane.paneId, pane.x, 0, pane.mouseReporting);
   w.varint(0);
   w.bool(false);
   return w.toBuffer();
@@ -124,6 +142,8 @@ const WELCOME = {
 async function startSessionServer(handlers: {
   onRequest?: (method: string, params: any) => void;
   onPaneInput?: (paneId: string, reader: BinReader) => void;
+  panes?: TestPane[];
+  onConnection?: (sendSurface: (panes: TestPane[]) => void) => void;
 }) {
   const socketPath = path.join(
     tmpdir(),
@@ -131,10 +151,10 @@ async function startSessionServer(handlers: {
   );
   const frame: FrameData = {
     // Tab surface 10x5; pane w1:p1 inner rect is 1,1 8x3 => "abcdefgh" rows.
-    cells: Array.from({ length: 50 }, (_, i) =>
+    cells: Array.from({ length: handlers.panes ? 100 : 50 }, (_, i) =>
       cell(String.fromCharCode(65 + (i % 26))),
     ),
-    width: 10,
+    width: handlers.panes ? 20 : 10,
     height: 5,
     cursor: { x: 2, y: 2, visible: true, shape: 1 },
     hyperlinks: [],
@@ -142,6 +162,10 @@ async function startSessionServer(handlers: {
   const server = net.createServer((socket) => {
     let input = Buffer.alloc(0);
     let greeted = false;
+    let revision = 1;
+    handlers.onConnection?.((panes) =>
+      socket.write(encodeFrame(surfaceFrame(++revision, frame, panes))),
+    );
     socket.on("data", (chunk) => {
       input = Buffer.concat([
         input,
@@ -170,7 +194,7 @@ async function startSessionServer(handlers: {
               ),
             ),
           );
-          socket.write(encodeFrame(surfaceFrame(1, frame)));
+          socket.write(encodeFrame(surfaceFrame(1, frame, handlers.panes)));
           continue;
         }
         if (variant === 15) {
@@ -259,6 +283,7 @@ describe("EndpointTerminalSession", () => {
     const socketPath = await startSessionServer({
       onRequest: (method, params) => requests.push({ method, params }),
       onPaneInput: (paneId, reader) => {
+        expect(paneId).toBe("w1:p1");
         const count = reader.varint();
         for (let i = 0; i < count; i++) {
           const v = reader.variant();
@@ -285,6 +310,246 @@ describe("EndpointTerminalSession", () => {
     });
     session.close();
   });
+});
+
+test("endpoint mouse stays pane-local and mode changes route application input versus history", async () => {
+  const panes: TestPane[] = [
+    { paneId: "w1:p1", x: 0, mouseReporting: false },
+    { paneId: "w1:p2", x: 10, mouseReporting: true },
+  ];
+  const inputs: Array<{
+    paneId: string;
+    kind: number;
+    column: number;
+    row: number;
+  }> = [];
+  const requests: Array<{ method: string; params: unknown }> = [];
+  const senders: Array<(panes: TestPane[]) => void> = [];
+  const socketPath = await startSessionServer({
+    panes,
+    onConnection: (send) => senders.push(send),
+    onRequest: (method, params) => requests.push({ method, params }),
+    onPaneInput: (paneId, reader) => {
+      const count = reader.varint();
+      for (let i = 0; i < count; i++) {
+        expect(reader.variant()).toBe(2);
+        const kind = reader.variant();
+        if (kind <= 2) reader.variant();
+        expect(reader.variant()).toBe(0);
+        const column = reader.varint();
+        const row = reader.varint();
+        expect(reader.bool()).toBe(false);
+        reader.u8();
+        reader.varint();
+        inputs.push({ paneId, kind, column, row });
+      }
+    },
+  });
+  const left = new EndpointTerminalSession(
+    socketPath,
+    "term-left",
+    async () => "w1:p1",
+  );
+  const right = new EndpointTerminalSession(
+    socketPath,
+    "term-right",
+    async () => "w1:p2",
+  );
+  const modes: boolean[] = [];
+  right.on("terminal", (frame) => modes.push(frame.mouseReporting));
+  try {
+    await left.connect(20, 5);
+    await right.connect(20, 5);
+    const clickDragWheel = Buffer.from(
+      "\x1b[<0;2;3M\x1b[<32;3;2M\x1b[<0;3;2m\x1b[<64;8;3M",
+    );
+    left.input(clickDragWheel); // no mouse reporting in this pane
+    right.input(clickDragWheel);
+    right.input(Buffer.from("\x1b[<0;9;1M\x1b[<0;1;4M")); // outside 8x3 crop
+    right.scroll("down", 3, 1, 2);
+    left.scroll("up", 3, 1, 2);
+    await Bun.sleep(40);
+    expect(inputs).toEqual([
+      { paneId: "w1:p2", kind: 0, column: 1, row: 2 },
+      { paneId: "w1:p2", kind: 2, column: 2, row: 1 },
+      { paneId: "w1:p2", kind: 1, column: 2, row: 1 },
+      { paneId: "w1:p2", kind: 4, column: 7, row: 2 },
+      { paneId: "w1:p2", kind: 5, column: 1, row: 2 },
+    ]);
+    expect(requests).toContainEqual({
+      method: "pane.scroll",
+      params: { pane_id: "w1:p1", offset_from_bottom: 3 },
+    });
+    // Disable reporting mid-report; no stale mouse is delivered after the mode change.
+    right.input(Buffer.from("\x1b[<0;"));
+    const disabled = panes.map((pane) => ({ ...pane, mouseReporting: false }));
+    for (const send of senders) send(disabled);
+    await Bun.sleep(40);
+    right.input(Buffer.from("2;3M"));
+    right.scroll("up", 4, 1, 2);
+    right.scroll("up", Number.NaN);
+    await Bun.sleep(40);
+    expect(inputs).toHaveLength(5);
+    expect(modes).toContain(true);
+    expect(modes.at(-1)).toBe(false);
+    expect(requests).toContainEqual({
+      method: "pane.scroll",
+      params: { pane_id: "w1:p2", offset_from_bottom: 4 },
+    });
+    for (const send of senders) send(panes);
+    await Bun.sleep(40);
+    right.input(Buffer.from("\x1b[<0;1;1M"));
+    left.input(Buffer.from("\x1b[<0;1;1M"));
+    await Bun.sleep(40);
+    expect(inputs.at(-1)).toEqual({
+      paneId: "w1:p2",
+      kind: 0,
+      column: 0,
+      row: 0,
+    });
+    expect(inputs).toHaveLength(6);
+  } finally {
+    left.close();
+    right.close();
+  }
+});
+
+test("accepted presses retain clamped drag and release ownership outside the pane crop", async () => {
+  const panes: TestPane[] = [
+    { paneId: "w1:p1", x: 0, mouseReporting: true },
+    { paneId: "w1:p2", x: 10, mouseReporting: true },
+  ];
+  const inputs: Array<{
+    paneId: string;
+    kind: number;
+    column: number;
+    row: number;
+  }> = [];
+  let sendSurface!: (panes: TestPane[]) => void;
+  const socketPath = await startSessionServer({
+    panes,
+    onConnection: (send) => {
+      sendSurface = send;
+    },
+    onPaneInput: (paneId, reader) => {
+      const count = reader.varint();
+      for (let i = 0; i < count; i++) {
+        expect(reader.variant()).toBe(2);
+        const kind = reader.variant();
+        reader.variant(); // button
+        expect(reader.variant()).toBe(0);
+        const column = reader.varint(),
+          row = reader.varint();
+        reader.bool();
+        reader.u8();
+        reader.varint();
+        inputs.push({ paneId, kind, column, row });
+      }
+    },
+  });
+  const session = new EndpointTerminalSession(
+    socketPath,
+    "right",
+    async () => "w1:p2",
+  );
+  try {
+    await session.connect(20, 5);
+    session.input(Buffer.from("\x1b[<0;8;3M\x1b[<32;9;3M\x1b[<0;9;3m"));
+    await Bun.sleep(40);
+    expect(inputs).toEqual(
+      [0, 2, 1].map((kind) => ({ paneId: "w1:p2", kind, column: 7, row: 2 })),
+    );
+    session.input(Buffer.from("\x1b[<0;9;3M\x1b[<32;8;3M\x1b[<0;8;3m"));
+    await Bun.sleep(40);
+    expect(inputs).toHaveLength(3); // an outside press cannot acquire ownership
+    session.input(Buffer.from("\x1b[<0;8;3M"));
+    await Bun.sleep(40);
+    sendSurface(panes.map((pane) => ({ ...pane, mouseReporting: false })));
+    await Bun.sleep(40);
+    sendSurface(panes);
+    await Bun.sleep(40);
+    session.input(Buffer.from("\x1b[<32;9;3M\x1b[<0;9;3m"));
+    await Bun.sleep(40);
+    expect(inputs).toHaveLength(4); // mode changes cancel gesture ownership
+  } finally {
+    session.close();
+  }
+});
+
+test("terminal bridge carries endpoint mouse state and targets each attached terminal explicitly", async () => {
+  const inputs: string[] = [];
+  const scrollRequests: unknown[] = [];
+  const socketPath = await startSessionServer({
+    onRequest: (method, params) => {
+      if (method === "pane.scroll") scrollRequests.push(params);
+    },
+    panes: [
+      { paneId: "w1:p1", x: 0, mouseReporting: true },
+      { paneId: "w1:p2", x: 10, mouseReporting: true },
+    ],
+    onPaneInput: (paneId) => inputs.push(paneId),
+  });
+  const frames: Array<{ terminal_id: string; mouse_reporting: boolean }> = [];
+  const errors: string[] = [];
+  const ws = {} as ServerWebSocket<unknown>;
+  const bridge = createTerminalBridge({
+    clientSocketPath: socketPath,
+    herdrProtocol: async () => 22,
+    lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
+    safeSend: (_ws, payload) => {
+      const message = JSON.parse(payload);
+      if (message.terminal) frames.push(message.terminal);
+      return true;
+    },
+    clientLabel: () => "test",
+    markRpcError: (_ws, _id, detail) => errors.push(detail ?? "error"),
+  });
+  try {
+    for (const terminalId of ["left", "right"]) {
+      await bridge.handleTerminalRpc(ws, "attach", "terminal.attach", {
+        terminal_id: terminalId,
+        cols: 20,
+        rows: 5,
+        relay_active: false,
+      });
+    }
+    expect(frames).toContainEqual(
+      expect.objectContaining({ terminal_id: "left", mouse_reporting: true }),
+    );
+    expect(frames).toContainEqual(
+      expect.objectContaining({ terminal_id: "right", mouse_reporting: true }),
+    );
+    for (const terminalId of ["left", "right", "unattached"]) {
+      await bridge.handleTerminalRpc(ws, "input", "terminal.input", {
+        terminal_id: terminalId,
+        data: Buffer.from("\x1b[<0;2;2M").toString("base64"),
+      });
+    }
+    await Bun.sleep(40);
+    expect(inputs).toEqual(["w1:p1", "w1:p2"]);
+    expect(errors).toHaveLength(1);
+    for (const [direction, source] of [
+      ["up", "history"],
+      ["down", "history"],
+      ["up", "page-key"],
+    ]) {
+      await bridge.handleTerminalRpc(ws, "history", "terminal.scroll", {
+        terminal_id: "right",
+        direction,
+        lines: 7,
+        source,
+      });
+    }
+    await Bun.sleep(40);
+    expect(scrollRequests).toEqual([
+      { pane_id: "w1:p2", offset_from_bottom: 7 },
+      { pane_id: "w1:p2", offset_from_bottom: 0 },
+      { pane_id: "w1:p2", offset_from_bottom: 7 },
+    ]);
+    expect(inputs).toHaveLength(2);
+  } finally {
+    bridge.dispose();
+  }
 });
 
 describe("cropFrame", () => {

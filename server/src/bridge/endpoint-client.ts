@@ -66,6 +66,7 @@ export interface PaneSurfacePaneMeta {
     viewportRows: number;
   } | null;
   focused: boolean;
+  mouseReporting: boolean;
 }
 
 export interface EndpointSurface {
@@ -476,12 +477,12 @@ function readPaneSurfacePanes(r: BinReader): PaneSurfacePaneMeta[] {
       };
     }
     const focused = r.bool();
-    r.bool(); // mouse_reporting
+    const mouseReporting = r.bool();
     r.bool(); // sgr_pixel_mouse
     r.bool(); // alternate_screen_active
     r.varint(); // pixel_width
     r.varint(); // pixel_height
-    panes[i] = { paneId, rect, innerRect, scroll, focused };
+    panes[i] = { paneId, rect, innerRect, scroll, focused, mouseReporting };
   }
   return panes;
 }

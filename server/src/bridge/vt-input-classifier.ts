@@ -6,8 +6,8 @@ import { BinWriter } from "./bincode";
 //
 // ponytail: covers the common key space — printable text, Enter/Backspace/
 // Tab, arrows, Home/End/Insert/Delete/PageUp/PageDown, F1-F12, Ctrl+letter,
-// Alt+char, modified CSI keys, bracketed paste. Kitty keyboard protocol and
-// mouse SGR are not classified (dropped); add when a pane app needs them.
+// Alt+char, modified CSI keys, bracketed paste and SGR cell mouse reports.
+// Kitty keyboard protocol and pixel mouse are not supported.
 
 // crossterm KeyModifiers bits used on the wire.
 export const MOD_SHIFT = 0x1;
@@ -37,7 +37,30 @@ export const KEY = {
   Null: 17,
 } as const;
 
+// Herdr v0.9.0 src/protocol/wire.rs (endpoint generation 1 frozen order).
+export const MOUSE_KIND = {
+  Down: 0,
+  Up: 1,
+  Drag: 2,
+  Moved: 3,
+  ScrollUp: 4,
+  ScrollDown: 5,
+  ScrollLeft: 6,
+  ScrollRight: 7,
+} as const;
+
+export type PaneMouseEvent = {
+  type: "mouse";
+  kind: number;
+  button?: number; // ClientMouseButton: Left=0, Right=1, Middle=2
+  column: number; // zero-based, relative to the cropped pane content
+  row: number;
+  modifiers: number;
+  lines: number;
+};
+
 export type PaneInputEvent =
+  | PaneMouseEvent
   | {
       type: "key";
       code: number;
@@ -77,6 +100,16 @@ export function encodePaneInput(
       w.bool(false); // tracks_release
       w.bool(false); // physical_key_id: None
       w.bool(false); // windows_record: None
+    } else if (e.type === "mouse") {
+      w.variant(2); // ClientPaneInputEvent::Mouse
+      w.variant(e.kind);
+      if (e.kind <= MOUSE_KIND.Drag) w.variant(e.button!);
+      w.variant(0); // ClientMousePosition::Cell
+      w.varint(e.column);
+      w.varint(e.row);
+      w.bool(false); // geometry: None (only needed for pixels)
+      w.u8(e.modifiers);
+      w.varint(e.lines);
     } else if (e.type === "text") {
       w.variant(1); // ClientPaneInputEvent::TextCommit
       w.string(e.text);
@@ -286,6 +319,22 @@ export class VtInputClassifier {
     if (i + 1 >= buf.length) return null; // lone ESC so far
     const second = buf[i + 1];
 
+    if (second === 0x5b && buf[i + 2] === 0x3c) {
+      // Keep malformed SGR mouse fields out of the text/key path too. A new
+      // ESC cancels a truncated report and is reprocessed independently.
+      let j = i + 3;
+      while (j < buf.length && (buf[j] < 0x40 || buf[j] > 0x7e)) {
+        if (buf[j] === 0x1b) return { events: [], next: j };
+        j++;
+      }
+      if (j >= buf.length) return null;
+      const event = parseSgrMouse(
+        buf.toString("utf8", i + 2, j),
+        String.fromCharCode(buf[j]),
+      );
+      return { events: event ? [event] : [], next: j + 1 };
+    }
+
     if (second === 0x5b) {
       // CSI: ESC [ params final
       let j = i + 2;
@@ -356,6 +405,58 @@ export class VtInputClassifier {
     // ESC + control byte: treat the ESC as Esc and reprocess the byte.
     return { events: [key(KEY.Esc)], next: i + 1 };
   }
+}
+
+/** SGR is explicitly negotiated by the endpoint frontend; coordinates are cells. */
+function parseSgrMouse(params: string, final: string): PaneMouseEvent | null {
+  if ((final !== "M" && final !== "m") || !/^<\d+;\d+;\d+$/.test(params)) {
+    return null;
+  }
+  const [code, x, y] = params.slice(1).split(";").map(Number);
+  if (
+    !Number.isInteger(code) ||
+    code < 0 ||
+    code > 127 ||
+    !Number.isInteger(x) ||
+    x < 1 ||
+    x > 65536 ||
+    !Number.isInteger(y) ||
+    y < 1 ||
+    y > 65536
+  )
+    return null;
+  const button = code & 3;
+  const motion = (code & 32) !== 0;
+  const wheel = (code & 64) !== 0;
+  // Wheel releases, wheel motion and anonymous button releases are not SGR events.
+  if (
+    (wheel && (motion || final === "m")) ||
+    (!wheel && ((motion && final === "m") || (!motion && button === 3)))
+  ) {
+    return null;
+  }
+  let modifiers = 0;
+  if (code & 4) modifiers |= MOD_SHIFT;
+  if (code & 8) modifiers |= MOD_ALT;
+  if (code & 16) modifiers |= MOD_CONTROL;
+  const kind = wheel
+    ? MOUSE_KIND.ScrollUp + button
+    : motion
+      ? button === 3
+        ? MOUSE_KIND.Moved
+        : MOUSE_KIND.Drag
+      : final === "m"
+        ? MOUSE_KIND.Up
+        : MOUSE_KIND.Down;
+  return {
+    type: "mouse",
+    kind,
+    ...(kind <= MOUSE_KIND.Drag ? { button: [0, 2, 1][button] } : {}),
+    column: x - 1,
+    row: y - 1,
+    modifiers,
+    lines: 1,
+  };
 }
 
 function matchesAt(buf: Buffer, offset: number, needle: Buffer): boolean {

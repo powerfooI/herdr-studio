@@ -177,6 +177,8 @@ export interface TerminalPush {
   width: number;
   height: number;
   full: boolean;
+  /** Present only for endpoint full pane repaints; absent on legacy streams. */
+  mouse_reporting?: boolean;
   /** base64-encoded ANSI bytes */
   bytes: string;
 }

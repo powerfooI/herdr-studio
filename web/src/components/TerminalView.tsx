@@ -53,6 +53,10 @@ import {
   type TerminalFileLinkCandidate,
   TerminalFileResolutionCache,
 } from "../terminalFileLinks";
+import {
+  TerminalEndpointPresentation,
+  terminalMouseUsesSelection,
+} from "../terminalEndpointPresentation";
 import { terminalFocusBlockedByOverlay } from "../terminalFocus";
 import { uploadTerminalImage } from "../terminalImageUpload";
 import {
@@ -495,6 +499,9 @@ export function TerminalView({
     [],
   );
   const termRef = useRef<Terminal | null>(null);
+  const endpointPresentationRef = useRef<TerminalEndpointPresentation | null>(
+    null,
+  );
   // Mirrors termRef as state so the attach effect re-runs when the xterm
   // instance is recreated: the init effect's cleanup resets the attach refs,
   // and without an instance change in the deps the attach effect would not
@@ -847,8 +854,10 @@ export function TerminalView({
     let pasteTextareaBeforeInput: TerminalPasteTextareaSnapshot | null = null;
     let pastePaneIdBeforeInput: string | null = null;
     let lastTerminalTextareaSnapshot = readTerminalTextareaSnapshot();
+    let replayingSelection = false;
     term.onData((data) => {
-      if (composerOpenRef.current) return;
+      // Replaying a delayed local selection must never synthesize pane input.
+      if (composerOpenRef.current || replayingSelection) return;
       const unsuppressedData = imeTextareaFallback.recordXtermData(data);
       if (!unsuppressedData) return;
       const dataAt = performance.now();
@@ -864,6 +873,14 @@ export function TerminalView({
       sendBytes(connectionClient, bytes, terminalId).catch(() => {});
     });
 
+    const endpointPresentation = new TerminalEndpointPresentation(
+      () => term.hasSelection(),
+      (text, parsed) => term.write(colorHttpLinks(text), parsed),
+    );
+    endpointPresentationRef.current = endpointPresentation;
+    const selectionChange = term.onSelectionChange(() =>
+      endpointPresentation.flush(),
+    );
     const off = bridge.onTerminal((t) => {
       // A mount owns exactly one connection generation. Drop frames from an
       // inactive connection or a prior terminal attach before touching xterm.
@@ -883,7 +900,12 @@ export function TerminalView({
       attachTimeoutCountRef.current = 0;
       setTerminalLoading(false);
       setTerminalAttachError("");
-      term.write(colorHttpLinks(text));
+      if (typeof t.mouse_reporting === "boolean") {
+        term.options.macOptionClickForcesSelection = true;
+        endpointPresentation.update(text, t.mouse_reporting);
+      } else {
+        term.write(colorHttpLinks(text));
+      }
       focusTerminalSoon();
     });
     const offClipboard = bridge.onTerminalClipboard((clipboard) => {
@@ -916,6 +938,7 @@ export function TerminalView({
       // Herdr closes the direct attach when another client takes the
       // terminal over (or its stream dies). Re-attach, but bound takeover
       // wars between two clients so they cannot evict each other forever.
+      endpointPresentation.reset();
       attachedRef.current = null;
       attachingRef.current = null;
       const now = Date.now();
@@ -1548,6 +1571,14 @@ export function TerminalView({
     container.addEventListener("copy", onCopy, { capture: true });
 
     const onClick = (e: MouseEvent) => {
+      if (
+        !terminalMouseUsesSelection(
+          endpointPresentation.mouseReporting,
+          e,
+          applePlatform,
+        )
+      )
+        return;
       if (!isSafariBrowser() || term.hasSelection()) return;
       term.clearSelection();
       container.ownerDocument.dispatchEvent(
@@ -1572,9 +1603,138 @@ export function TerminalView({
     // every later move keeps growing the selection without a button pressed.
     // Detect the lost release on the first button-less move and force it.
     const selectionDragGuard = new TerminalSelectionDragGuard();
-    const onTerminalMouseDown = (e: MouseEvent) =>
+    let deferredMove: MouseEvent | null = null;
+    let deferredUp: MouseEvent | null = null;
+    const replayMouse = (target: EventTarget, event: MouseEvent) => {
+      // The reporting mode may have changed while parsing. Preserve the
+      // original modifiers and add only xterm's local selection escape.
+      const forceSelection = term.modes.mouseTrackingMode !== "none";
+      target.dispatchEvent(
+        new MouseEvent(event.type, {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          button: event.button,
+          buttons: event.buttons,
+          detail: event.detail,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          altKey: event.altKey || (forceSelection && applePlatform),
+          shiftKey: event.shiftKey || (forceSelection && !applePlatform),
+        }),
+      );
+    };
+    const onTerminalMouseDown = (e: MouseEvent) => {
+      if (replayingSelection) return;
+      if (
+        !terminalMouseUsesSelection(
+          endpointPresentation.mouseReporting,
+          e,
+          applePlatform,
+        )
+      )
+        return;
       selectionDragGuard.mouseDown(e.button);
-    const onDocumentMouseUp = () => selectionDragGuard.mouseUp();
+      if (e.button !== 0) return;
+      if (
+        endpointPresentation.mouseReporting === undefined &&
+        !endpointPresentation.writePending
+      ) {
+        endpointPresentation.selectionDrag = true;
+        return;
+      }
+      const terminalId = desiredTerminalRef.current;
+      deferredMove = deferredUp = null;
+      if (
+        !endpointPresentation.beginSelection(() => {
+          if (
+            terminalEffectDisposed ||
+            !connectionClient.isCurrent() ||
+            terminalId !== desiredTerminalRef.current ||
+            !(e.target instanceof Node) ||
+            !e.target.isConnected
+          )
+            return;
+          replayingSelection = true;
+          try {
+            replayMouse(e.target, e);
+            if (deferredMove)
+              replayMouse(container.ownerDocument, deferredMove);
+            if (deferredUp) replayMouse(container.ownerDocument, deferredUp);
+          } finally {
+            replayingSelection = false;
+            deferredMove = deferredUp = null;
+          }
+        })
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    };
+    const onDeferredMouseMove = (e: MouseEvent) => {
+      if (!endpointPresentation.selectionPending || deferredUp) return;
+      if (e.buttons === 0) {
+        // A lost release finalizes at the last held-button move, not this hover.
+        deferredUp = new MouseEvent("mouseup", e);
+        selectionDragGuard.mouseUp();
+      } else {
+        deferredMove = e;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    const onDocumentMouseUp = (e: MouseEvent) => {
+      if (endpointPresentation.selectionPending) {
+        if (deferredUp) return; // the first release froze this gesture
+        deferredUp = e;
+        selectionDragGuard.mouseUp();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      selectionDragGuard.mouseUp();
+      endpointPresentation.selectionDrag = false;
+      queueMicrotask(() => {
+        if (!terminalEffectDisposed) endpointPresentation.flush();
+      });
+    };
+    const onNativeMouseDown = (e: MouseEvent) => {
+      // A new physical gesture anywhere owns document listeners now. Cancel
+      // this deferred replay before a sibling terminal can start an app drag.
+      // Synthetic selection replay must not cancel another pane's intent.
+      if (!e.isTrusted || !endpointPresentation.selectionPending) return;
+      deferredMove = deferredUp = null;
+      selectionDragGuard.reset();
+      endpointPresentation.cancelSelection();
+    };
+    const onSelectionBlur = () => {
+      if (endpointPresentation.selectionPending) {
+        deferredMove = deferredUp = null;
+        selectionDragGuard.reset();
+        endpointPresentation.cancelSelection();
+        return;
+      }
+      if (
+        endpointPresentation.mouseReporting === undefined ||
+        !endpointPresentation.selectionDrag
+      )
+        return;
+      // End xterm's document listeners too; merely resetting our guard would
+      // leave a lost native release extending the selection on later moves.
+      container.ownerDocument.dispatchEvent(
+        new MouseEvent("mouseup", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          button: 0,
+          buttons: 0,
+        }),
+      );
+    };
     const onDocumentMouseMove = (e: MouseEvent) => {
       if (!selectionDragGuard.mouseMoveNeedsRelease(e.buttons)) return;
       container.ownerDocument.dispatchEvent(
@@ -1591,11 +1751,38 @@ export function TerminalView({
         }),
       );
     };
-    container.addEventListener("mousedown", onTerminalMouseDown);
+    container.addEventListener("mousedown", onTerminalMouseDown, {
+      capture: true,
+    });
+    window.addEventListener("blur", onSelectionBlur);
+    document.addEventListener("mousedown", onNativeMouseDown, {
+      capture: true,
+    });
     document.addEventListener("mouseup", onDocumentMouseUp, { capture: true });
+    document.addEventListener("mousemove", onDeferredMouseMove, {
+      capture: true,
+    });
     document.addEventListener("mousemove", onDocumentMouseMove);
 
     const onWheel = (e: WheelEvent) => {
+      if (endpointPresentation.mouseReporting !== undefined) {
+        if (
+          term.hasSelection() ||
+          endpointPresentation.selectionDrag ||
+          composerOpenRef.current
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        // Let xterm produce pane-local SGR coordinates and modifiers only on
+        // endpoint streams. Legacy AttachScroll routing stays unchanged.
+        if (
+          endpointPresentation.mouseReporting &&
+          term.modes.mouseTrackingMode !== "none"
+        )
+          return;
+      }
       const scroll = terminalWheelScroll(e.deltaY, e.deltaMode, term.rows);
       const terminalId = desiredTerminalRef.current;
       if (!scroll || !terminalId) return;
@@ -1622,6 +1809,16 @@ export function TerminalView({
       touchRemainder = 0;
     };
     const onTouchMove = (e: TouchEvent) => {
+      if (
+        endpointPresentation.mouseReporting !== undefined &&
+        (term.hasSelection() ||
+          endpointPresentation.selectionDrag ||
+          composerOpenRef.current)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (e.touches.length !== 1 || touchLastY === null) return;
       const touch = e.touches[0];
       const deltaY = touchLastY - touch.clientY;
@@ -1674,6 +1871,9 @@ export function TerminalView({
     return () => {
       terminalEffectDisposed = true;
       off();
+      selectionChange.dispose();
+      endpointPresentation.dispose();
+      endpointPresentationRef.current = null;
       offClipboard();
       offClosed();
       unregisterConnectionDisposer();
@@ -1715,8 +1915,17 @@ export function TerminalView({
       document.removeEventListener("paste", onPaste, { capture: true });
       container.removeEventListener("copy", onCopy, { capture: true });
       container.removeEventListener("click", onClick);
-      container.removeEventListener("mousedown", onTerminalMouseDown);
+      container.removeEventListener("mousedown", onTerminalMouseDown, {
+        capture: true,
+      });
+      window.removeEventListener("blur", onSelectionBlur);
+      document.removeEventListener("mousedown", onNativeMouseDown, {
+        capture: true,
+      });
       document.removeEventListener("mouseup", onDocumentMouseUp, {
+        capture: true,
+      });
+      document.removeEventListener("mousemove", onDeferredMouseMove, {
         capture: true,
       });
       document.removeEventListener("mousemove", onDocumentMouseMove);
@@ -1773,7 +1982,14 @@ export function TerminalView({
     if (!connectionClient.isCurrent()) return;
     const term = termInstance;
     const paneTerminalId = pane?.terminal_id ?? null;
+    if (
+      desiredTerminalRef.current !== paneTerminalId ||
+      s.status !== "connected"
+    ) {
+      endpointPresentationRef.current?.reset();
+    }
     if (terminalAttachEpochRef.current !== s.terminalAttachEpoch) {
+      endpointPresentationRef.current?.reset();
       terminalAttachEpochRef.current = s.terminalAttachEpoch;
       attachedRef.current = null;
       attachingRef.current = null;

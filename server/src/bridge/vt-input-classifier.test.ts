@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { BinReader } from "./bincode";
 import {
   KEY,
+  MOUSE_KIND,
   MOD_ALT,
   MOD_CONTROL,
   MOD_SHIFT,
@@ -186,6 +187,119 @@ describe("VtInputClassifier", () => {
       KEY.Esc,
       KEY.Up,
     ]);
+  });
+});
+
+describe("SGR cell mouse input", () => {
+  test("click, release, drag, motion and all wheel directions use pane-local cells", () => {
+    const reports = [
+      [0, "M", MOUSE_KIND.Down, 0],
+      [0, "m", MOUSE_KIND.Up, 0],
+      [1, "M", MOUSE_KIND.Down, 2],
+      [2, "m", MOUSE_KIND.Up, 1],
+      [32, "M", MOUSE_KIND.Drag, 0],
+      [34, "M", MOUSE_KIND.Drag, 1],
+      [35, "M", MOUSE_KIND.Moved, undefined],
+      [64, "M", MOUSE_KIND.ScrollUp, undefined],
+      [65, "M", MOUSE_KIND.ScrollDown, undefined],
+      [66, "M", MOUSE_KIND.ScrollLeft, undefined],
+      [67, "M", MOUSE_KIND.ScrollRight, undefined],
+    ] as const;
+    for (const [code, final, kind, button] of reports) {
+      expect(feed(`\x1b[<${code};8;3${final}`)).toEqual([
+        {
+          type: "mouse",
+          kind,
+          ...(button === undefined ? {} : { button }),
+          column: 7,
+          row: 2,
+          modifiers: 0,
+          lines: 1,
+        },
+      ]);
+    }
+    expect(feed("\x1b[<28;1;1M")[0]).toMatchObject({
+      column: 0,
+      row: 0,
+      modifiers: MOD_SHIFT | MOD_ALT | MOD_CONTROL,
+    });
+  });
+
+  test("every split point buffers the report without leaking text; paste stays paste", () => {
+    const report = Buffer.from("\x1b[<32;256;12M");
+    for (let i = 1; i < report.length; i++) {
+      const classifier = new VtInputClassifier();
+      expect(classifier.feed(report.subarray(0, i))).toEqual([]);
+      // The existing idle timer intentionally flushes a lone ESC as a key.
+      if (i > 1) expect(classifier.flush()).toEqual([]);
+      expect(classifier.feed(report.subarray(i))).toEqual(
+        feed(report.toString()),
+      );
+    }
+    expect(feed(`a${report.toString()}b`).map((event) => event.type)).toEqual([
+      "text",
+      "mouse",
+      "text",
+    ]);
+    expect(feed(`\x1b[200~${report.toString()}\x1b[201~`)).toEqual([
+      { type: "paste", text: report.toString() },
+    ]);
+  });
+
+  test("rejects malformed fields, unsupported buttons, impossible kinds and out-of-range cells", () => {
+    for (const report of [
+      "<0;0;1M",
+      "<-1;1;1M",
+      "<0;-1;1M",
+      "<0; 1;1M",
+      "<0;1;0M",
+      "<0;65537;1M",
+      "<0;1;999999999999999999999M",
+      "<128;1;1M",
+      "<999999999999999999;1;1M",
+      "<3;1;1M",
+      "<3;1;1m",
+      "<64;1;1m",
+      "<96;1;1M",
+      "<32;1;1m",
+      "<0;;1M",
+      "<0;1;1;2M",
+      "<0:1;1;1M",
+      "<0;1;1~",
+    ]) {
+      expect(feed(`\x1b[${report}ok`)).toEqual([{ type: "text", text: "ok" }]);
+    }
+    expect(feed("\x1b[<0;1;\x1b[A")).toEqual(feed("\x1b[A"));
+    expect(feed("\x1b[<0;65536;65536M")[0]).toMatchObject({
+      column: 65535,
+      row: 65535,
+    });
+  });
+
+  test("encodes the frozen generation-1 mouse fields including absent geometry", () => {
+    // v0.9.0 protocol/wire.rs: message 13, Mouse 2, Down(Left), Cell,
+    // zero-based (1,2), geometry None, modifiers 0, lines 1.
+    expect(encodePaneInput("w1:p1", feed("\x1b[<0;2;3M")).toString("hex")).toBe(
+      "0d0577313a703101020000000102000001",
+    );
+    for (const report of ["\x1b[<1;256;3m", "\x1b[<34;2;3M", "\x1b[<80;2;3M"]) {
+      const event = feed(report)[0];
+      if (event.type !== "mouse") throw new Error("expected mouse");
+      const reader = new BinReader(encodePaneInput("other-pane", [event]));
+      expect(reader.variant()).toBe(13);
+      expect(reader.string()).toBe("other-pane");
+      expect(reader.varint()).toBe(1);
+      expect(reader.variant()).toBe(2);
+      expect(reader.variant()).toBe(event.kind);
+      if (event.kind <= MOUSE_KIND.Drag)
+        expect(reader.variant()).toBe(event.button!);
+      expect(reader.variant()).toBe(0);
+      expect(reader.varint()).toBe(event.column);
+      expect(reader.varint()).toBe(event.row);
+      expect(reader.bool()).toBe(false);
+      expect(reader.u8()).toBe(event.modifiers);
+      expect(reader.varint()).toBe(1);
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 export type TerminalScroll = {
   direction: "up" | "down";
   lines: number;
-  source: "wheel" | "page-key";
+  source: "wheel" | "page-key" | "history";
 };
 
 export type TerminalWheelScroll = TerminalScroll & { source: "wheel" };
@@ -47,6 +47,8 @@ export function terminalPageScroll(
       amount === "half"
         ? Math.max(1, Math.floor(viewportLines / 2))
         : viewportLines,
-    source: amount === "full" ? "page-key" : "wheel",
+    // The bridge retains legacy wheel semantics for half pages, but endpoint
+    // sessions must distinguish these coordinate-less shortcuts from a mouse.
+    source: amount === "full" ? "page-key" : "history",
   };
 }
