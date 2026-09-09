@@ -107,6 +107,29 @@ version, so no source toolchain is needed; the plugin shim itself runs on
 herdr plugin install powerfooI/herdr-studio
 ```
 
+The shim runs with the environment of the `herdr server` process, so `bun`
+must be on that process's `PATH`. When Herdr is started as a Homebrew service
+(`brew services start herdr`), launchd only provides
+`/usr/bin:/bin:/usr/sbin:/sbin`, and every plugin action fails with
+`No such file or directory (os error 2)` in `herdr plugin log list`. Add a
+PATH override for the service and restart it:
+
+```bash
+mkdir -p ~/.homebrew/services
+cat > ~/.homebrew/services/herdr.env <<'ENV'
+# Let herdr plugin actions find bun (needed by the herdr.studio plugin shim)
+PATH=/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ENV
+brew services restart herdr
+```
+
+Prepend `$HOME/.bun/bin` to that `PATH` when Bun was installed with the
+bun.sh installer instead of Homebrew. Homebrew writes the file into the
+generated LaunchAgent as `EnvironmentVariables`, so the override survives
+restarts and upgrades; see the
+[Homebrew services documentation](https://docs.brew.sh/Manpage#services-subcommand)
+and [herdrdev/herdr#3346](https://github.com/herdrdev/herdr/issues/3346).
+
 Plugin actions manage the same user service described in
 [Run as a user service](#run-as-a-user-service):
 
@@ -380,6 +403,18 @@ herdr-gui --host 0.0.0.0 --port 8781
 Do not also set `--socket-path`, `--client-socket-path`, `HERDR_SOCKET_PATH`, or
 `HERDR_CLIENT_SOCKET_PATH`; explicit socket paths override automatic SSH
 tunnels.
+
+### Plugin actions fail with "No such file or directory"
+
+If every `herdr plugin action invoke herdr.studio.*` run shows
+`"status":"failed"` with `No such file or directory (os error 2)` and empty
+`stdout`/`stderr` in `herdr plugin log list --plugin herdr.studio`, the
+`herdr server` process cannot find `bun` on its `PATH`. Service managers such
+as launchd and systemd start Herdr with a minimal environment, so executables
+that work from an interactive shell are not resolvable there. On macOS with
+Homebrew, add a `PATH` override as described in
+[Herdr plugin](#herdr-plugin). For a systemd-managed Herdr on Linux, set
+`Environment=PATH=...` in a drop-in override for the unit and restart it.
 
 ### Open the browser automatically
 
