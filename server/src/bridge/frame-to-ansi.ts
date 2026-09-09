@@ -103,8 +103,10 @@ export function frameToAnsi(frame: FrameData): string {
       }
       out += cell.symbol;
       // Herdr's wide-character padding is often a normal blank (skip=false).
-      // The grapheme already advances xterm across those cells.
-      x += Math.max(0, Bun.stringWidth(cell.symbol) - 1);
+      const padding = Math.max(0, Bun.stringWidth(cell.symbol) - 1);
+      x += padding;
+      // xterm can render the same grapheme narrower; anchor the next source cell.
+      if (padding && x + 1 < rowEnd) out += `\x1b[${x + 2}G`;
     }
     if (linkOpen) out += "\x1b]8;;\x1b\\";
     if (y < frame.height - 1) out += "\r\n";

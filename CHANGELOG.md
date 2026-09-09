@@ -13,7 +13,8 @@
 
 ### Fixed
 
-- Avoid extra spacing after Chinese and other wide characters in endpoint terminals.
+- Preserve endpoint text and cursor alignment for Chinese and other Unicode
+  graphemes, including halfwidth kana, without adding wide-character spacing.
 - Restore cell-based clicks, drags and wheel input in endpoint terminal apps;
   retain browser selection/copy and history scrolling outside mouse-aware apps.
   Selected endpoint output pauses visually until selection clears.

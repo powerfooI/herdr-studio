@@ -52,7 +52,7 @@ describe("frameToAnsi", () => {
     const out = frameToAnsi(
       frame([cell("你"), cell("", { skip: true }), cell("x")], 3, 1),
     );
-    expect(out).toContain("你x");
+    expect(out).toContain("你\x1b[3Gx");
   });
 
   test.each(["中", "🙂", "👩‍💻", "🇨🇳", "ｶﾞ"])(
@@ -61,7 +61,7 @@ describe("frameToAnsi", () => {
       const out = frameToAnsi(
         frame([cell(symbol), cell(" "), cell(" "), cell("x")], 4, 1),
       );
-      expect(out).toContain(`${symbol} x`);
+      expect(out).toContain(`${symbol}\x1b[3G x`);
       expect(out).not.toContain(`${symbol}  x`);
     },
   );
