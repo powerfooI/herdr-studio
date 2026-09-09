@@ -50,6 +50,15 @@ Closed panes are removed from the history automatically.
 - Paste multiline text through terminal paste handling.
 - Paste a clipboard image to upload it on the Herdr host and insert the resulting
   path into the terminal. This also works through `--ssh-host`.
+- Display static PNG, RGB, and RGBA images from Herdr 0.9.0 endpoint pane
+  surfaces, including replacement, deletion, and scrollback clipping. Image
+  assets are automatically downsampled to share a 4 MiB preview budget per
+  terminal stream; original files are unchanged and scroll crops stay aligned.
+  Sources exceeding the 32 MiB input budget remain unsupported. Cached previews
+  do not regain resolution until Herdr resends the source. Popup images,
+  negative-z layers, and animation are not supported; omitted or
+  undecodable images show a notice. No host-terminal image support is needed
+  in the browser.
 - Relay OSC 52 clipboard writes from local or remote terminal applications to
   the initiating browser.
 - `Cmd/Ctrl`-click HTTP(S) links to open them safely in a new tab.

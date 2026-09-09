@@ -31,7 +31,11 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/pngjs": "6.0.5",
     "bun-types": "latest",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "pngjs": "7.0.0"
   }
 }

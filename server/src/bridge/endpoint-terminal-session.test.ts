@@ -84,7 +84,11 @@ function writePane(w: BinWriter, paneId: string, x = 0, y = 0) {
   w.varint(0);
 }
 
-function surfaceFrame(revision: number, frame: FrameData): Buffer {
+function surfaceFrame(
+  revision: number,
+  frame: FrameData,
+  image = false,
+): Buffer {
   const w = new BinWriter();
   w.variant(13);
   w.string("boot-1");
@@ -95,6 +99,29 @@ function surfaceFrame(revision: number, frame: FrameData): Buffer {
   writePane(w, "w1:p1");
   w.varint(0);
   w.bool(false);
+  const key = () => {
+    w.variant(0);
+    w.variant(0);
+    w.string("w1:p1");
+    w.varint(1);
+    w.varint(1);
+    w.varint(1);
+    w.variant(1);
+    w.varint(4);
+    w.varint(9007199254740993n);
+  };
+  w.varint(image && revision === 1 ? 1 : 0);
+  if (image && revision === 1) {
+    key();
+    w.bytes(Buffer.from([255, 0, 0, 255]));
+  }
+  w.varint(image ? 1 : 0);
+  if (image) {
+    key();
+    w.varint(1);
+    for (const n of [1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0]) w.varint(n);
+  }
+  w.varint(0); // retained assets
   return w.toBuffer();
 }
 
@@ -122,6 +149,8 @@ const WELCOME = {
  * endpoint requests, and streams a two-pane surface.
  */
 async function startSessionServer(handlers: {
+  image?: boolean;
+  onHello?: (hello: any) => void;
   onRequest?: (method: string, params: any) => void;
   onPaneInput?: (paneId: string, reader: BinReader) => void;
 }) {
@@ -156,7 +185,7 @@ async function startSessionServer(handlers: {
         if (!greeted) {
           greeted = true;
           reader.string(); // kind
-          reader.string(); // data
+          handlers.onHello?.(JSON.parse(reader.string()));
           socket.write(
             encodeFrame(
               controlFrame("endpoint.welcome.v1", JSON.stringify(WELCOME)),
@@ -170,7 +199,7 @@ async function startSessionServer(handlers: {
               ),
             ),
           );
-          socket.write(encodeFrame(surfaceFrame(1, frame)));
+          socket.write(encodeFrame(surfaceFrame(1, frame, handlers.image)));
           continue;
         }
         if (variant === 15) {
@@ -185,6 +214,8 @@ async function startSessionServer(handlers: {
           w.bool(true);
           w.bytes(Buffer.from(JSON.stringify({ id: request.id, result: {} })));
           socket.write(encodeFrame(w.toBuffer()));
+        } else if (variant === 12) {
+          socket.write(encodeFrame(surfaceFrame(2, frame, handlers.image)));
         } else if (variant === 13) {
           const paneId = reader.string();
           handlers.onPaneInput?.(paneId, reader);
@@ -201,6 +232,43 @@ async function startSessionServer(handlers: {
 }
 
 describe("EndpointTerminalSession", () => {
+  test("negotiates pixels, avoids repeated assets, and replays them to a new viewer", async () => {
+    let hello: any;
+    const socketPath = await startSessionServer({
+      image: true,
+      onHello: (h) => {
+        hello = h;
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "term_1",
+      async () => "w1:p1",
+    );
+    const frames: any[] = [];
+    session.on("terminal", (frame) => frames.push(frame));
+    try {
+      await session.connect(80, 24, { cell_width_px: 8, cell_height_px: 16 });
+      expect(hello).toMatchObject({ cell_width_px: 8, cell_height_px: 16 });
+      expect(frames[0].graphics.assets[0].data).toBe("/wAA/w==");
+      expect(frames[0].graphics.placements[0]).toMatchObject({
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+      });
+      const updated = new Promise<void>((resolve) =>
+        session.once("terminal", () => resolve()),
+      );
+      session.resize(80, 24);
+      await updated;
+      expect(frames.at(-1).graphics).toBeUndefined();
+      session.replay();
+      expect(frames.at(-1).graphics.assets[0].data).toBe("/wAA/w==");
+    } finally {
+      session.close();
+    }
+  });
   test("focuses the pane and emits cropped ANSI terminal frames", async () => {
     const requests: Array<{ method: string; params: any }> = [];
     const socketPath = await startSessionServer({
@@ -258,7 +326,7 @@ describe("EndpointTerminalSession", () => {
     const inputs: string[] = [];
     const socketPath = await startSessionServer({
       onRequest: (method, params) => requests.push({ method, params }),
-      onPaneInput: (paneId, reader) => {
+      onPaneInput: (_paneId, reader) => {
         const count = reader.varint();
         for (let i = 0; i < count; i++) {
           const v = reader.variant();

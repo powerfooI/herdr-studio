@@ -170,6 +170,9 @@ export interface HerdrEventMsg {
   data: { type?: string; [k: string]: unknown };
 }
 
+export type { TerminalGraphics } from "../../server/src/bridge/terminal-graphics";
+import type { TerminalGraphics } from "../../server/src/bridge/terminal-graphics";
+
 export interface TerminalPush {
   connection_id: string;
   connection_generation?: number;
@@ -179,6 +182,8 @@ export interface TerminalPush {
   full: boolean;
   /** base64-encoded ANSI bytes */
   bytes: string;
+  /** Complete placements plus newly needed assets; omitted means unchanged. */
+  graphics?: TerminalGraphics;
 }
 
 export interface TerminalClipboardPush {
@@ -644,7 +649,21 @@ export class Bridge {
       return;
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
-    const msg = parsed as Record<string, any>;
+    // Wire shapes are still checked below before dispatch; keep their fields
+    // explicit instead of giving every property an unrestricted `any` type.
+    const msg = parsed as {
+      id?: unknown;
+      result?: unknown;
+      error?: { message?: string };
+      event?: string;
+      data?: HerdrEventMsg["data"];
+      connection_id?: unknown;
+      connection_generation?: unknown;
+      terminal?: TerminalPush;
+      terminal_clipboard?: TerminalClipboardPush;
+      terminal_closed?: TerminalClosedPush;
+      control?: BridgeControlMsg;
+    };
     const owns = (field: string) =>
       Object.prototype.hasOwnProperty.call(msg, field);
     const hasHello = owns("hello");
@@ -731,7 +750,7 @@ export class Bridge {
       ) {
         pending.reject(new Error("invalid error response"));
       } else if (hasError) {
-        pending.reject(new Error(msg.error.message));
+        pending.reject(new Error(msg.error?.message));
       } else {
         pending.resolve(msg.result);
       }

@@ -18,6 +18,7 @@ import {
 } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { bridge, type ConnectionClient } from "../api";
+import { TerminalGraphicsLayer, terminalCellPixels } from "../terminalGraphics";
 import type { ResolvedTheme } from "../appearance";
 import { mobileTerminalShortcutExecution } from "../mobileTerminalShortcutAction";
 import {
@@ -283,6 +284,7 @@ function registerTerminalLinkProvider(
             event.preventDefault();
             if (!event.metaKey && !event.ctrlKey) return;
             const url = sanitizeTerminalHttpUrl(text);
+            // pi-lens-ignore: no-open-redirect
             if (url) window.open(url, "_blank", "noopener,noreferrer");
           },
         });
@@ -495,6 +497,7 @@ export function TerminalView({
     [],
   );
   const termRef = useRef<Terminal | null>(null);
+  const graphicsRef = useRef<TerminalGraphicsLayer | null>(null);
   // Mirrors termRef as state so the attach effect re-runs when the xterm
   // instance is recreated: the init effect's cleanup resets the attach refs,
   // and without an instance change in the deps the attach effect would not
@@ -621,7 +624,7 @@ export function TerminalView({
     } catch {
       // A hidden or detaching terminal can reject a transient fit.
     }
-    return { cols: term.cols, rows: term.rows };
+    return { cols: term.cols, rows: term.rows, ...terminalCellPixels(term) };
   }, [container]);
   const relayViewportFor = useCallback(
     (size: { cols: number; rows: number }) => {
@@ -775,6 +778,7 @@ export function TerminalView({
           event.preventDefault();
           if (!event.metaKey && !event.ctrlKey) return;
           const url = sanitizeTerminalHttpUrl(text);
+          // pi-lens-ignore: no-open-redirect
           if (url) window.open(url, "_blank", "noopener,noreferrer");
         },
       },
@@ -807,6 +811,9 @@ export function TerminalView({
     term.loadAddon(new UnicodeGraphemesAddon());
     term.loadAddon(fit);
     term.open(container);
+    const graphics = new TerminalGraphicsLayer(term);
+    let frameEpoch = 0;
+    graphicsRef.current = graphics;
     if (isApplePlatform()) {
       term.element?.classList.add("xterm-apple-row-spacing-fix");
     }
@@ -883,7 +890,20 @@ export function TerminalView({
       attachTimeoutCountRef.current = 0;
       setTerminalLoading(false);
       setTerminalAttachError("");
-      term.write(colorHttpLinks(text));
+      const epoch = frameEpoch;
+      term.write(colorHttpLinks(text), () => {
+        if (
+          epoch === frameEpoch &&
+          terminalPushMatches(
+            terminalIdentity,
+            connectionClient,
+            desiredTerminalRef.current,
+            t,
+          )
+        ) {
+          graphics.update(t.graphics);
+        }
+      });
       focusTerminalSoon();
     });
     const offClipboard = bridge.onTerminalClipboard((clipboard) => {
@@ -913,6 +933,8 @@ export function TerminalView({
       ) {
         return;
       }
+      frameEpoch++;
+      graphics.clear();
       // Herdr closes the direct attach when another client takes the
       // terminal over (or its stream dies). Re-attach, but bound takeover
       // wars between two clients so they cannot evict each other forever.
@@ -941,6 +963,8 @@ export function TerminalView({
       terminalIdentity,
       (sendRemoteDetach) => {
         disposedByConnectionLease = true;
+        frameEpoch++;
+        graphics.clear();
         const terminalId = attachedRef.current ?? desiredTerminalRef.current;
         if (sendRemoteDetach && terminalId && connectionClient.isCurrent()) {
           void connectionClient
@@ -959,6 +983,7 @@ export function TerminalView({
           terminal_id: terminalId,
           cols: size.cols,
           rows: size.rows,
+          ...terminalCellPixels(term),
           relay_active: relaySize !== null,
           ...(relaySize
             ? { relay_cols: relaySize.cols, relay_rows: relaySize.rows }
@@ -1747,6 +1772,8 @@ export function TerminalView({
           .call("terminal.detach", { terminal_id: terminalId })
           .catch(() => null);
       }
+      graphics.dispose();
+      graphicsRef.current = null;
       term.dispose();
       termRef.current = null;
       setTermInstance(null);
@@ -1782,6 +1809,7 @@ export function TerminalView({
       attachWatchdogRef.current?.cancel();
     }
     if (!paneTerminalId) {
+      graphicsRef.current?.clear();
       desiredTerminalRef.current = null;
       attachWatchdogRef.current?.cancel();
       setTerminalLoading(false);
@@ -1790,6 +1818,7 @@ export function TerminalView({
     }
     desiredTerminalRef.current = paneTerminalId;
     if (s.status !== "connected") {
+      graphicsRef.current?.clear();
       attachedRef.current = null;
       attachingRef.current = null;
       attachWatchdogRef.current?.cancel();
@@ -1831,16 +1860,22 @@ export function TerminalView({
     // retry, reconnect): the server repaints a full frame anyway, and keeping
     // the buffer avoids a blank flash plus losing local scrollback.
     if (renderedTerminalRef.current !== terminalId) {
+      graphicsRef.current?.clear();
       term.reset();
       renderedTerminalRef.current = terminalId;
     }
-    resizeSyncRef.current?.markAttached({ cols, rows });
+    resizeSyncRef.current?.markAttached({
+      cols,
+      rows,
+      ...terminalCellPixels(term),
+    });
     const attachStartedAt = performance.now();
     connectionClient
       .call("terminal.attach", {
         terminal_id: terminalId,
         cols,
         rows,
+        ...terminalCellPixels(term),
         relay_active: relaySize !== null,
         ...(relaySize
           ? { relay_cols: relaySize.cols, relay_rows: relaySize.rows }

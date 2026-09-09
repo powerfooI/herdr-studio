@@ -11,6 +11,12 @@ import {
 
 import { type PaneInputEvent, encodePaneInput } from "./vt-input-classifier";
 
+import {
+  readEndpointGraphics,
+  type EndpointGraphics,
+} from "./endpoint-graphics";
+import type { TerminalCellSize } from "./terminal-graphics";
+
 const HANDSHAKE_TIMEOUT_MS = 8_000;
 
 // ClientMessage tags used by the stable endpoint contract. The variant order is
@@ -72,6 +78,7 @@ export interface EndpointSurface {
   frame: FrameData;
   surfaceRevision: number;
   panes: PaneSurfacePaneMeta[];
+  graphics?: EndpointGraphics;
 }
 
 /**
@@ -125,7 +132,11 @@ export class EndpointClient extends EventEmitter {
     return this.surface;
   }
 
-  async connect(cols: number, rows: number): Promise<void> {
+  async connect(
+    cols: number,
+    rows: number,
+    cell: TerminalCellSize = { cell_width_px: 0, cell_height_px: 0 },
+  ): Promise<void> {
     if (this.sock) throw new Error("endpoint client is already connected");
     if (this.closed) throw new Error("endpoint client is closed");
     await new Promise<void>((resolve, reject) => {
@@ -140,7 +151,7 @@ export class EndpointClient extends EventEmitter {
         this.close();
       }, HANDSHAKE_TIMEOUT_MS);
       this.pendingWelcome = { resolve, reject, timer };
-      sock.once("connect", () => this.sendHello(cols, rows));
+      sock.once("connect", () => this.sendHello(cols, rows, cell));
       sock.on("data", (c) =>
         this.onData(Buffer.isBuffer(c) ? c : Buffer.from(c)),
       );
@@ -155,11 +166,10 @@ export class EndpointClient extends EventEmitter {
     });
   }
 
-  private sendHello(cols: number, rows: number) {
+  private sendHello(cols: number, rows: number, cell: TerminalCellSize) {
     const hello = {
       generation: ENDPOINT_GENERATION,
-      cell_width_px: 0,
-      cell_height_px: 0,
+      ...cell,
       surface_size: { cols, rows },
       pixel_mouse: false,
       direct_graphics: false,
@@ -182,11 +192,15 @@ export class EndpointClient extends EventEmitter {
     this.write(w.toBuffer());
   }
 
-  resize(cols: number, rows: number) {
+  resize(
+    cols: number,
+    rows: number,
+    cell: TerminalCellSize = { cell_width_px: 0, cell_height_px: 0 },
+  ) {
     const w = new BinWriter();
     w.variant(CM.ClientShellResize);
-    w.varint(0); // cell_width_px
-    w.varint(0); // cell_height_px
+    w.varint(cell.cell_width_px);
+    w.varint(cell.cell_height_px);
     w.varint(cols);
     w.varint(rows);
     w.bool(false); // pixel_mouse
@@ -233,6 +247,7 @@ export class EndpointClient extends EventEmitter {
       pending.reject(new Error("endpoint client closed"));
     }
     this.pendingRequests.clear();
+    this.surface = null;
     this.sock?.destroy();
   }
 
@@ -396,8 +411,8 @@ export class EndpointClient extends EventEmitter {
     const surfaceRevision = r.varint(); // surface_revision (u64, varint)
     const frame = readFrameData(r);
     const panes = readPaneSurfacePanes(r);
-    // splits / popup / graphics tail: unused by the GUI, left unread.
-    this.surface = { frame, surfaceRevision, panes };
+    const graphics = readEndpointGraphics(r, this.surface?.graphics);
+    this.surface = { frame, surfaceRevision, panes, graphics };
     this.emit("surface", this.surface);
   }
 
@@ -444,7 +459,12 @@ export class EndpointClient extends EventEmitter {
       }
     }
     if (cursor) nextFrame.cursor = cursor;
-    this.surface = { frame: nextFrame, surfaceRevision, panes };
+    this.surface = {
+      frame: nextFrame,
+      surfaceRevision,
+      panes,
+      graphics: current.graphics,
+    };
     this.emit("surface", this.surface);
   }
 }

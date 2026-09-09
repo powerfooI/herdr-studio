@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Display static pane images from Herdr 0.9.0 endpoints in browser terminals,
+  including image replacement, deletion, and scrollback clipping. Large images
+  automatically shrink to fit the preview budget without changing original files.
+  Unsupported image layers show a notice instead of disrupting terminal input.
+
 ### Changed
 
 - Route terminal streams on Herdr 0.9.0 through the stable endpoint
@@ -14,6 +21,8 @@
 
 ### Fixed
 
+- Preserve Chinese and emoji spacing in endpoint terminals instead of printing
+  wide-character padding as extra spaces and wrapping mixed text incorrectly.
 - Clear stale terminal text on endpoint repaints, wait for the initial snapshot
   before attaching, and reject pending endpoint requests when disconnected.
 

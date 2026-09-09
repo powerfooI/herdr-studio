@@ -83,7 +83,7 @@ export function frameToAnsi(frame: FrameData): string {
     let linkOpen = false;
     for (let x = 0; x < rowEnd; x++) {
       const cell = frame.cells[rowStart + x];
-      if (cell.skip) continue; // spacer after a wide grapheme
+      if (cell.skip) continue;
       const key = styleKey(cell);
       if (key !== lastStyle) {
         if (linkOpen) {
@@ -102,6 +102,9 @@ export function frameToAnsi(frame: FrameData): string {
         lastStyle = key;
       }
       out += cell.symbol;
+      // Herdr's wide-character padding is often a normal blank (skip=false).
+      // The grapheme already advances xterm across those cells.
+      x += Math.max(0, Bun.stringWidth(cell.symbol) - 1);
     }
     if (linkOpen) out += "\x1b]8;;\x1b\\";
     if (y < frame.height - 1) out += "\r\n";

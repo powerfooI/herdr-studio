@@ -1,4 +1,9 @@
-export type TerminalSize = { cols: number; rows: number };
+export type TerminalSize = {
+  cols: number;
+  rows: number;
+  cell_width_px?: number;
+  cell_height_px?: number;
+};
 
 export type TerminalRelayLayout = {
   zoomed?: boolean;
@@ -69,7 +74,14 @@ export function clearTerminalRelayViewports() {
 }
 
 function sameSize(a: TerminalSize | null, b: TerminalSize | null): boolean {
-  return !!a && !!b && a.cols === b.cols && a.rows === b.rows;
+  return (
+    !!a &&
+    !!b &&
+    a.cols === b.cols &&
+    a.rows === b.rows &&
+    (a.cell_width_px ?? 0) === (b.cell_width_px ?? 0) &&
+    (a.cell_height_px ?? 0) === (b.cell_height_px ?? 0)
+  );
 }
 
 function validSize(size: TerminalSize): boolean {

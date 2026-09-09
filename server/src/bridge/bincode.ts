@@ -108,6 +108,15 @@ export class BinReader {
     if (first === 253) return Number(this.take(8).readBigUInt64LE(0));
     throw new Error(`bincode: invalid varint marker ${first}`);
   }
+  /** Lossless IDs/fingerprints; unlike sizes these may use the full u64 range. */
+  varintBigInt(): bigint {
+    const first = this.u8();
+    if (first < 251) return BigInt(first);
+    if (first === 251) return BigInt(this.take(2).readUInt16LE(0));
+    if (first === 252) return BigInt(this.take(4).readUInt32LE(0));
+    if (first === 253) return this.take(8).readBigUInt64LE(0);
+    throw new Error(`bincode: invalid varint marker ${first}`);
+  }
   string(): string {
     const n = this.varint();
     return textDecoder.decode(this.take(n));

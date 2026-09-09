@@ -6,6 +6,9 @@ import type { Logger } from "../utils/logger";
 import { silentLogger } from "../utils/logger";
 import { VtInputClassifier } from "./vt-input-classifier";
 
+import { graphicsForPane } from "./endpoint-graphics";
+import type { TerminalCellSize, TerminalGraphics } from "./terminal-graphics";
+
 const ESC_FLUSH_MS = 25;
 const FIRST_SURFACE_WAIT_MS = 10_000;
 
@@ -31,6 +34,17 @@ export class EndpointTerminalSession extends EventEmitter {
   } | null = null;
   private closed = false;
   private seq = 0;
+  private cell: TerminalCellSize = { cell_width_px: 0, cell_height_px: 0 };
+  private graphicsSignature = "";
+  private imageIds = new Set<string>();
+  private lastFrame: {
+    seq: number;
+    width: number;
+    height: number;
+    full: boolean;
+    bytes: Buffer;
+    graphics: TerminalGraphics;
+  } | null = null;
   connecting: Promise<void> | null = null;
 
   constructor(
@@ -60,9 +74,14 @@ export class EndpointTerminalSession extends EventEmitter {
     return this.closed;
   }
 
-  connect(cols: number, rows: number): Promise<void> {
+  connect(
+    cols: number,
+    rows: number,
+    cell: TerminalCellSize = this.cell,
+  ): Promise<void> {
+    this.cell = cell;
     const ready = (async () => {
-      await this.client.connect(cols, rows);
+      await this.client.connect(cols, rows, cell);
       const paneId = await this.lookupPaneId(this.terminalId);
       if (!paneId) {
         throw new Error(
@@ -141,18 +160,46 @@ export class EndpointTerminalSession extends EventEmitter {
       : null;
     const cropped = cropFrame(surface.frame, pane.innerRect);
     const bytes = Buffer.from(frameToAnsi(cropped), "utf8");
+    const graphics = graphicsForPane(
+      surface.graphics,
+      this.paneId,
+      pane.innerRect,
+      this.cell,
+    );
+    const signature = JSON.stringify([
+      graphics.placements,
+      graphics.assets.map((a) => a.id),
+      graphics.omitted,
+    ]);
+    const changed = signature !== this.graphicsSignature;
+    const update = changed
+      ? {
+          ...graphics,
+          assets: graphics.assets.filter((a) => !this.imageIds.has(a.id)),
+        }
+      : undefined;
+    this.graphicsSignature = signature;
+    this.imageIds = new Set(graphics.assets.map((a) => a.id));
     this.seq += 1;
-    this.emit("terminal", {
+    this.lastFrame = {
       seq: this.seq,
       width: cropped.width,
       height: cropped.height,
       full: true,
       bytes,
-    });
+      graphics,
+    };
+    this.emit("terminal", { ...this.lastFrame, graphics: update });
   }
 
-  resize(cols: number, rows: number) {
-    this.client.resize(cols, rows);
+  /** A new browser needs pixels too, even if Herdr only sends cached asset references. */
+  replay() {
+    if (this.lastFrame && !this.closed) this.emit("terminal", this.lastFrame);
+  }
+
+  resize(cols: number, rows: number, cell: TerminalCellSize = this.cell) {
+    this.cell = cell;
+    this.client.resize(cols, rows, cell);
   }
 
   input(data: Buffer) {
@@ -197,6 +244,8 @@ export class EndpointTerminalSession extends EventEmitter {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.lastFrame = null;
+    this.imageIds.clear();
     if (this.escFlushTimer) clearTimeout(this.escFlushTimer);
     this.client.close();
   }

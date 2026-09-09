@@ -106,7 +106,9 @@ function surfaceFrame(payload: {
   writePane(w, "w1:p1");
   w.varint(0); // splits
   w.bool(false); // popup
-  // SurfaceGraphicsScene tail: the client stops reading before it.
+  w.varint(0); // graphics assets
+  w.varint(0); // placements
+  w.varint(0); // retained assets
   return w.toBuffer();
 }
 

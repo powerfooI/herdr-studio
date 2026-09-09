@@ -8,6 +8,10 @@ import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
 import { isTerminalHelloProtocol } from "./protocol-compat";
 import { EndpointTerminalSession } from "./endpoint-terminal-session";
+import {
+  terminalCellSizeFromParams,
+  type TerminalCellSize,
+} from "./terminal-graphics";
 
 type TerminalSession = {
   terminalId: string | null;
@@ -23,6 +27,7 @@ type SharedTerminalSession = {
   terminalId: string;
   cols: number;
   rows: number;
+  cell: TerminalCellSize;
   viewers: Set<ServerWebSocket<unknown>>;
   frames: number;
   bytes: number;
@@ -436,6 +441,7 @@ export function createTerminalBridge(args: {
     terminalId: string,
     cols: number,
     rows: number,
+    cell: TerminalCellSize,
   ): Promise<SharedTerminalSession> {
     if (disposed) throw new Error("terminal bridge disposed");
     const creationRevision = lifecycleRevision;
@@ -472,6 +478,7 @@ export function createTerminalBridge(args: {
       terminalId,
       cols,
       rows,
+      cell,
       viewers: new Set(),
       frames: 0,
       bytes: 0,
@@ -517,6 +524,7 @@ export function createTerminalBridge(args: {
           height: t.height,
           full: t.full,
           bytes: Buffer.from(t.bytes).toString("base64"),
+          ...(t.graphics ? { graphics: t.graphics } : {}),
         },
       });
       for (const viewer of Array.from(shared.viewers)) {
@@ -594,7 +602,7 @@ export function createTerminalBridge(args: {
               }
               thin.attach(terminalId, true);
             })
-        : thin.connect(cols, rows)
+        : thin.connect(cols, rows, cell)
     ).then(() => {
       if (!isCurrent(creationRevision)) {
         thin.close();
@@ -649,6 +657,7 @@ export function createTerminalBridge(args: {
         const cols = Number(params.cols ?? 100);
         const rows = Number(params.rows ?? 30);
         if (!terminalId) return fail("terminal_id required");
+        const cell = terminalCellSizeFromParams(params);
         const relaySize = relaySizeFromParams(params, { cols, rows });
         const relayRevision = relaySize ? ++clipboardRelayRevision : null;
 
@@ -665,7 +674,7 @@ export function createTerminalBridge(args: {
         terminals.set(ws, { terminalId, cols, rows });
         viewed.add(terminalId);
         terminalViewers.set(ws, viewed);
-        const shared = await getSharedTerminal(terminalId, cols, rows);
+        const shared = await getSharedTerminal(terminalId, cols, rows, cell);
         shared.viewers.add(ws);
         try {
           await shared.connecting;
@@ -684,12 +693,17 @@ export function createTerminalBridge(args: {
         if (
           shared.cols !== cols ||
           shared.rows !== rows ||
+          shared.cell.cell_width_px !== cell.cell_width_px ||
+          shared.cell.cell_height_px !== cell.cell_height_px ||
           refreshReusedTerminal
         ) {
           // Herdr resets its ANSI baseline on Resize, including a same-size
           // resize. Refresh a reused stream so a newly attached browser gets a
           // complete frame even when the terminal is otherwise idle.
-          shared.thin.resize(cols, rows);
+          if (shared.thin instanceof EndpointTerminalSession)
+            shared.thin.resize(cols, rows, cell);
+          else shared.thin.resize(cols, rows);
+          shared.cell = cell;
           shared.cols = cols;
           shared.rows = rows;
           logger.debug(
@@ -718,6 +732,8 @@ export function createTerminalBridge(args: {
           size: `${cols}x${rows}`,
           shared: sharedMode,
         });
+        if (shared.thin instanceof EndpointTerminalSession)
+          shared.thin.replay();
         return reply({ ok: true });
       }
 
@@ -799,7 +815,11 @@ export function createTerminalBridge(args: {
         const cols = Number(params.cols ?? 100);
         const rows = Number(params.rows ?? 30);
         const relaySize = relaySizeFromParams(params, { cols, rows });
-        thin.resize(cols, rows);
+        const cell = terminalCellSizeFromParams(params);
+        if (thin instanceof EndpointTerminalSession)
+          thin.resize(cols, rows, cell);
+        else thin.resize(cols, rows);
+        shared.cell = cell;
         shared.cols = cols;
         shared.rows = rows;
         if (relaySize) {
