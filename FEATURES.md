@@ -59,6 +59,14 @@ Closed panes are removed from the history automatically.
   line-editing shortcuts.
 - Scroll terminal history with a mouse wheel, trackpad, touch gesture,
   `Page Up`/`Page Down`, or half-page `Alt/Option+Page Up`/`Page Down`.
+  Endpoint history scrolling requires the server's advertised support; unavailable
+  controls explain why. Explicit history shortcuts remain history actions even
+  in mouse-aware apps.
+- On Herdr 0.9.0 endpoints, clicks, drags, and wheels control mouse-aware terminal
+  apps using pane-local cells. To select browser text instead, use Option-drag
+  on macOS or Shift-drag elsewhere; ordinary output needs no modifier. Selection
+  pauses visible endpoint output until cleared, then catches up to the latest
+  repaint. Pixel mouse is not supported.
 - Paste multiline text through terminal paste handling.
 - Paste a clipboard image to upload it on the Herdr host and insert the resulting
   path into the terminal. This also works through `--ssh-host`.
@@ -70,6 +78,33 @@ Closed panes are removed from the history automatically.
   to preview text, Markdown, or images without leaving the terminal.
 - Preserve IME composition and rapid CJK punctuation input.
 
+## Workspace Inspector
+
+Files, Changes, and Agent History share one checkout-scoped Inspector. Open it
+with the TabBar Inspector button or `Cmd+Shift+B`; workspace/agent context menus
+can open a specific view. The header identifies the repository, branch/worktree,
+and checkout path so similarly named files in sibling worktrees stay distinct.
+
+- Dock right or bottom, resize, or expand while the terminal stays mounted.
+  Header controls restore or close it; Esc dismisses transient UI, not the Inspector.
+- Switching terminal tabs keeps it open. Switching workspaces follows the target
+  checkout and restores its saved view, file selection, and layout. Closing
+  returns to the originating tab if it still exists, otherwise the active tab.
+- Wide layouts show navigation and content together; narrow layouts drill into
+  a file/diff, with overlay or full-screen resource views on smaller screens.
+  Drag the internal separator or use Left/Right and Home/End; double-click resets
+  its width. Files and Changes save independent checkout-scoped widths.
+- Browse Files from an agent starts at its cwd only when inside the checkout.
+  Terminal file links use their pane's workspace, not a later focused workspace.
+  Changes cover the checkout, not edits proven to belong to that agent.
+- Closed worktrees must be visibly opened before browsing. Missing/prunable
+  worktrees offer lifecycle cleanup rather than another checkout's files.
+  Successful removal clears only that checkout's resource state.
+
+File Preview is read-only; the Inspector does not create synthetic terminal tabs
+or merge changes across worktrees. See [resource ownership](docs/ARCHITECTURE.md#workspace-resource-ownership)
+for cache and routing boundaries.
+
 ## Agent Awareness and Session Inspection
 
 Herdr reports recognized agents and their state, and Herdr Studio projects that
@@ -79,8 +114,13 @@ panel.
 - See Agent identity and status such as working, blocked, done, or idle.
 - Focus an Agent's pane from the sidebar, command menu, recent pane switcher, or
   a browser task-completion notification.
-- Open a message-history drawer beside the active terminal. Assistant messages
-  can be included or hidden.
+- Open Agent History in the Workspace Inspector with independent User, Agent,
+  and Tool filters. User/Agent start enabled; Tool starts hidden. The recent
+  window retains 200 conversation entries without counting associated tools;
+  exports stay complete. See [History synchronization](docs/HISTORY.md).
+- Use the History minimap to jump between messages; inspect tool details on demand.
+- Keep agents nested under their workspace, or choose **Agents: Separate** at the
+  bottom of the Workspaces panel for a dedicated panel.
 - Inspect turn count, token usage, update time, session ID, session file, and
   other session details.
 - Open Session Inspector in Timeline, ATIF, or raw transcript mode, with search
@@ -192,7 +232,8 @@ Lifecycle to manage saved per-checkout settings.
   rendered as diagrams.
 - Render `.mmd`/`.mermaid` Mermaid sources as diagrams with a Raw/Rendered
   toggle.
-- Preview common image formats; unsupported binary files remain download-only.
+- Preview common images, PDFs, and workspace-local Markdown images; unsupported
+  binary files remain download-only.
 - Drag files onto the workspace root or a directory to upload them.
 - Download files directly or directories as workspace-scoped `.tar.gz`
   archives.
@@ -221,9 +262,11 @@ File operations and previews work for both local and SSH-backed workspaces.
 
 - Browse changed files as a directory tree with staged, unstaged, untracked,
   conflicted, and branch-diff badges plus added/deleted line counts.
-- Switch between the current working tree and the current branch **Against
-  main**.
-- View all changed files in repository order.
+- Switch between **Working tree**, the current branch **Against main**, and
+  **Last step**, which retains the latest completed agent activity snapshot,
+  including commits and untracked files. It is not proof of agent ownership.
+- View all changed files in repository order. Large, truncated, and
+  `linguist-generated=true` diffs start collapsed and render on expansion.
 - Use side-by-side or unified diffs on desktop; mobile uses a unified layout.
 - Toggle wrapping independently on desktop and mobile.
 - Search the rendered diff with `Cmd/Ctrl+F`, Enter/Shift+Enter navigation, or
@@ -240,7 +283,8 @@ File operations and previews work for both local and SSH-backed workspaces.
   Untracked, each showing the affected-file count.
 
 The selected scope, view mode, wrapping preference, and recent selection are
-preserved in the browser.
+preserved per checkout in the browser. Git actions recheck file status and content
+before mutation, rejecting stale menus rather than destroying newer work.
 
 ## Mobile and PWA
 
@@ -254,7 +298,12 @@ preserved in the browser.
   terminal scrolling.
 - A Paste shortcut that sends clipboard text to the pane and uploads clipboard
   images, pasting the uploaded path like the desktop paste flow.
-- A mobile pane switcher for tabs containing multiple panes.
+- A mobile pane switcher for tabs containing multiple panes, and a Tabs sheet
+  for creating, switching, and closing tabs when the tab strip is hidden.
+- A composer for native IME, dictation, multiline editing, and image insertion.
+  Insert adds the draft without executing; Send adds exactly one Enter. Drafts
+  stay in memory per connection/pane and closing their pane, tab, or workspace
+  requires confirmation before discarding them.
 - A bundled glyph-only Nerd Font fallback for common terminal icons.
 - Installable as a standalone PWA from iOS/iPadOS Safari, macOS Safari, Chrome,
   or Edge. PWA mode removes browser chrome but still requires a reachable
@@ -266,8 +315,13 @@ browser and do not change Herdr server configuration.
 
 ## Remote, Multi-Client, and Operations
 
+- Manage multiple local or SSH-backed Herdr profiles through the connection
+  selector, with shared profiles but independent browser selection. Disconnecting
+  a profile does not stop Herdr or its workspaces. See
+  [connection setup](docs/DEPLOYMENT.md#multiple-and-remote-herdr-connections).
 - Connect to a remote Herdr with `--ssh-host`; Herdr Studio automatically forwards
-  both the control and terminal-render Unix sockets over SSH.
+  both the control and terminal-render Unix sockets over SSH on Linux/macOS.
+  Windows supports native local profiles, not this SSH forwarding transport.
 - Apply file operations, image paste, Git operations, and Paseo hooks on the
   same remote host, with remote session inspection subject to the metadata
   resolution limits described above.
@@ -302,6 +356,7 @@ The in-app reference is available on desktop from **Menu → Keyboard shortcuts*
 | `Alt/Option+1` … `Alt/Option+9` while the command menu is open | Run the corresponding numbered visible action |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Open and navigate the recent Pane switcher |
 | `Cmd+B` | Toggle the desktop sidebar |
+| `Cmd+Shift+B` | Toggle the Workspace Inspector's last compatible view |
 | `Cmd+T` | Create a tab in the focused workspace |
 | `Cmd+W` | Close the active pane; close the tab if only one pane remains |
 | `Cmd+Option+Left` / `Cmd+Option+Right` | Switch tabs, wrapping at either end |
@@ -323,6 +378,7 @@ they are most reliable in an installed PWA or another standalone/webview host.
 | --- | --- |
 | `Page Up` / `Page Down` | Scroll terminal history by one page |
 | `Alt/Option+Page Up` / `Alt/Option+Page Down` | Scroll terminal history by half a page |
+| `Option+Drag` on macOS, `Shift+Drag` elsewhere | Select browser text in a mouse-aware endpoint app |
 | `Shift+Enter` | Send a multiline Enter sequence |
 | `Alt+Enter` | Send an Alt-modified Enter sequence |
 | `Cmd+Left` / `Cmd+Up` | Move to the beginning of the current input line |

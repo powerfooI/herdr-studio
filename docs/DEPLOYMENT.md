@@ -16,19 +16,25 @@ see the [hands-on tutorial](./TUTORIAL.md#networking).
 
 ### Herdr compatibility
 
-This source build supports the verified legacy protocols 14-20 (including
-Herdr 0.8.2 / protocol 20) and **tagged Herdr 0.9.0 / protocol 22**. Protocol
-21 and unknown versions are rejected at the control probe and binary handshake.
-Use a Studio build explicitly supporting your server, or a separate compatible
-server; do not downgrade a live server. These changes target a future Studio
-0.5.3 and do not change already-published binaries.
+This source build supports verified legacy protocols 14-20, from standalone
+Herdr 0.7.0 / protocol 14 through Herdr 0.8.2 / protocol 20, and **tagged Herdr
+0.9.0 / protocol 22**. The [plugin installer](#herdr-plugin) separately requires
+Herdr 0.7.2 or newer. Protocol 21 and unknown versions are rejected at the control
+probe and binary handshake. Use a Studio build explicitly supporting your
+server, or a separate compatible server; do not downgrade a live server.
+Published binaries retain the behavior documented for their release in the
+[Changelog](../CHANGELOG.md).
 
 Herdr 0.9.0 terminals use **stable endpoint generation 1** (distinct from
 terminal protocol 22). Set `HERDR_GUI_DISABLE_ENDPOINT=1` to use the legacy
 direct-terminal fallback:
 
-- Endpoint rendering crops the server-rendered tab to each pane. The legacy
-  fallback uses takeover and can disconnect another direct-terminal owner.
+- Endpoint rendering crops the server-rendered tab to each pane. Unknown endpoint
+  generations/codecs are rejected. Missing required `pane.focus` fails attachment
+  without silent fallback; optional advertised methods gate creation and history
+  scrolling with a reason when unavailable. Input, mouse, paste, resize, and
+  rendering can remain usable without optional history support. The explicitly
+  enabled legacy fallback uses takeover and can disconnect another owner.
 - Terminal-program OSC 52 writes follow Herdr's **foreground-recipient**
   behavior: Studio sends only to the browser with input in the last 30 seconds
   matching the receiving endpoint session, never to passive viewers. Herdr
@@ -40,20 +46,16 @@ direct-terminal fallback:
   existing copy-retry UI. Ordinary browser selection copy and paste are unchanged.
   OSC 52 remains unavailable on the **0.9.0 legacy fallback** because only shell
   endpoints receive it. Legacy servers retain their existing clipboard relay.
-- Endpoint navigation is browser-local, partitioned by connection. Studio
-  projects workspace/tab/pane selection locally and sends terminal input to
-  explicit pane targets; it does not issue public JSON focus calls for navigation.
-  Selection survives browser reconnect but not page reload or connection-runtime
-  replacement. Create/close/move are shared topology changes; creation selects
-  its result only in the initiating browser. Tab/workspace creation reuses the
-  source tab's attached endpoint, preserving `terminal.new_cwd` (`follow`,
-  `home`, `current`, or a fixed path); explicit cwd still wins. Herdr's focused
-  pane within a tab is shared, so `follow` is not browser-source-pane isolation.
-  Open the source terminal tab before creating; unattached/offscreen sources
-  fail explicitly. A server-verified empty session can create its first workspace
-  directly; competing first creations must retry against the resulting topology.
-  Terminal sizing remains shared and follows Herdr's last-interacting client
-  behavior.
+- Workspace/tab navigation is browser-local per connection, surviving reconnect
+  but not reload or runtime replacement. Same-tab pane focus, topology changes,
+  and terminal sizes remain shared; sizing follows Herdr's last-interacting
+  client. See [navigation behavior](../FEATURES.md#workspace-tab-and-pane-navigation).
+  Tab/workspace creation preserves `terminal.new_cwd` (`follow`, `home`, `current`,
+  or a fixed path), with explicit cwd taking precedence. Because same-tab focus
+  is shared, `follow` does not isolate the browser's source pane. Open the source
+  terminal tab before creating; unavailable sources fail explicitly. See
+  [creation contracts](./ARCHITECTURE.md#browser-navigation-and-creation) for
+  bootstrap and timeout handling.
 - Legacy servers and `HERDR_GUI_DISABLE_ENDPOINT=1` retain **Shared navigation**:
   public JSON focus can move other clients. The connection menu shows the mode,
   using the bridge's actual backend selection, not browser version guesses.
@@ -64,10 +66,8 @@ direct-terminal fallback:
   `herdr --session <name> workspace close <workspace_id> --group`. Review all
   linked workspaces first; this explicitly closes the entire group.
 
-Layout updates use the existing event-driven refresh path. Every subscription
-acknowledgement, including reconnect, requests a fresh browser snapshot to
-reconcile changes missed before subscription; events during a refresh queue a
-follow-up refresh. This is reconciliation, not an atomic or replayable event log.
+For endpoint negotiation, input, and reconnect contracts, see
+[Architecture](./ARCHITECTURE.md#terminal-endpoints).
 
 ## Install a release
 
@@ -178,6 +178,7 @@ Additional runtime settings:
 | `HERDR_GUI_UPDATE_BASE_URL` | Override the latest-release asset directory |
 | `HERDR_GUI_DISABLE_UPDATE_CHECK=1` | Disable update checks |
 | `HERDR_GUI_RESTART_SUPERVISOR=0\|1` | Declare or override external supervisor detection |
+| `HERDR_GUI_DISABLE_ENDPOINT=1` | Use the legacy terminal fallback; see compatibility limits above |
 
 A custom update mirror must use the same flat asset layout as GitHub Releases
 and provide each platform archive, its `.sha256` file, and the corresponding
@@ -253,12 +254,28 @@ SSH profiles and `--ssh-host` currently require Herdr Studio to run on Linux or
 macOS because the stream-local transport cannot expose a forwarded Unix socket
 as a local Windows named pipe. Windows supports native local Herdr profiles.
 
-Profiles are stored atomically in `~/.config/herdr-gui/connections.json` with
-private directory and file modes. The bridge supervises each SSH tunnel
-independently and retries transient transport failures. See
-[Architecture](./ARCHITECTURE.md#connection-isolation) for the isolation model
-and [Multi-Herdr Connections](./multi-herdr-connections-implementation.md) for
-the detailed implementation contract.
+Profiles are stored atomically in `~/.config/herdr-gui/connections.json`
+(overridable with `HERDR_GUI_CONNECTIONS_PATH`), with directory mode `0700` and
+file mode `0600` on Unix. Registry/direct-parent symlinks are rejected. Version-1
+local registries migrate to version 2 on the first successful mutation. Invalid
+registries are preserved with mutations disabled: repair the durable file before
+retrying. A failed durable rollback retires routing and disables further profile
+changes rather than allowing disk and memory to disagree.
+
+`auto_connect` controls profile startup; browser selection is independent.
+Disconnecting or removing a profile stops only its bridge runtime/tunnel, not
+Herdr or its workspaces. SSH profiles retry transient transport failures, but
+not authentication, host-key, or permanent protocol errors. Confirm host keys
+and authentication as the service user before connecting; service SSH cannot
+prompt interactively. There is no automatic idle cleanup or aggregate runtime
+resource budget, so disconnect unused profiles when conserving resources.
+See [connection isolation](./ARCHITECTURE.md#connection-isolation) and
+[SSH transport](./ARCHITECTURE.md#ssh-transport).
+
+Explicit CLI/environment socket or SSH settings remain authoritative as a
+read-only `legacy-default` process profile; edit those settings to change that
+connection. Browser preferences from the old single-connection setup migrate
+once into the first real profile without overwriting existing values.
 
 The legacy command-line connection is also available:
 

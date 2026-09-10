@@ -62,7 +62,7 @@ saved across page reloads. If no entries match, Show all types restores the view
 
 ![History filtered to tool calls and outputs using synthetic test data](screenshots/history-tool-filter.png)
 
-## Remaining work
+## Consistency and resource limits
 
 Changed files still require a **full JSONL read and full provider projection**.
 There is no provider-specific incremental parser, byte-offset cursor, database,

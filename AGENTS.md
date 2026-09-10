@@ -44,9 +44,12 @@ Keep `README.md` concise and English-only. Use it as the project entry point and
 link to focused documents instead of embedding detailed operation or
 implementation material. Put the feature tour and shortcuts in `FEATURES.md`,
 deployment and configuration instructions in `docs/DEPLOYMENT.md`, and system
-design in `docs/ARCHITECTURE.md`. Keep deeper implementation or design records
-under `docs/`. Avoid duplicating the same instructions across documents because
-they drift independently.
+contracts in `docs/ARCHITECTURE.md`. Permanent docs describe current supported
+behavior and contracts, not task status, plans, phases, dated verification logs,
+or agent transcripts; keep those details in PRs, external artifacts, or Git
+history. Add a focused document only when an enduring topic cannot fit an
+existing home. Keep one canonical home per topic and link to it. When finishing
+work, consolidate or delete stale status documents and repair their links.
 
 ## Testing Guidelines
 
@@ -65,8 +68,13 @@ changes.
 
 ## Release & Changelog Notes
 
-Keep `CHANGELOG.md` concise: summarize user-visible highlights and important
-fixes only, and accumulate entries under `## Unreleased` as changes land.
+Keep `CHANGELOG.md` English-only with short user-facing highlights and important
+fixes, normally 3-5 bullets per release. Collapse repetition; omit implementation
+names, internal flows, and verification narratives. Preserve migration, security,
+breaking-change, data-loss, and platform-compatibility essentials even when more
+space is needed. Add entries under `## Unreleased`; retain historical version/date
+headings and their order when editing. Leave detailed records in PRs, external
+artifacts, or Git history, not the changelog.
 
 Stable releases use separate prepare and publish phases:
 

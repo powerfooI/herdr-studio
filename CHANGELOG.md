@@ -2,428 +2,217 @@
 
 ## Unreleased
 
-### Changed
-
-- Route terminal streams on Herdr 0.9.0 through the stable endpoint
-  generation 1 protocol instead of the private direct-attach protocol: the
-  browser terminal now renders the pane cropped from the server-rendered tab
-  surface, input is classified into semantic key events, and scrollback goes
-  through `pane.scroll`. Set `HERDR_GUI_DISABLE_ENDPOINT=1` to fall back to
-  the legacy path. Panes sharing a tab still render at their layout size.
-
-### Fixed
-
-- Respect each endpoint's advertised methods: disable unsupported creation and
-  history scrolling with a reason, while keeping supported terminal actions
-  usable. Missing required pane focus fails safely without legacy takeover.
-
-- Keep workspace and tab navigation local to each browser on Herdr 0.9.0
-  endpoints, including reconnect and closed-pane fallback. Legacy navigation,
-  native same-tab pane focus, topology and terminal sizes remain shared.
-  Preserve Herdr's cwd policy for client-scoped creation, and wait for terminal
-  attachment readiness instead of silently dropping early input.
-
-- Restore terminal-program OSC 52 clipboard writes on Herdr 0.9.0 endpoints,
-  using its foreground recipient and Studio's recent-input filtering. Herdr
-  does not identify the producing pane; delayed/background writes can reach
-  the new foreground recipient. The legacy fallback remains unsupported.
-
-- Preserve endpoint text and cursor alignment for Chinese and other Unicode
-  graphemes, including halfwidth kana, without adding wide-character spacing.
-- Restore cell-based clicks, drags and wheel input in endpoint terminal apps;
-  retain browser selection/copy and history scrolling outside mouse-aware apps.
-  Selected endpoint output pauses visually until selection clears.
-- Clear stale terminal text on endpoint repaints, wait for the initial snapshot
-  before attaching, and reject pending endpoint requests when disconnected.
+- Use stable Herdr 0.9.0 endpoints for terminals, with optional legacy fallback via
+  `HERDR_GUI_DISABLE_ENDPOINT=1`; split panes retain their shared layout sizes.
+- Keep endpoint workspace/tab navigation local to each browser across reconnects.
+  Same-tab pane focus, topology, and sizes remain shared; creation preserves Herdr's cwd
+  policy.
+- Gate creation and history scrolling on advertised endpoint methods, with reasons when
+  unavailable. Missing required pane focus fails without silent legacy takeover.
+- Restore endpoint OSC 52 clipboard writes with recent-input filtering. Delivery follows
+  the foreground recipient, not the producing pane; delayed/background writes can reach
+  a new recipient. The 0.9.0 legacy fallback remains unsupported.
+- Restore endpoint app clicks, drags, and wheels; preserve browser selection/copy with
+  output paused during selection. Fix Unicode text alignment and stale repaint text.
+- Wait for terminal readiness before input and reject pending endpoint requests on
+  disconnect.
 
 ## 0.5.3 - 2026-09-08
 
-### Changed
-
-- Add basic terminal compatibility with Herdr 0.9.0 (protocol 22), retaining
-  legacy support and rejecting unknown protocols. Terminal-program OSC 52 and
-  independent client navigation remain unsupported on 0.9.0.
-- Refresh external layout changes and reconcile event subscription reconnects;
-  explain grouped-workspace close refusals without silently closing the group.
-- Count only conversation messages toward the 200-entry History window so
-  tool-heavy turns no longer evict user messages, and fetch tool call/output
-  payloads on demand instead of transmitting them with every refresh. Tool
-  entries are now hidden by default and can be shown with the tool filter.
-- Show each workspace's tab count as a subtle number in the workspace tree,
-  and move the compact Inspector's back button into the file preview header.
-
-### Fixed
-
-- Keep the Inspector following workspace focus switches: a focus marker whose
-  action completed without the workspace ever becoming focused no longer
-  disables retargeting indefinitely.
-- Stop duplicating IME text committed while switching input sources with
-  candidates visible (e.g. leaving a Chinese IME mid-composition).
-- Follow tab switches in the History view: re-pin the shown session to the
-  newly active tab's agent (or the next available agent when the pinned pane
-  closes) instead of showing a stale or missing session.
-- Let the History wavebar pan independently: horizontal gestures scroll only
-  the wavebar strip and its position indicator, so the timeline and wave no
-  longer move or snap back until a bar is tapped or clicked.
-- Keep the History wavebar smooth in long sessions: bars render once, the
-  wave highlight updates without re-rendering the strip, and the strip only
-  glides when the wave actually leaves its viewport.
-- Follow the terminal theme for the terminal loading overlay and delay its
-  appearance during pastes, so pasting no longer flashes a dark layer over a
-  light terminal.
+- Add basic Herdr 0.9.0 / protocol 22 terminal compatibility, retaining legacy support
+  and rejecting unknown protocols. OSC 52 and independent client navigation remain
+  unsupported on 0.9.0 in this release.
+- Refresh external layout changes after reconnect and explain grouped-workspace close
+  refusals without closing the group.
+- Keep 200 conversation messages in History regardless of tool volume; hide tools by
+  default and load their details on demand. Fix tab-following and smooth independent
+  wavebar scrolling.
+- Show workspace tab counts and improve compact Inspector navigation; restore Inspector
+  retargeting after workspace switches.
+- Fix duplicated IME text when switching input sources and theme-mismatched loading
+  flashes during terminal paste.
 
 ## 0.5.2 - 2026-09-06
 
-### Added
-
-- Add a website tutorial, History filters, and adjustable text size.
-- Drag across the Files annotation gutter to comment on multiple lines.
-- Drag workspaces in the sidebar to persistently reorder them.
-- Reorder agent sessions by dragging them within the separate Agents panel.
-
-### Changed
-
-- Improve History refresh performance and tool output readability.
-- Use a touch-friendly bottom sheet for the mobile application menu.
-
-### Fixed
-
-- Make `Cmd+W` close only the active pane in split tabs.
-- Keep Diff scope labels on one line and mobile terminal shortcuts within view.
-- Preserve History focus and view mode during refresh; correct Grok timestamps.
-- Make terminal default colors follow the application theme while preserving
-  explicit application colors, and keep terminal sizing free of a hidden
-  scrollbar gutter.
-- Upgrade xterm so IME preedit stays inside the viewport and anchors to the
-  live cursor during TUI redraws.
+- Add a website tutorial, History filters, adjustable text size, and multiline Files
+  annotations.
+- Drag to reorder workspaces persistently or agents within the separate Agents panel;
+  use a bottom-sheet application menu on mobile.
+- Improve History refresh speed and tool readability; preserve focus/view mode and
+  correct Grok timestamps.
+- Make `Cmd+W` close only the active split pane; keep Diff labels and mobile shortcuts
+  visible.
+- Align terminal default colors with the theme, remove the hidden scrollbar gutter, and
+  keep IME preedit at the live cursor inside the viewport.
 
 ## 0.5.1 - 2026-09-03
 
-### Added
-
-- Add pane keyboard shortcuts: `Cmd+Ctrl+Arrow` focuses the neighboring pane,
-  `Cmd+D` splits the active pane right, and `Cmd+Shift+D` splits it down.
-- Add a Herdr plugin manifest and launcher so Herdr Studio can be installed
-  and managed with `herdr plugin install powerfooI/herdr-studio`, with start,
-  restart, status, URL, version, and uninstall actions on Linux, macOS, and
-  Windows. The plugin downloads a checksum-verified prebuilt release binary,
-  so no source toolchain is needed.
-- Add an interactive Herdr Studio popup pane (`herdr.studio` plugin `panel`
-  entrypoint) showing service status, the login URL, and start, restart, and
-  uninstall keys.
+- Add `Cmd+Ctrl+Arrow` pane focus, `Cmd+D` split right, and `Cmd+Shift+D` split down.
+- Install Studio with `herdr plugin install powerfooI/herdr-studio` on Linux, macOS, and
+  Windows using checksum-verified prebuilt binaries; no source toolchain is needed.
+- Manage the service and login URL through plugin actions or an interactive Herdr popup
+  panel.
 
 ## 0.5.0 - 2026-09-02
 
-### Added
-
-- Add a responsive GitHub Pages landing page with a product tour, mobile
-  previews, install guidance, social metadata, and automated deployment.
-- Add configurable server log levels with concise, timestamped default output,
-  deduplicated retry failures and recovery summaries, and debug-only request,
-  event, terminal, and successful auto-sync diagnostics.
-- Add inline review annotations for diff lines, source lines, and rendered
-  Markdown selections. A shared review panel edits and orders comments,
-  preserves drafts per checkout, copies compiled feedback, or pre-fills an
-  agent pane without submitting it. Content anchors follow moved lines when
-  possible and remain available with a stale marker when source text changes.
-- Add Git file actions to the Changes panel: right-click, long-press, or the
-  keyboard context-menu key on a working-tree file opens a menu with Open
-  file, Copy relative/absolute path, and status-matched Git actions (stage,
-  unstage, mark resolved, discard unstaged changes, delete untracked file).
-  A new "More Git actions" menu beside Refresh offers repository-wide Stage
-  All, Unstage All, Discard All Unstaged, and Delete All Untracked with
-  affected-file counts. Destructive actions ask for confirmation, and the
-  server re-verifies each file's status and content fingerprint before
-  mutating so stale menus can't destroy newer work.
-- Dim Git-ignored files in the Files explorer.
-
-### Changed
-
-- Pressing Esc no longer collapses or closes the Inspector now that it docks
-  beside the content instead of covering it; use the header buttons to
-  expand, restore, or close it.
-- Simplify the Files explorer rows to show only the file or folder name; the
-  full path remains available as a hover tooltip.
-
-### Fixed
-
-- Parse C-style quoted Git paths (spaces, quotes, backslashes) in Changes
-  summaries so files with such names show and diff correctly.
+- Add a GitHub Pages product tour and configurable server log levels with concise
+  defaults and debug diagnostics.
+- Annotate diff lines, source lines, and rendered Markdown; organize checkout-scoped
+  drafts, copy feedback, or pre-fill an agent without submitting. Changed anchors retain
+  their captured context with stale markers.
+- Add per-file and bulk Git actions for staging, unstaging, resolving, discarding
+  unstaged changes, and deleting untracked files. Destructive actions require
+  confirmation and recheck file status/content to protect newer work.
+- Dim ignored files and simplify file rows; use Inspector header buttons instead of Esc
+  to expand, restore, or close it.
+- Fix Changes summaries and diffs for Git paths containing spaces, quotes, or
+  backslashes.
 
 ## 0.4.12 - 2026-09-01
 
-### Fixed
-
-- Fix text selection in file and session previews: Cmd/Ctrl+A now selects only
-  the preview content instead of the whole page (line numbers included), and
-  copying a selection always yields the exact document text, including lines
-  outside the rendered viewport. A Copy button in the file preview header
-  copies the entire file content.
+- Fix preview selection and copying, including text outside the viewport. Cmd/Ctrl+A
+  selects only the preview; the file header Copy button copies the full file.
 
 ## 0.4.11 - 2026-08-31
 
-### Added
-
-- Add a mobile terminal composer: a pen toggle opens a bottom-docked panel
-  that also hosts the configurable terminal shortcut keys alongside an editor
-  where IME, dictation, selection editing, and multiline paste work natively.
-  Insert places the draft in the terminal without executing; Send adds
-  exactly one Enter. Drafts stay in memory per connection and pane and are
-  never persisted.
-- Add image support to the mobile composer: pasted clipboard images and the
-  image picker upload once through the existing endpoint and insert the
-  returned path at the caret; the path reaches the terminal only on Insert or
-  Send.
-- Warn before closing a pane, tab, or workspace that still holds an unsent
-  composer draft; confirming discards the draft.
+- Add a mobile composer for IME, dictation, multiline editing, and terminal shortcuts.
+  Insert adds text without executing; Send adds exactly one Enter.
+- Paste or pick images in the composer; upload once and send their paths only on Insert
+  or Send.
+- Keep unsent drafts in memory per connection/pane, never persisted; warn before closing
+  a pane, tab, or workspace with a draft.
 
 ## 0.4.10 - 2026-08-29
 
-### Added
-
-- Add a mobile tab switcher: a Tabs button with a count badge in the mobile
-  nav opens a bottom sheet for creating, switching, and closing tabs when the
-  tab strip is hidden.
-- Preview PDFs and workspace-local Markdown images in File Explorer.
-- Show the agent's current directory next to agents in the workspace tree.
-
-### Changed
-
-- Present the selected file name as the preview heading and move Changes into a
-  separate header toggle.
-- Move per-file actions in File Explorer into a single "..." menu anchored to
-  the row.
-- Remove the worktree marker icon and corner glyph from workspace tree rows;
-  indentation alone conveys the hierarchy.
-- Spell out the linked-worktree badge as "Worktree" in the inspector.
-- Move the agent status icon in tabs before the tab name.
+- Add a mobile tab-switcher sheet for creating, switching, and closing tabs.
+- Preview PDFs and workspace-local Markdown images; show agent working directories in
+  the workspace tree.
+- Use file names as preview headings, a separate Changes toggle, and one file-action
+  menu.
+- Simplify workspace hierarchy markers, spell out Worktree badges, and move agent status
+  before tab names.
 
 ## 0.4.9 - 2026-08-28
 
-### Changed
-
-- Rebrand the app as **Herdr Studio**: page title, brand header, in-app copy,
-  and documentation.
-- Disable pinch and double-tap zoom on phones so the terminal layout stays
-  fixed.
+- Rebrand the app as **Herdr Studio**: page title, brand header, in-app copy, and
+  documentation.
+- Disable pinch and double-tap zoom on phones so the terminal layout stays fixed.
 - Hide floating action buttons while the on-screen keyboard is open.
-
-### Fixed
-
-- Keep desktop file downloads as direct downloads instead of opening the
-  system share sheet (e.g. macOS Safari).
-- Keep the mobile terminal flush with the on-screen keyboard so no black
-  strip appears above it, including with third-party iOS keyboards.
+- Keep desktop file downloads as direct downloads instead of opening the system share
+  sheet (e.g. macOS Safari).
+- Keep the mobile terminal flush with the on-screen keyboard so no black strip appears
+  above it, including with third-party iOS keyboards.
 
 ## 0.4.8 - 2026-08-27
 
-### Added
-
-- Add a Last step scope to Changes that preserves the latest completed agent
-  activity, including commits and untracked files.
+- Add a Last step scope to Changes that preserves the latest completed agent activity,
+  including commits and untracked files.
 - Add an interactive message minimap to session History.
-
-### Changed
-
 - Show user and assistant messages together in session History.
-
-### Fixed
-
-- Improve session History and dialogs on phones, including keyboard, zoom, and
-  safe-area handling.
+- Improve session History and dialogs on phones, including keyboard, zoom, and safe-area
+  handling.
 - Prevent touch taps from leaving tooltips stuck.
 
 ## 0.4.7 - 2026-08-26
 
-### Changed
-
-- Unify Files and Changes around shared Git status, keyboard navigation, and
-  inline diff controls.
-
-### Fixed
-
+- Unify Files and Changes around shared Git status, keyboard navigation, and inline diff
+  controls.
 - Restore mobile PWA terminals after switching apps or leaving the lock screen.
 
 ## 0.4.6 - 2026-08-25
 
-### Added
-
-- Add a preference to disable automatic update checks.
-- Add a native Windows ARM64 release package.
-
-### Changed
-
-- Reorganize application, workspace, and agent menus.
-- Consolidate pause and reconnect controls in the Connections menu.
-- Move mobile notifications below the top bar.
-
-### Fixed
-
-- Keep the Diff Viewer responsive for large change sets.
-- Restore terminal frames after resuming browser sync.
-- Use a compact Inspector layout on narrow screens.
-- Show progress while refreshing the Diff Viewer.
-- Keep worktree status badges visible beside long branch names.
-- Restore consistent Enter behavior in dialogs.
-- Make the Wrap toggle work in narrow desktop Inspectors.
-- Prevent Windows ARM64 service crashes by building releases with Bun 1.4.
+- Add a preference to disable update checks and native Windows ARM64 packages; build
+  with Bun 1.4 to prevent ARM64 service crashes.
+- Reorganize application, workspace, and agent menus; group pause/reconnect controls and
+  improve mobile notification placement.
+- Keep large diffs responsive with refresh progress; fix narrow Inspector layout and
+  wrapping.
+- Restore terminal frames after resuming sync, keep worktree badges visible, and make
+  dialog Enter behavior consistent.
 
 ## 0.4.5 - 2026-08-23
 
-### Added
-
-- Add Windows x64 support with native named pipes and per-user startup tasks.
-
-### Performance
-
-- Eliminate idle render churn and suspend fallback polling while hidden.
-- Limit component updates to the state they use.
-
-### Fixed
-
-- Make Windows service installation and removal Unicode-safe and recoverable.
-- Recover terminal streams after another GUI client takes over a pane.
-- Restart metadata and update polling after connections settle.
+- Add Windows x64 support with native named pipes and per-user startup tasks; make
+  service installation/removal Unicode-safe and recoverable.
+- Reduce idle rendering and suspend fallback polling while hidden.
+- Recover terminal streams after another GUI client takes over a pane, and restart
+  metadata/update polling after connections settle.
 
 ## 0.4.4 - 2026-08-22
 
-### Added
-
 - Allow resizing the Files/Changes navigation list in docked Inspectors.
-
-### Fixed
-
-- Retry workspace, agent, and tab switches issued while reconnecting.
-- Restore terminals after layout changes or mobile app resume.
-- Keep file and session downloads inside the iOS PWA.
-- Stop terminal selections from growing after a lost mouse release.
-- Restore terminal attachment with Herdr 0.8.2.
+- Retry navigation issued during reconnect; restore terminals after layout changes,
+  mobile resume, and attachment to Herdr 0.8.2.
+- Keep file/session downloads inside the iOS PWA and stop selections growing after a
+  lost mouse release.
 
 ## 0.4.3 - 2026-08-22
 
-### Added
-
-- Add a dockable Workspace Inspector for Files, Changes, and Agent History.
-
-### Changed
-
-- Preserve each checkout's Inspector view and layout.
-- Nest Agent sessions under their Workspace by default.
-- Streamline desktop and mobile navigation and pane controls.
-- Improve keyboard and focus behavior across the Inspector.
-
-### Fixed
-
-- Isolate Files and Changes data by connection and checkout.
-- Preserve completed Agent History when live status is unavailable.
+- Add a dockable Workspace Inspector for Files, Changes, and Agent History, preserving
+  each checkout's view and layout.
+- Nest agents under workspaces by default and streamline desktop/mobile navigation, pane
+  controls, and keyboard focus.
+- Isolate Files/Changes by connection and checkout; retain completed Agent History
+  without live status.
 
 ## 0.4.2 - 2026-08-20
-
-### Added
 
 - Add configurable mobile paste for terminal text and images.
 - Render Mermaid files and Markdown Mermaid blocks.
 - Add a System theme that follows OS appearance changes.
-
-### Changed
-
 - Keep the default local server when creating connection profiles.
 - Infer default remote socket paths for SSH connections.
-
-### Fixed
-
 - Make Markdown code blocks readable in light mode.
 - Use the in-app confirmation dialog when removing connections.
 - Keep overlays open while terminal output streams.
 
 ## 0.4.1 - 2026-08-20
 
-### Fixed
-
 - Restore WebSocket access behind reverse proxies that rewrite the Host header.
 
 ## 0.4.0 - 2026-08-20
 
-### Added
-
-- Manage multiple local and SSH-backed Herdr servers from one bridge.
-- Reload the browser or standalone PWA from the application menu.
-
-### Changed
-
-- Refine dialogs, notifications, and date presentation.
-
-### Fixed
-
-- Deliver Agent status changes immediately for every connection.
-- Refresh workspace status when the page becomes active again.
-- Recover Apple IME input emitted outside the usual key event sequence.
-- Prevent stale work from crossing between connection generations.
-- Restore full-page Page Up and Page Down in fullscreen Pi.
+- Manage multiple local and SSH-backed Herdr servers from one bridge; reload the browser
+  or PWA from the application menu.
+- Refine dialogs, notifications, and dates; deliver agent status changes immediately and
+  refresh workspace status when returning to the page.
+- Prevent stale work crossing connection generations.
+- Recover Apple IME input and restore full-page Page Up/Down in fullscreen Pi.
 
 ## 0.3.5 - 2026-08-18
 
-### Added
-
-- View full agent messages as sanitized rendered Markdown or raw text.
-- Collapse individual file sections in the Diff Viewer.
-
-### Changed
-
-- Present Session Inspector activity chronologically as collapsible steps with
-  concise previews.
-- Run numbered command-menu actions with `Alt+1` through `Alt+9` to avoid
-  browser-reserved Command-number shortcuts.
-- Improve mobile and no-wrap Diff Viewer layouts, keeping file headers and
-  navigation controls visible while code scrolls.
-
-### Fixed
-
-- Keep WebSocket connections open under backpressure while preserving
-  slow-client protection.
-- Restore text selection after releasing a pane divider outside the window.
+- View full agent messages as sanitized Markdown or raw text; present session activity
+  as collapsible chronological steps.
+- Collapse Diff Viewer files and improve mobile/no-wrap layouts.
+- Use `Alt+1` through `Alt+9` for numbered command-menu actions to avoid
+  browser-reserved shortcuts.
+- Keep WebSockets open under backpressure while protecting against slow clients; restore
+  selection after releasing pane dividers outside the window.
 
 ## 0.3.4 - 2026-08-17
 
-### Added
-
-- Run the first nine visible command-menu actions with `Cmd+1` through `Cmd+9`,
-  with matching shortcut hints beside each action.
-
-### Fixed
-
+- Run the first nine visible command-menu actions with `Cmd+1` through `Cmd+9`, with
+  matching shortcut hints beside each action.
 - Recover iOS third-party IME input missed by xterm.
-- Route complete native iOS paste mutations through the terminal paste API when
-  the ClipboardEvent text is missing or truncated.
+- Route complete native iOS paste mutations through the terminal paste API when the
+  ClipboardEvent text is missing or truncated.
 
 ## 0.3.3 - 2026-08-13
-
-### Added
 
 - Add a customizable 2-by-8 mobile terminal shortcut editor.
 - Pin workspaces and linked worktrees in the Workspace tree.
 - Collapse linked worktrees beneath their repository.
 - Add clearer linked-worktree badges.
-
-### Changed
-
 - Route Page Up and Page Down shortcuts through terminal scrollback.
 - Hide overlay scrollbars inside dialogs, menus, and mobile controls.
 
 ## 0.3.2 - 2026-08-10
 
-### Changed
-
 - Restore compatibility with reverse proxies that rewrite the Host header.
 
 ## 0.3.1 - 2026-08-10
 
-### Changed
-
 - Check for updates through small platform manifests instead of full archives.
-
-### Fixed
-
 - Harden automatic updates, checksum verification, and executable replacement.
 - Block cross-origin and DNS-rebinding access to privileged APIs.
 - Stabilize terminal sizing during tab switches and slow connections.
@@ -431,641 +220,367 @@
 
 ## 0.3.0 - 2026-08-07
 
-### Added
-
-- Publish the initial release with terminals, workspace tools, file browsing,
-  diffs, and Agent Session Inspect.
+- Publish the initial release with terminals, workspace tools, file browsing, diffs, and
+  Agent Session Inspect.
 - Ship checksum-verified standalone packages for Linux and macOS on x86-64 and arm64.
 
 ## 0.2.31 - 2026-08-07
 
-### Fixed
-
-- Preserve rapid Chinese IME punctuation input without dropped, duplicated, or reordered characters.
+- Preserve rapid Chinese IME punctuation input without dropped, duplicated, or reordered
+  characters.
 
 ## 0.2.30 - 2026-08-07
 
-### Changed
-
-- Dismiss ordinary in-app notifications after 15 seconds while keeping active operations visible.
-
-### Fixed
-
-- Open existing worktrees from their repository source even when another checkout is focused.
+- Dismiss ordinary in-app notifications after 15 seconds while keeping active operations
+  visible.
+- Open existing worktrees from their repository source even when another checkout is
+  focused.
 
 ## 0.2.29 - 2026-08-06
 
-### Changed
-
 - Show the running herdr-gui version beside the app title.
-
-### Fixed
-
-- Relay remote OSC 52 clipboard requests to the browser that initiated them, including Pi file-tree copy actions.
+- Relay remote OSC 52 clipboard requests to the browser that initiated them, including
+  Pi file-tree copy actions.
 
 ## 0.2.28 - 2026-08-06
 
-### Added
-
 - Add half-page Terminal history scrolling with `Alt/Option+Page Up/Down`.
-
-### Fixed
-
-- Copy OSC 52 selections from remote Agent and TUI sessions through the browser clipboard.
+- Copy OSC 52 selections from remote Agent and TUI sessions through the browser
+  clipboard.
 
 ## 0.2.27 - 2026-08-06
 
-### Fixed
-
 - Open the corresponding Agent pane when a task-completion notification is clicked.
-- Refresh stale notification targets and fall back to the Workspace when the Agent pane has already closed.
+- Refresh stale notification targets and fall back to the Workspace when the Agent pane
+  has already closed.
 
 ## 0.2.26 - 2026-08-04
 
-### Added
-
-- Add a repository-scoped Worktree Lifecycle center for checkout status, hooks, pull, sync, open, create, and removal actions.
-
-### Changed
-
+- Add a repository-scoped Worktree Lifecycle center for checkout status, hooks, pull,
+  sync, open, create, and removal actions.
 - Align Agent status badges and present repository hook scripts as readable code blocks.
-
-### Fixed
-
-- Keep lifecycle actions scoped to the selected repository when several Git repositories are open.
-- Let Herdr close a worktree workspace before residual process cleanup to avoid stale working-tree removal failures.
+- Keep lifecycle actions scoped to the selected repository when several Git repositories
+  are open.
+- Let Herdr close a worktree workspace before residual process cleanup to avoid stale
+  working-tree removal failures.
 
 ## 0.2.25 - 2026-08-03
 
-### Changed
-
 - Align Agent status badges in the recent Pane switcher with Workspace status styles.
-
-### Fixed
-
-- Recover stale worktree removals while preserving residual files and stopping checkout processes.
-- Keep long hook and removal operations connected, then verify cleanup before reporting success.
+- Recover stale worktree removals while preserving residual files and stopping checkout
+  processes.
+- Keep long hook and removal operations connected, then verify cleanup before reporting
+  success.
 
 ## 0.2.24 - 2026-07-28
-
-### Fixed
 
 - Emit unquoted, safely escaped systemd `EnvironmentFile` paths.
 
 ## 0.2.23 - 2026-07-28
 
-### Added
-
 - Show assistant replies in Session Inspect with an optional user-only filter.
-
-### Changed
-
-- Rework Session Inspect around clearer conversation, details, preview, and export views.
+- Rework Session Inspect around clearer conversation, details, preview, and export
+  views.
 - Extend accent colors across top-bar controls, File Explorer, and Diff Viewer.
-
-### Fixed
-
-- Recover assistant messages from older Codex sessions without duplicating newer records.
+- Recover assistant messages from older Codex sessions without duplicating newer
+  records.
 
 ## 0.2.22 - 2026-07-28
 
-### Added
-
 - Add persistent accent colors, including the original neutral appearance.
-
-### Changed
-
 - Move the Workspaces, Files, and Diff Viewer controls into the top bar.
 - Reorganize Menu into concise preferences, updates, and runtime sections.
-
-### Fixed
-
 - Reject invalid persisted sidebar widths and stabilize Vite development login routing.
 - Improve Menu keyboard navigation, Escape handling, and focus restoration.
 
 ## 0.2.21 - 2026-07-27
 
-### Added
-
-- Add `herdr-gui service reload` for systemd and launchd services.
-
-### Changed
-
-- Preserve managed systemd wrapper commands during reinstall and emit portable
-  unquoted `ExecStart` paths.
+- Add `herdr-gui service reload` for systemd and launchd; preserve managed systemd
+  wrappers on reinstall and use portable executable paths.
 
 ## 0.2.20 - 2026-07-27
 
-### Added
-
 - Install and manage systemd or launchd user services from the CLI.
 - Generate persistent login tokens and tokenized URLs for non-localhost access.
-
-### Changed
-
 - Let the external service supervisor restart the process after automatic updates.
 
 ## 0.2.19 - 2026-07-27
-
-### Fixed
 
 - Keep the final Terminal columns visible with Apple system monospace fonts.
 - Name tabs created with `Cmd+T` consistently as `Tab N`.
 
 ## 0.2.18 - 2026-07-27
 
-### Added
-
-- Add macOS shortcuts to create, close, and switch tabs.
-- Show workspace-first recent Pane switching with Agent icons and status.
-
-### Changed
-
-- Add portable release configuration, CI, licensing metadata, and service examples.
-- Add systemd and launchd service examples with automatic supervisor detection and restarts.
-
-### Fixed
-
-- Scroll Terminal history with the mouse wheel and Page Up/Down without sending arrow input.
-- Keep Terminal selection scrollable and tab confirmation dialogs visible across views.
-
-### Security
-
-- Verify release archive checksums before installing or automatically updating.
+- Add macOS tab shortcuts and workspace-first recent pane switching with agent status.
+- Add portable releases and systemd/launchd service examples with supervisor-aware
+  restarts.
+- Scroll history with the wheel and Page Up/Down without sending arrows; preserve
+  scrolling during selection and tab confirmations across views.
+- Verify release checksums before installation or automatic updates.
 
 ## 0.2.17 - 2026-07-24
 
-### Added
-
 - Add an architecture-aware installer for Linux x86-64 and macOS Apple Silicon.
-
-### Fixed
-
-- Select the correct release archive and preserve process arguments when automatically updating on Linux or macOS.
+- Select the correct release archive and preserve process arguments when automatically
+  updating on Linux or macOS.
 
 ## 0.2.16 - 2026-07-24
-
-### Fixed
 
 - Send `Alt+Enter` and `Shift+Enter` as distinct terminal sequences.
 - Preserve IME composition and additional modifiers in Terminal shortcuts.
 
 ## 0.2.15 - 2026-07-24
 
-### Changed
-
 - Support Herdr protocol 17 and future compatible protocol versions.
-
-### Fixed
-
-- Recover stalled browser bridge connections and refresh reused terminals for additional clients.
+- Recover stalled browser bridge connections and refresh reused terminals for additional
+  clients.
 - Avoid redundant embedded asset rewrites that caused development reload churn.
 
 ## 0.2.14 - 2026-07-24
 
-### Added
-
 - Add Pi agent icons, message history, session summaries, and ATIF export.
-
-### Fixed
-
 - Read agent session files from the remote host when herdr-gui connects over SSH.
 
 ## 0.2.13 - 2026-07-22
 
-### Changed
-
-- Remove Herdr Server update checks and prompts while retaining connected version and protocol diagnostics.
+- Remove Herdr Server update checks and prompts while retaining connected version and
+  protocol diagnostics.
 
 ## 0.2.12 - 2026-07-20
-
-### Fixed
 
 - Restore Terminal rendering with Herdr 0.7.4 by avoiding repeated attach transitions.
 - Preserve indentation when pasting multiline text into terminal editors.
 
 ## 0.2.11 - 2026-07-20
 
-### Added
-
 - Add Grok Build session discovery, message history, Timeline, and ATIF export.
 - Show passive Herdr Server update status and update guidance in Menu.
-
-### Fixed
-
-- Negotiate and validate Herdr thin-client protocols 14 through 16 instead of assuming protocol 14.
+- Negotiate and validate Herdr thin-client protocols 14 through 16 instead of assuming
+  protocol 14.
 
 ## 0.2.10 - 2026-07-15
 
-### Added
-
-- Add overlay scrollbars that preserve content width and full-message viewing in Session Inspect.
-
-### Changed
-
+- Add overlay scrollbars that preserve content width and full-message viewing in Session
+  Inspect.
 - Create new worktrees from the latest `origin/main` revision.
-
-### Fixed
-
-- Create and group worktrees under the workspace that initiated them, including repositories opened in multiple workspaces.
-- Reload the frontend after self-update and harden static asset and SPA fallback handling.
+- Create and group worktrees under the workspace that initiated them, including
+  repositories opened in multiple workspaces.
+- Reload the frontend after self-update and harden static asset and SPA fallback
+  handling.
 
 ## 0.2.9 - 2026-07-15
 
-### Added
-
-- Preview existing workspace-relative Terminal file paths with `Cmd/Ctrl+Click`, including SSH workspaces.
-
-### Fixed
-
-- Restore Kimi assistant, reasoning, tool, and token details in session timelines without duplicate messages.
+- Preview existing workspace-relative Terminal file paths with `Cmd/Ctrl+Click`,
+  including SSH workspaces.
+- Restore Kimi assistant, reasoning, tool, and token details in session timelines
+  without duplicate messages.
 - Stop Terminal HTTP links before trailing parenthesized prose.
 
 ## 0.2.8 - 2026-07-13
 
-### Added
-
-- Add opt-in automatic `origin/main` updates for open workspaces, with per-repository controls.
-
-### Changed
-
+- Add opt-in automatic `origin/main` updates for open workspaces, with per-repository
+  controls.
 - Present task notifications as a switch in Menu.
-
-### Fixed
-
 - Prevent automatic updates for dirty, detached, changed, or conflicting Git checkouts.
 - Stop Terminal links before Unicode punctuation and invisible characters.
 
 ## 0.2.7 - 2026-07-10
 
-### Added
-
 - Add a `Ctrl+Tab` recent pane switcher with current-pane marking.
-
-### Changed
-
 - Use the HTTPS release host for install and self-update downloads.
-
-### Fixed
-
 - Allow terminal scrolling while selecting text.
 - Improve Kimi agent icon contrast in light theme.
 
 ## 0.2.6 - 2026-07-07
 
-### Added
-
 - Add Session Inspect summaries with raw session preview and export.
 - Add Timeline and ATIF views for agent sessions, including ATIF export.
-
-### Fixed
-
 - Keep session preview search focused correctly after `Cmd/Ctrl+F`.
 - Classify Codex tool output as observations in the session timeline.
 
 ## 0.2.5 - 2026-07-06
 
-### Added
-
 - Add an agent message history drawer for Codex, Claude, and Kimi sessions.
 - Show the Herdr integration install command when session history is unavailable.
-
-### Changed
-
 - Remove manual send-message actions from Command K and agent menus.
 
 ## 0.2.4 - 2026-07-06
-
-### Fixed
 
 - Do not show task completion notifications for the currently active pane.
 
 ## 0.2.3 - 2026-07-06
 
-### Fixed
-
 - Stabilize terminal font fallback so Chrome and Safari render closer together.
 
 ## 0.2.2 - 2026-07-05
-
-### Fixed
 
 - Fix self-update restarts when herdr-gui runs under a parent process wrapper.
 - Show restart mode and diagnostic log path while applying updates.
 
 ## 0.2.1 - 2026-07-05
 
-### Added
-
 - Add unauthenticated `/health` and `/healthz` endpoints for probes.
 
 ## 0.2.0 - 2026-07-05
 
-### Added
-
 - Add browser task completion notifications with an Open workspace action.
 - Add one-click update and restart for Linux x64 standalone releases.
-
-### Fixed
-
 - Keep password login valid across herdr-gui self-restarts.
 
 ## 0.1.10 - 2026-07-05
 
-### Added
-
 - Add File Explorer drag-and-drop uploads plus confirmed file and directory deletion.
 - Show Git status badges in File Explorer for changed files and directories.
-
-### Changed
-
 - Move File Explorer delete actions into the right-click and long-press menu.
 
 ## 0.1.9 - 2026-07-04
 
-### Added
-
 - Show all Diff Viewer files in order with image previews for binary image diffs.
 - Add File Explorer downloads for files and directories.
-
-### Fixed
-
 - Keep directory downloads scoped to the workspace and package them as `tar.gz`.
 
 ## 0.1.8 - 2026-07-03
-
-### Fixed
 
 - Keep Command K selection anchored to the top result while search results change.
 
 ## 0.1.7 - 2026-07-02
 
-### Added
-
 - Show per-file added and deleted line counts in Diff Viewer.
 
 ## 0.1.6 - 2026-07-02
 
-### Added
-
 - Add search controls to Diff Viewer with match navigation and shortcuts.
 - Add desktop Diff Viewer wrap toggle.
-
-### Fixed
-
 - Keep split diff panes at equal width when wrapping is disabled.
 - Keep hidden File Preview from intercepting Diff Viewer search shortcuts.
 
 ## 0.1.5 - 2026-06-30
 
-### Added
-
 - Add workspace menu Git pull action.
 - Add Diff Viewer mode for comparing the current branch against main.
 - Add mobile Ctrl+R shortcut button.
-
-### Changed
-
 - Improve toast presentation for command and hook output.
 - Hide the mobile tab line when there is only one tab.
 
 ## 0.1.4 - 2026-06-29
 
-### Added
-
 - Render Markdown files in File Explorer with a Raw toggle.
 - Open file paths directly from the command menu.
-
-### Changed
-
 - Preserve Terminal, File Preview, and Diff Viewer state when switching views.
 - Keep File Explorer focused on the active preview file and expand parent folders.
-
-### Fixed
-
 - Restore the active File Preview after page refresh.
 
 ## 0.1.3 - 2026-06-27
 
-### Added
-
 - Styled app-wide tooltips for existing title hints.
-
-### Changed
-
-- Narrow command-menu close/remove actions to the current workspace, worktree, pane, or agent context.
+- Narrow command-menu close/remove actions to the current workspace, worktree, pane, or
+  agent context.
 - Remove agent Ctrl+C/Ctrl+D shortcuts from command and context menus.
 - Remove File Explorer and Diff Viewer shortcuts from workspace context menus.
-
-### Fixed
-
 - Avoid detecting `/path` fragments inside relative terminal paths as previewable files.
 
 ## 0.1.2 - 2026-06-27
 
-### Added
-
 - Cmd/Ctrl-click terminal file paths to preview files in a dialog.
 - Image previews for common image files, including absolute paths such as `/tmp/...`.
-
-### Fixed
-
 - Keep Agent and Workspace terminal switching in sync after focusing agent panes.
 
 ## 0.1.1 - 2026-06-26
 
-### Added
-
-- Text file preview in File Explorer with line numbers, search, and syntax highlighting.
-- `file.read` bridge API for local and SSH-backed workspaces.
-
-### Changed
-
-- File Explorer folders expand on single click.
-- Lazy-load terminal and file preview editor chunks to reduce the main bundle.
-
-### Fixed
-
-- Preserve text previews when UTF-8 files are truncated at the preview limit.
-- Keep Workspaces shortcut behavior consistent from file preview.
+- Add searchable, syntax-highlighted text previews with line numbers for local and SSH
+  workspaces; preserve UTF-8 at the preview limit.
+- Expand folders on single click and load terminal/preview assets on demand.
+- Keep the Workspaces shortcut consistent from file preview.
 
 ## 0.1.0 - 2026-06-26
 
-### Added
-
 - File Explorer side panel with cached directory loading.
-- Diff Viewer with changed-file tree, split/unified views, syntax highlighting, and mobile diff browsing.
+- Diff Viewer with changed-file tree, split/unified views, syntax highlighting, and
+  mobile diff browsing.
 - Shortcut Lookup dialog from the Menu.
-
-### Changed
-
 - Improve mobile terminal controls with a compact floating shortcut panel.
 - Diff Viewer opens with `Ctrl+Shift+G` on desktop.
 
 ## 0.0.12 - 2026-06-25
 
-### Added
-
 - Show connected client count and allow pausing other herdr-gui clients.
 - Show a reconnect shortcut in the top bar when this client is paused or disconnected.
-
-### Changed
-
 - Move connection pause controls into the Menu connection section.
 
 ## 0.0.11 - 2026-06-25
 
-### Added
-
-- Pause/resume connection control to stop this browser from syncing with Herdr.
-
-### Changed
-
-- Worktree lucky branch names no longer include a `feature/` prefix.
-- Connection resumed toast now dismisses after 5 seconds.
-
-### Fixed
-
-- Text paste now uses terminal paste handling for multiline content.
-- Shift+Enter is sent as a modified Enter sequence for multiline agent input.
+- Pause/resume this browser's Herdr sync; dismiss resumed notices after 5 seconds.
+- Remove the `feature/` prefix from lucky worktree branch names.
+- Preserve multiline paste and send Shift+Enter distinctly for multiline agent input.
 
 ## 0.0.10 - 2026-06-25
 
-### Added
-
 - External provider icons for agent rows.
 - `Ctrl+1` through `Ctrl+9` shortcuts for switching tabs.
-
-### Changed
-
 - Improve agent icon and status-dot alignment.
 - Improve command menu search ranking with top results and keywords.
 
 ## 0.0.9 - 2026-06-25
 
-### Added
-
-- Lucky default names for new workspaces and worktree branches.
-- Command menu actions for focusing panes by direction.
-
-### Changed
-
-- Dialogs with inputs now focus the primary field more reliably.
-- Terminal links now require Cmd/Ctrl-click to open.
-
-### Fixed
-
-- Confirm dialogs now keep keyboard focus and support Enter to confirm.
-- Removed the unused Read pane output action and dialog.
+- Add lucky workspace/worktree names and directional pane focus commands.
+- Improve input/confirmation focus and Enter handling; require Cmd/Ctrl-click for
+  terminal links.
+- Remove the unused Read pane output action.
 
 ## 0.0.8 - 2026-06-24
 
-### Added
-
-- Pane management with split, resize, zoom, focus, and close actions.
-- Mobile pane switcher for multi-pane terminal sessions.
-
-### Changed
-
-- Reorganized the command menu into clearer action groups.
-- Improve mobile safe-area, keyboard, and terminal viewport handling.
-
-### Fixed
-
-- Reduce terminal right-side blank space and remove the xterm overview-ruler line.
-- Improve multi-pane terminal attachment stability for one browser client.
+- Add pane split, resize, zoom, focus, and close actions plus a mobile pane switcher.
+- Reorganize the command menu and improve mobile safe areas, keyboard, and terminal
+  sizing.
+- Reduce terminal blank space and improve split-pane attachment stability for one
+  browser.
 
 ## 0.0.7 - 2026-06-24
 
-### Added
-
-- Repo-level Worktree Hooks dialog that reads current repo `paseo.json` worktree hooks.
-- herdr-gui settings storage for per-repo hook enablement.
-- Paseo `setup`, `opened`, `teardown`, and `removed` worktree hook support.
-
-### Changed
-
-- Move worktree hook controls from global Menu to the workspace context menu.
-- Auto-dismiss regular toast notifications after 3 minutes.
-
-### Fixed
-
-- Improve multi-client terminal stability and weak-network websocket handling.
-- Avoid stale plugin-based worktree hook behavior by using only repo `paseo.json`.
+- Configure repository-scoped Paseo setup/opened/teardown/removed hooks from the
+  workspace menu, with saved per-repository enablement.
+- Use only repository `paseo.json` hooks to avoid stale plugin behavior.
+- Improve multi-client terminals and weak-network WebSockets; dismiss ordinary notices
+  after 3 minutes.
 
 ## 0.0.6 - 2026-06-24
 
-### Added
-
-- Automatic update checks with one-click standalone binary update.
-- Agent and tab context menus, plus remove worktree from the command menu.
-- Worktree git status badges in the sidebar.
-
-### Fixed
-
-- Avoid mobile keyboard popups while viewing, switching, or using terminal shortcut buttons.
-- Improve mobile and Safari terminal scrolling, selection, paste, and loading behavior.
-- Make update installs safer with same-directory binary replacement.
+- Add automatic update checks and one-click standalone updates with safer same-directory
+  binary replacement.
+- Add agent/tab context menus, worktree removal commands, and sidebar Git badges.
+- Improve mobile/Safari scrolling, selection, paste, and loading; avoid unwanted mobile
+  keyboard popups.
 
 ## 0.0.5 - 2026-06-23
 
-### Added
-
-- `herdr-gui --version` and `herdr-gui -V`.
-
-### Fixed
-
-- Split worktree hooks into before-remove and removed phases, with visible hook results and safer terminal recovery after removal.
-- Expand the command menu with New worktree and tab management actions, plus confirmations for closing tabs and panes.
-- Improve terminal focus, Chinese question-mark input, copy cleanup, and Safari/mobile selection-anchor handling.
-- Keep important operation failures in dismissible toast notifications instead of transient top-level error bars.
-- Restore terminal Chinese IME behavior by avoiding xterm helper textarea selection overrides.
-- Ensure release binaries embed freshly built frontend assets.
+- Add `herdr-gui --version` and `-V`; ensure releases embed fresh frontend assets.
+- Separate before-remove and removed worktree hooks, show results, and recover terminals
+  safely after removal.
+- Add worktree/tab commands and confirm pane/tab closure; keep important failures in
+  dismissible notices.
+- Fix terminal focus, Chinese IME/punctuation, copied text, and Safari/mobile selection.
 
 ## 0.0.4 - 2026-06-23
 
-### Added
-
-- Clickable blue HTTP/HTTPS links in terminal output.
-- Changelog modal from the Menu.
-- Light theme with Menu toggle.
-- `Cmd+B` sidebar toggle.
-- Terminal maximize toggle.
-- Terminal Unicode grapheme handling and monospaced CJK font fallback for Chinese text selection.
-- Hide sidebar and terminal maximize controls on mobile.
-- Safari terminal click handling to avoid sticky text selection anchors.
-- Faster workspace and agent status refresh in the sidebar.
-- Terminal loading overlay while switching panes or workspaces.
-- Physical Page Up and Page Down key handling in terminal.
-- Open existing Herdr worktrees from the workspace menu and Actions panel.
-- macOS Command key shortcuts in terminal for line start, line end, and delete to line start.
-- Chinese question mark input fallback in terminal.
-- Faster terminal switching with reused terminal attach sessions.
-- Loading indicator for the target workspace while focus changes.
+- Add terminal HTTP(S) links, a changelog viewer, light theme, `Cmd+B` sidebar toggle,
+  and terminal maximize controls; hide sidebar/maximize controls on mobile.
+- Improve Chinese text selection, font fallback, punctuation input, and Safari selection
+  behavior.
+- Add Page Up/Down and macOS line-editing shortcuts.
+- Open existing worktrees from workspace menus; speed up terminal switching and
+  workspace/agent status refresh with loading indicators.
 
 ## 0.0.3 - 2026-06-23
 
-### Added
-
 - Actions command combobox for workspace, tab, pane, agent, and hook actions.
-
-### Changed
-
 - Removed the top-bar updated timestamp.
 
 ## 0.0.2 - 2026-06-23
 
-### Added
-
 - Version display in Menu.
 - Release packaging script for versioned and latest `tar.xz` archives.
-
-### Fixed
-
 - Browser-side image and `Ctrl+V` paste handling in terminal.
 
 ## 0.0.1 - 2026-06-23
-
-### Added
 
 - Initial web UI, Bun bridge, terminal, worktree, hooks, uploads, and standalone binary.
