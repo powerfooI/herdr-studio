@@ -57,7 +57,11 @@ import {
   TerminalEndpointPresentation,
   terminalMouseUsesSelection,
 } from "../terminalEndpointPresentation";
-import { terminalFocusBlockedByOverlay } from "../terminalFocus";
+import {
+  terminalFocusBlockedByOverlay,
+  terminalPointerShouldBlurInput,
+  terminalPointerShouldFocusInput,
+} from "../terminalFocus";
 import { uploadTerminalImage } from "../terminalImageUpload";
 import {
   isTerminalImeCommittedInputType,
@@ -1634,6 +1638,18 @@ export function TerminalView({
     const onTerminalMouseDown = (e: MouseEvent) => {
       if (replayingSelection) return;
       if (
+        terminalPointerShouldFocusInput(
+          shouldAvoidVirtualKeyboard(),
+          e.button,
+          composerOpenRef.current,
+        )
+      ) {
+        // Selection replay can defer xterm's own mousedown handler until after
+        // the browser's user-activation window. Focus during the physical tap
+        // so mobile browsers can open the virtual keyboard.
+        term.focus();
+      }
+      if (
         !terminalMouseUsesSelection(
           endpointPresentation.mouseReporting,
           e,
@@ -1867,8 +1883,16 @@ export function TerminalView({
       touchRemainder = 0;
     };
     const onDocumentPointerDown = (e: PointerEvent) => {
-      if (!shouldAvoidVirtualKeyboard()) return;
-      if (isEditableElement(e.target)) return;
+      const targetInsideTerminal =
+        e.target instanceof Node && container.contains(e.target);
+      if (
+        !terminalPointerShouldBlurInput(
+          shouldAvoidVirtualKeyboard(),
+          isEditableElement(e.target),
+          targetInsideTerminal,
+        )
+      )
+        return;
       term.textarea?.blur();
     };
     container.addEventListener("touchstart", onTouchStart, {

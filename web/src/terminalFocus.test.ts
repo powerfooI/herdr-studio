@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { terminalFocusBlockedByOverlay } from "./terminalFocus";
+import {
+  terminalFocusBlockedByOverlay,
+  terminalPointerShouldBlurInput,
+  terminalPointerShouldFocusInput,
+} from "./terminalFocus";
 
 function docWithOpenPopper(open: boolean) {
   return {
@@ -52,5 +56,21 @@ describe("terminalFocusBlockedByOverlay", () => {
         docWithOpenPopper(false),
       ),
     ).toBe(false);
+  });
+});
+
+describe("terminal pointer focus", () => {
+  test("focuses coarse-pointer primary taps unless the composer is open", () => {
+    expect(terminalPointerShouldFocusInput(true, 0, false)).toBe(true);
+    expect(terminalPointerShouldFocusInput(true, 0, true)).toBe(false);
+    expect(terminalPointerShouldFocusInput(true, 1, false)).toBe(false);
+    expect(terminalPointerShouldFocusInput(false, 0, false)).toBe(false);
+  });
+
+  test("blurs coarse-pointer taps only outside terminal and editable input", () => {
+    expect(terminalPointerShouldBlurInput(true, false, false)).toBe(true);
+    expect(terminalPointerShouldBlurInput(true, true, false)).toBe(false);
+    expect(terminalPointerShouldBlurInput(true, false, true)).toBe(false);
+    expect(terminalPointerShouldBlurInput(false, false, false)).toBe(false);
   });
 });
