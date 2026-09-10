@@ -952,12 +952,14 @@ export function createTerminalBridge(args: {
         }
         const input = Buffer.from(b64, "base64");
         if (input.length === 0) return fail("terminal input required");
-        await waitForOwnedTerminal(
+        const validateAttachment = await waitForOwnedTerminal(
           ws,
           requestedTerminalId,
           shared,
           requestIsCurrent,
         );
+        // Even a ready terminal yields above; recheck at the side-effect boundary.
+        validateAttachment();
         clipboardTarget = {
           ws,
           terminalId: requestedTerminalId,

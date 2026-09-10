@@ -1864,6 +1864,7 @@ function browserSelectionIsCurrent(navigation: BrowserNavigation) {
   const workspaceId = navigation.workspaceId;
   const tabId = workspaceId ? navigation.tabIds[workspaceId] : undefined;
   return (
+    current.revision === navigation.revision &&
     current.workspaceId === workspaceId &&
     (!workspaceId || current.tabIds[workspaceId] === tabId) &&
     (!tabId || current.paneIds[tabId] === navigation.paneIds[tabId])

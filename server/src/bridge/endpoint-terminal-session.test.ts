@@ -1509,3 +1509,108 @@ for (const invalidate of ["lease", "dispose"] as const) {
     }
   });
 }
+
+for (const invalidate of [
+  "detach",
+  "reattach",
+  "lease",
+  "dispose",
+  "replace",
+] as const) {
+  test(`ready shared input revalidates ${invalidate} after its await before input or clipboard ownership`, async () => {
+    const socketPath = await startSessionServer({ methods: creationMethods });
+    const a = {} as ServerWebSocket<unknown>,
+      b = {} as ServerWebSocket<unknown>;
+    const replies: Array<{ ws: ServerWebSocket<unknown>; message: any }> = [];
+    const bridge = createTerminalBridge({
+      clientSocketPath: socketPath,
+      herdrProtocol: async () => 22,
+      lookupPaneId: async () => "w1:p1",
+      safeSend: (ws, payload) => {
+        replies.push({ ws, message: JSON.parse(payload) });
+        return true;
+      },
+      clientLabel: () => "ready-input-race",
+      markRpcError: () => {},
+    });
+    const forwarded: string[] = [];
+    const sessions: EndpointTerminalSession[] = [];
+    const original = EndpointTerminalSession.prototype.input;
+    const inputSpy = spyOn(
+      EndpointTerminalSession.prototype,
+      "input",
+    ).mockImplementation(function (
+      this: EndpointTerminalSession,
+      data: Buffer,
+    ) {
+      sessions.push(this);
+      forwarded.push(data.toString());
+      original.call(this, data);
+    });
+    const attach = (ws: typeof a) =>
+      bridge.handleTerminalRpc(ws, "attach", "terminal.attach", {
+        terminal_id: "term1",
+        cols: 80,
+        rows: 24,
+        relay_active: false,
+      });
+    let current = true;
+    try {
+      await attach(a);
+      await attach(b);
+      await bridge.handleTerminalRpc(b, "owner", "terminal.input", {
+        terminal_id: "term1",
+        data: "Qg==",
+      });
+      const session = sessions[0];
+      expect(session.connecting).toBeNull();
+      expect(session.isClosed).toBe(false);
+      expect(bridge.viewedTerminals(a)).toEqual(["term1"]);
+      expect(bridge.viewedTerminals(b)).toEqual(["term1"]);
+      forwarded.length = 0;
+      // No sleep or await between starting ready input and invalidating its lease/token.
+      const input = bridge.handleTerminalRpc(
+        a,
+        "stale-input",
+        "terminal.input",
+        { terminal_id: "term1", data: "WA==" },
+        () => current,
+      );
+      let invalidating: unknown;
+      if (invalidate === "detach")
+        invalidating = bridge.handleTerminalRpc(
+          a,
+          "detach",
+          "terminal.detach",
+          { terminal_id: "term1" },
+        );
+      else if (invalidate === "reattach") invalidating = attach(a);
+      else if (invalidate === "lease") current = false;
+      else if (invalidate === "dispose") bridge.dispose();
+      else {
+        session.close();
+        invalidating = attach(a);
+      }
+      await Promise.all([input, invalidating]);
+      if (invalidate === "detach")
+        expect(bridge.viewedTerminals(a)).toEqual([]);
+      expect(forwarded).toEqual([]);
+      expect(
+        replies.find(({ message }) => message.id === "stale-input")?.message
+          .error,
+      ).toBeDefined();
+      if (invalidate !== "dispose" && invalidate !== "replace") {
+        expect(bridge.viewedTerminals(b)).toEqual(["term1"]);
+        session.emit("clipboard", { data: "Y29weQ==" });
+        expect(
+          replies
+            .filter(({ message }) => message.terminal_clipboard)
+            .map(({ ws }) => ws),
+        ).toEqual([b]);
+      }
+    } finally {
+      inputSpy.mockRestore();
+      bridge.dispose();
+    }
+  });
+}

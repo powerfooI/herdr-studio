@@ -131,7 +131,7 @@ describe("browser navigation projection", () => {
     ).toBe("a1q");
     expect(
       projectBrowserNavigation(selected, [], [], []).browserNavigation,
-    ).toEqual(emptyBrowserNavigation());
+    ).toEqual({ ...emptyBrowserNavigation(), revision: selected.revision + 1 });
   });
 
   test("remembers per-workspace tabs and per-tab panes without adopting later focus", () => {
@@ -653,3 +653,207 @@ for (const kind of [
     });
   });
 }
+
+for (const kind of [
+  "tab",
+  "workspace",
+  "worktree-create",
+  "worktree-open",
+  "worktree-cwd",
+  "split",
+  "notification",
+  "notification-fallback",
+] as const) {
+  test(`delayed ${kind} cannot adopt after workspace A-B-A navigation`, async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const method =
+        kind === "tab"
+          ? "tab.create"
+          : kind === "workspace"
+            ? "workspace.create"
+            : kind === "worktree-create"
+              ? "worktree.create"
+              : kind.startsWith("worktree")
+                ? "worktree.open"
+                : kind === "split"
+                  ? "pane.split"
+                  : "pane.get";
+      control.actionWait = (call) =>
+        call === method ? held : Promise.resolve();
+      const pending =
+        kind === "tab"
+          ? store.createTab("a")
+          : kind === "workspace"
+            ? store.createWorkspace("new")
+            : kind === "worktree-create"
+              ? store.createWorktree("a", "topic")
+              : kind === "worktree-open"
+                ? store.openWorktree("a", "topic")
+                : kind === "worktree-cwd"
+                  ? store.openWorktreeFromCwd("/tmp/a", "main")
+                  : kind === "split"
+                    ? store.splitPane("a1p", "right")
+                    : store.focusTaskNotificationTarget({
+                        connectionId: "test",
+                        runtimeGeneration: 1,
+                        workspaceId:
+                          kind === "notification-fallback" ? "b" : "a",
+                        paneId:
+                          kind === "notification-fallback" ? "closed" : "a1q",
+                      });
+      await store.focusWorkspace("b");
+      await store.focusWorkspace("a");
+      release();
+      await pending;
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a1p");
+    });
+  });
+}
+
+for (const scope of ["tab", "pane"] as const) {
+  test(`delayed tab creation cannot adopt after same-workspace ${scope} ABA`, async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      let release!: () => void;
+      control.createWait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const pending = store.createTab("a");
+      if (scope === "tab") {
+        await store.focusTab("a2");
+        await store.focusTab("a1");
+      } else {
+        await store.focusPane("a1q");
+        await store.focusPane("a1p");
+      }
+      release();
+      await pending;
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a1p");
+    });
+  });
+}
+
+test("ordinary snapshots do not invalidate pending adoption, including copied navigation maps", async () => {
+  await withBrowserStore(async (_calls, topology, control) => {
+    let release!: () => void;
+    control.createWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pending = store.createTab("a");
+    const initialNavigation = store.get().browserNavigation;
+    topology.workspaces[0] = { ...topology.workspaces[0], label: "renamed" };
+    topology.tabs.push({ ...topology.tabs[2], tab_id: "b2" });
+    topology.panes.push({ ...topology.panes[3], tab_id: "b2", pane_id: "b2p" });
+    await store.refresh();
+    await store.refresh();
+    expect(initialNavigation.workspaceId).toBe("a");
+    expect(store.get().browserNavigation).not.toBe(initialNavigation);
+    expect(store.get().browserNavigation.revision).toBe(
+      initialNavigation.revision,
+    );
+    release();
+    await pending;
+    await store.refresh();
+    expect(store.get().selectedPaneId).toBe("a2p");
+  });
+});
+
+for (const paneId of ["a1p", "closed"]) {
+  test(`successful same-target notification ${paneId} adoption invalidates an older competing creation`, async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      let release!: () => void;
+      control.createWait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const pending = store.createTab("a");
+      await store.focusTaskNotificationTarget({
+        connectionId: "test",
+        runtimeGeneration: 1,
+        workspaceId: "a",
+        paneId,
+      });
+      release();
+      await pending;
+      await store.refresh();
+      expect(store.get().selectedPaneId).toBe("a1p");
+    });
+  });
+}
+
+test("revision snapshots are immutable; reconciliation changes revision only for a different active target", () => {
+  const topology = navigationTopology();
+  const initial = projectBrowserNavigation(
+    emptyBrowserNavigation(),
+    topology.workspaces,
+    topology.tabs,
+    topology.panes,
+  ).browserNavigation;
+  Object.freeze(initial);
+  Object.freeze(initial.tabIds);
+  Object.freeze(initial.paneIds);
+  const selected = selectBrowserTarget(initial, "a", "a1", "a1q");
+  expect(selected.revision).toBe(initial.revision + 1);
+  expect(initial.paneIds.a1).toBe("a1p");
+  const stable = projectBrowserNavigation(
+    selected,
+    topology.workspaces,
+    topology.tabs,
+    topology.panes,
+  ).browserNavigation;
+  expect(stable).not.toBe(selected);
+  expect(stable.revision).toBe(selected.revision);
+  const removed = projectBrowserNavigation(
+    stable,
+    topology.workspaces,
+    topology.tabs,
+    topology.panes.filter((pane) => pane.pane_id !== "a1q"),
+  ).browserNavigation;
+  expect(removed.revision).toBe(stable.revision + 1);
+  expect(removed.paneIds.a1).toBe("a1p");
+});
+
+test("navigation revisions remain partitioned by connection and reset with runtime session state", async () => {
+  await withBrowserStore(async () => {
+    await store.focusWorkspace("b");
+    const original = store.get().browserNavigation;
+    __storeTesting.replaceState(
+      activateConnectionState(store.get(), "other", 2),
+    );
+    expect(store.get().browserNavigation.revision).toBe(0);
+    await store.refresh();
+    await store.focusPane("a1q");
+    __storeTesting.replaceState(
+      activateConnectionState(store.get(), "test", 3),
+    );
+    expect(store.get().browserNavigation).toEqual(original);
+    expect(emptyServerSessionState(2).browserNavigation.revision).toBe(0);
+  });
+});
+
+test("shared fallback retains shared focus, creation and split selection semantics", async () => {
+  await withBrowserStore(async (calls, _topology, control) => {
+    control.mode = "shared";
+    await store.refresh();
+    const revision = store.get().browserNavigation.revision;
+    await store.createTab("a");
+    expect(calls.find((call) => call.method === "tab.create")?.params).toEqual({
+      workspace_id: "a",
+      focus: true,
+    });
+    await store.focusWorkspace("b");
+    expect(
+      calls.some(
+        (call) =>
+          call.method === "workspace.focus" && call.params.workspace_id === "b",
+      ),
+    ).toBe(true);
+    await store.splitPane("a1p", "right");
+    expect(store.get().selectedPaneId).toBe("a1q");
+    expect(store.get().browserNavigation.revision).toBe(revision);
+  });
+});

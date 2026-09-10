@@ -2,13 +2,15 @@ import type { Pane, PaneLayout, Tab, Workspace } from "./types";
 
 /** Browser-memory selection, partitioned by the store's connection/runtime lease. */
 export interface BrowserNavigation {
+  /** Explicit navigation/adoption invalidates pending results, including ABA. */
+  revision: number;
   workspaceId: string | null;
   tabIds: Record<string, string>;
   paneIds: Record<string, string>;
 }
 
 export function emptyBrowserNavigation(): BrowserNavigation {
-  return { workspaceId: null, tabIds: {}, paneIds: {} };
+  return { revision: 0, workspaceId: null, tabIds: {}, paneIds: {} };
 }
 
 export function selectBrowserTarget(
@@ -18,6 +20,7 @@ export function selectBrowserTarget(
   paneId?: string,
 ): BrowserNavigation {
   return {
+    revision: navigation.revision + 1,
     workspaceId,
     tabIds: tabId
       ? { ...navigation.tabIds, [workspaceId]: tabId }
@@ -81,8 +84,23 @@ export function projectBrowserNavigation(
   const selectedPaneId = selectedTabId
     ? (paneIds[selectedTabId] ?? null)
     : null;
+  const previousTabId = navigation.workspaceId
+    ? navigation.tabIds[navigation.workspaceId]
+    : undefined;
+  const previousPaneId = previousTabId
+    ? (navigation.paneIds[previousTabId] ?? null)
+    : null;
+  const selectionChanged =
+    workspaceId !== navigation.workspaceId ||
+    selectedTabId !== previousTabId ||
+    selectedPaneId !== previousPaneId;
   return {
-    browserNavigation: { workspaceId, tabIds, paneIds },
+    browserNavigation: {
+      revision: navigation.revision + (selectionChanged ? 1 : 0),
+      workspaceId,
+      tabIds,
+      paneIds,
+    },
     workspaces: workspaces.map((w) => ({
       ...w,
       focused: w.workspace_id === workspaceId,
