@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.0 - 2026-09-10
+
 - Use stable Herdr 0.9.0 endpoints for terminals, with optional legacy fallback via
   `HERDR_GUI_DISABLE_ENDPOINT=1`; split panes retain their shared layout sizes.
 - Keep endpoint workspace/tab navigation local to each browser across reconnects.
