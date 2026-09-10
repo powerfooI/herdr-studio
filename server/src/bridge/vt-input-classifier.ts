@@ -150,6 +150,13 @@ const CSI_FINALS: Record<string, number> = {
   Z: KEY.BackTab,
 };
 
+const CSI_FN_FINALS: Record<string, number> = {
+  P: 1,
+  Q: 2,
+  R: 3,
+  S: 4,
+};
+
 const CSI_TILDE_KEYS: Record<number, number> = {
   1: KEY.Home,
   2: KEY.Insert,
@@ -202,7 +209,7 @@ function xtermModifiers(param: number): number {
 
 /** Control byte 0x00-0x1f → key event, or null when handled elsewhere. */
 function controlByteKey(b: number): PaneInputEvent | null {
-  if (b === 0x0d || b === 0x0a) return key(KEY.Enter);
+  if (b === 0x0d) return key(KEY.Enter);
   if (b === 0x09) return key(KEY.Tab);
   if (b === 0x7f) return key(KEY.Backspace);
   if (b === 0x08) return key(KEY.Char, { char: 0x68, modifiers: MOD_CONTROL }); // ctrl+h
@@ -371,6 +378,37 @@ export class VtInputClassifier {
         const mods = xtermModifiers(params[1] ?? 1);
         return { events: [key(CSI_FINALS[final], { modifiers: mods })], next };
       }
+      if (final in CSI_FN_FINALS && params[0] === 1) {
+        const mods = xtermModifiers(params[1] ?? 1);
+        return {
+          events: [
+            key(KEY.F, {
+              fn: CSI_FN_FINALS[final],
+              modifiers: mods,
+            }),
+          ],
+          next,
+        };
+      }
+      // TerminalView emits CSI-u for the modified Enter variants that xterm's
+      // legacy byte stream cannot otherwise distinguish from plain Enter.
+      if (final === "u" && params[0] === 13 && params.length <= 2) {
+        const modifierParam = params[1] ?? 1;
+        if (
+          Number.isSafeInteger(modifierParam) &&
+          modifierParam >= 1 &&
+          modifierParam <= 16
+        ) {
+          return {
+            events: [
+              key(KEY.Enter, {
+                modifiers: xtermModifiers(modifierParam),
+              }),
+            ],
+            next,
+          };
+        }
+      }
       return { events: [], next }; // unknown CSI: swallow
     }
 
@@ -402,7 +440,20 @@ export class VtInputClassifier {
         next: i + 1 + len,
       };
     }
-    // ESC + control byte: treat the ESC as Esc and reprocess the byte.
+    // xterm represents Alt+Backspace and Alt+Ctrl combinations by prefixing
+    // the ordinary control byte with ESC, just as it does for printable chars.
+    const controlEvent = controlByteKey(second);
+    if (controlEvent?.type === "key") {
+      return {
+        events: [
+          {
+            ...controlEvent,
+            modifiers: controlEvent.modifiers | MOD_ALT,
+          },
+        ],
+        next: i + 2,
+      };
+    }
     return { events: [key(KEY.Esc)], next: i + 1 };
   }
 }

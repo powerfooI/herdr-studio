@@ -68,6 +68,39 @@ describe("VtInputClassifier", () => {
     ]);
   });
 
+  test("preserves Ctrl+J and modified Enter variants", () => {
+    expect(feed("\n")).toEqual([
+      {
+        type: "key",
+        code: KEY.Char,
+        char: 0x6a,
+        fn: undefined,
+        modifiers: MOD_CONTROL,
+        generatedText: undefined,
+      },
+    ]);
+    expect(feed("\x1b[13;2u")).toEqual([
+      {
+        type: "key",
+        code: KEY.Enter,
+        char: undefined,
+        fn: undefined,
+        modifiers: MOD_SHIFT,
+        generatedText: undefined,
+      },
+    ]);
+    expect(feed("\x1b[13;3u")).toEqual([
+      {
+        type: "key",
+        code: KEY.Enter,
+        char: undefined,
+        fn: undefined,
+        modifiers: MOD_ALT,
+        generatedText: undefined,
+      },
+    ]);
+  });
+
   test("ctrl+letter maps to Char with CONTROL", () => {
     expect(feed([0x03])).toEqual([
       {
@@ -114,6 +147,26 @@ describe("VtInputClassifier", () => {
     ]);
   });
 
+  test("preserves every modified CSI key family emitted by xterm", () => {
+    for (const [sequence, expected] of [
+      ["\x1b[1;2A", { code: KEY.Up, modifiers: MOD_SHIFT }],
+      ["\x1b[1;3H", { code: KEY.Home, modifiers: MOD_ALT }],
+      ["\x1b[1;5F", { code: KEY.End, modifiers: MOD_CONTROL }],
+      ["\x1b[3;2~", { code: KEY.Delete, modifiers: MOD_SHIFT }],
+      ["\x1b[5;5~", { code: KEY.PageUp, modifiers: MOD_CONTROL }],
+      ["\x1b[1;2P", { code: KEY.F, fn: 1, modifiers: MOD_SHIFT }],
+      ["\x1b[1;3S", { code: KEY.F, fn: 4, modifiers: MOD_ALT }],
+      ["\x1b[15;2~", { code: KEY.F, fn: 5, modifiers: MOD_SHIFT }],
+      ["\x1b[24;3~", { code: KEY.F, fn: 12, modifiers: MOD_ALT }],
+    ] as const) {
+      expect(feed(sequence)).toHaveLength(1);
+      expect(feed(sequence)[0]).toMatchObject({
+        type: "key",
+        ...expected,
+      });
+    }
+  });
+
   test("tilde keys: delete, home, end, page up/down", () => {
     const codeAt = (input: string) => {
       const e = feed(input)[0];
@@ -141,6 +194,29 @@ describe("VtInputClassifier", () => {
         char: 0x78,
         fn: undefined,
         modifiers: MOD_ALT,
+        generatedText: undefined,
+      },
+    ]);
+  });
+
+  test("alt-prefixed control bytes remain one modified key", () => {
+    expect(feed("\x1b\x7f")).toEqual([
+      {
+        type: "key",
+        code: KEY.Backspace,
+        char: undefined,
+        fn: undefined,
+        modifiers: MOD_ALT,
+        generatedText: undefined,
+      },
+    ]);
+    expect(feed("\x1b\x03")).toEqual([
+      {
+        type: "key",
+        code: KEY.Char,
+        char: 0x63,
+        fn: undefined,
+        modifiers: MOD_CONTROL | MOD_ALT,
         generatedText: undefined,
       },
     ]);

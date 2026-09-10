@@ -14,7 +14,8 @@
   a new recipient. The 0.9.0 legacy fallback remains unsupported.
 - Restore endpoint app clicks, drags, and wheels; preserve browser selection/copy with
   output paused during selection. Fix Unicode text alignment and stale repaint text.
-- Wait for terminal readiness before input and reject pending endpoint requests on
+- Preserve modified keys including Ctrl+J, Shift/Alt+Enter, function keys, and
+  Alt-prefixed controls; wait for terminal readiness and reject pending requests on
   disconnect.
 
 ## 0.5.3 - 2026-09-08
