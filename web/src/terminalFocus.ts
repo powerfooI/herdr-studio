@@ -21,6 +21,14 @@ export function terminalPointerShouldFocusInput(
   return coarsePointer && button === 0 && !composerOpen;
 }
 
+export function terminalTouchShouldFocusInput(
+  started: boolean,
+  moved: boolean,
+  composerOpen: boolean,
+): boolean {
+  return started && !moved && !composerOpen;
+}
+
 export function terminalPointerShouldBlurInput(
   coarsePointer: boolean,
   editableTarget: boolean,

@@ -61,6 +61,7 @@ import {
   terminalFocusBlockedByOverlay,
   terminalPointerShouldBlurInput,
   terminalPointerShouldFocusInput,
+  terminalTouchShouldFocusInput,
 } from "../terminalFocus";
 import { uploadTerminalImage } from "../terminalImageUpload";
 import {
@@ -148,6 +149,7 @@ const ANSI_SEQUENCE_RE =
 const CLIPBOARD_READ_TIMEOUT_MS = 2000;
 const TERMINAL_EVICTION_WINDOW_MS = 60_000;
 const TERMINAL_EVICTION_MAX_RETRIES = 3;
+const TERMINAL_TOUCH_TAP_SLOP_PX = 8;
 
 function terminalDensity() {
   const compact =
@@ -1828,14 +1830,34 @@ export function TerminalView({
       passive: false,
     });
 
+    let touchStartX: number | null = null;
+    let touchStartY: number | null = null;
     let touchLastY: number | null = null;
+    let touchMoved = false;
     let touchRemainder = 0;
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      touchLastY = e.touches[0].clientY;
+      if (e.touches.length !== 1) {
+        touchMoved = true;
+        return;
+      }
+      const touch = e.touches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      touchLastY = touch.clientY;
+      touchMoved = false;
       touchRemainder = 0;
     };
     const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || touchLastY === null) return;
+      const touch = e.touches[0];
+      if (
+        touchStartX !== null &&
+        touchStartY !== null &&
+        Math.hypot(touch.clientX - touchStartX, touch.clientY - touchStartY) >
+          TERMINAL_TOUCH_TAP_SLOP_PX
+      ) {
+        touchMoved = true;
+      }
       if (
         endpointPresentation.mouseReporting !== undefined &&
         (term.hasSelection() ||
@@ -1846,8 +1868,6 @@ export function TerminalView({
         e.stopPropagation();
         return;
       }
-      if (e.touches.length !== 1 || touchLastY === null) return;
-      const touch = e.touches[0];
       const deltaY = touchLastY - touch.clientY;
       touchLastY = touch.clientY;
       touchRemainder += deltaY;
@@ -1879,7 +1899,25 @@ export function TerminalView({
       e.stopPropagation();
     };
     const onTouchEnd = () => {
+      const focusInput = terminalTouchShouldFocusInput(
+        touchStartX !== null && touchStartY !== null,
+        touchMoved,
+        composerOpenRef.current,
+      );
+      touchStartX = null;
+      touchStartY = null;
       touchLastY = null;
+      touchMoved = false;
+      touchRemainder = 0;
+      // Mobile Safari and installed PWAs do not reliably synthesize mousedown.
+      // Focus from the trusted touchend while user activation is still valid.
+      if (focusInput) term.focus();
+    };
+    const onTouchCancel = () => {
+      touchStartX = null;
+      touchStartY = null;
+      touchLastY = null;
+      touchMoved = false;
       touchRemainder = 0;
     };
     const onDocumentPointerDown = (e: PointerEvent) => {
@@ -1904,7 +1942,7 @@ export function TerminalView({
       passive: false,
     });
     container.addEventListener("touchend", onTouchEnd, { capture: true });
-    container.addEventListener("touchcancel", onTouchEnd, { capture: true });
+    container.addEventListener("touchcancel", onTouchCancel, { capture: true });
     document.addEventListener("pointerdown", onDocumentPointerDown, {
       capture: true,
     });
@@ -1978,7 +2016,7 @@ export function TerminalView({
         capture: true,
       });
       container.removeEventListener("touchend", onTouchEnd, { capture: true });
-      container.removeEventListener("touchcancel", onTouchEnd, {
+      container.removeEventListener("touchcancel", onTouchCancel, {
         capture: true,
       });
       document.removeEventListener("pointerdown", onDocumentPointerDown, {

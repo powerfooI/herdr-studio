@@ -3,6 +3,7 @@ import {
   terminalFocusBlockedByOverlay,
   terminalPointerShouldBlurInput,
   terminalPointerShouldFocusInput,
+  terminalTouchShouldFocusInput,
 } from "./terminalFocus";
 
 function docWithOpenPopper(open: boolean) {
@@ -72,5 +73,12 @@ describe("terminal pointer focus", () => {
     expect(terminalPointerShouldBlurInput(true, true, false)).toBe(false);
     expect(terminalPointerShouldBlurInput(true, false, true)).toBe(false);
     expect(terminalPointerShouldBlurInput(false, false, false)).toBe(false);
+  });
+
+  test("focuses completed touch taps without treating scroll gestures as input", () => {
+    expect(terminalTouchShouldFocusInput(true, false, false)).toBe(true);
+    expect(terminalTouchShouldFocusInput(true, true, false)).toBe(false);
+    expect(terminalTouchShouldFocusInput(true, false, true)).toBe(false);
+    expect(terminalTouchShouldFocusInput(false, false, false)).toBe(false);
   });
 });
