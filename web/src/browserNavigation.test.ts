@@ -7,6 +7,7 @@ import {
   selectBrowserTarget,
 } from "./browserNavigation";
 import type { Pane, PaneLayout, Tab, Workspace } from "./types";
+import type { EndpointAvailability } from "./endpointAvailability";
 
 function navigationTopology() {
   const workspaces: Workspace[] = ["a", "b"].map((id, i) => ({
@@ -167,6 +168,7 @@ import {
   __storeTesting,
   activateConnectionState,
   emptyServerSessionState,
+  endpointCreationReason,
   store,
   type State,
 } from "./store";
@@ -176,6 +178,20 @@ function browserState(): State {
   const session = {
     ...emptyServerSessionState(1),
     navigationMode: "browser-local" as const,
+    endpointAvailability: Object.fromEntries(
+      topology.panes.map((pane) => [
+        pane.terminal_id,
+        {
+          methods: [
+            "pane.focus",
+            "pane.scroll",
+            "tab.create",
+            "workspace.create",
+          ],
+          capabilities: [],
+        },
+      ]),
+    ),
     ...projectBrowserNavigation(
       emptyBrowserNavigation(),
       topology.workspaces,
@@ -212,6 +228,7 @@ async function withBrowserStore(
     topology: ReturnType<typeof navigationTopology>,
     control: {
       mode: string;
+      endpointAvailability?: EndpointAvailability;
       layoutWait?: Promise<void>;
       createWait?: Promise<void>;
       actionWait?: (method: string) => Promise<void>;
@@ -224,6 +241,7 @@ async function withBrowserStore(
   const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
   const control: {
     mode: string;
+    endpointAvailability?: EndpointAvailability;
     layoutWait?: Promise<void>;
     createWait?: Promise<void>;
     actionWait?: (method: string) => Promise<void>;
@@ -244,6 +262,22 @@ async function withBrowserStore(
           return {
             workspaces: topology.workspaces,
             navigation_mode: control.mode,
+            endpoint_availability:
+              control.endpointAvailability ??
+              Object.fromEntries(
+                topology.panes.map((pane) => [
+                  pane.terminal_id,
+                  {
+                    methods: [
+                      "pane.focus",
+                      "tab.create",
+                      "workspace.create",
+                      "pane.scroll",
+                    ],
+                    capabilities: [],
+                  },
+                ]),
+              ),
           };
         if (method === "tab.list") return { tabs: topology.tabs };
         if (method === "pane.list") return { panes: topology.panes };
@@ -857,3 +891,185 @@ test("shared fallback retains shared focus, creation and split selection semanti
     expect(store.get().browserNavigation.revision).toBe(revision);
   });
 });
+
+test("frontend dispatch and availability track each terminal subset and refresh without borrowing another connection", async () => {
+  await withBrowserStore(async (calls) => {
+    const initial = store.get();
+    __storeTesting.replaceState({
+      ...initial,
+      endpointAvailability: {
+        "a1p-terminal": {
+          methods: ["pane.focus", "tab.create"],
+          capabilities: [],
+        },
+        "b1p-terminal": { methods: [], capabilities: [] },
+      },
+    });
+    expect(endpointCreationReason(store.get(), "tab.create", "a")).toBeNull();
+    expect(endpointCreationReason(store.get(), "workspace.create")).toContain(
+      "workspace.create",
+    );
+    expect(endpointCreationReason(store.get(), "tab.create", "b")).toContain(
+      "pane.focus",
+    );
+    const advertisementBeforeStaleReply = store.get().endpointAvailability;
+    store.setTerminalEndpoint(
+      { ...bridge.connection(), isCurrent: () => false },
+      "a1p-terminal",
+      { methods: ["pane.scroll"], capabilities: [] },
+    );
+    expect(store.get().endpointAvailability).toBe(
+      advertisementBeforeStaleReply,
+    );
+    expect(store.terminalScrollReason("a1p-terminal")).toContain("pane.scroll");
+    expect(store.terminalScrollReason("a1p-terminal", true)).toBeNull();
+    await store.createWorkspace("blocked");
+    await store.createTab("b");
+    expect(calls.some((call) => call.method.endsWith(".create"))).toBe(false);
+    await store.createTab("a");
+    expect(calls.filter((call) => call.method === "tab.create")).toHaveLength(
+      1,
+    );
+    const switched = activateConnectionState(store.get(), "other", 2);
+    expect(switched.endpointAvailability).toEqual({});
+    expect(
+      activateConnectionState(switched, "test", 3).endpointAvailability,
+    ).toEqual({});
+    __storeTesting.replaceState({ ...initial, endpointAvailability: {} });
+    expect(endpointCreationReason(store.get(), "tab.create", "a")).toContain(
+      "loading",
+    );
+    await store.refresh();
+    expect(endpointCreationReason(store.get(), "tab.create", "a")).toBeNull();
+  });
+});
+
+for (const transition of [
+  "complete-to-reduced",
+  "empty-to-attached",
+  "close-to-unknown",
+] as const) {
+  test.each(["pane.layout", "workspace.list"])(
+    `delayed %s preserves newer endpoint availability: ${transition}`,
+    async (updateDuring) => {
+      await withBrowserStore(async (calls, topology, control) => {
+        const terminalId = "a1p-terminal";
+        const complete = {
+          methods: [
+            "pane.focus",
+            "pane.scroll",
+            "tab.create",
+            "workspace.create",
+          ],
+          capabilities: [],
+        };
+        const newer =
+          transition === "close-to-unknown"
+            ? null
+            : transition === "complete-to-reduced"
+              ? { methods: ["pane.focus"], capabilities: [] }
+              : complete;
+        control.endpointAvailability =
+          transition === "empty-to-attached" ? {} : { [terminalId]: complete };
+        __storeTesting.replaceState({
+          ...store.get(),
+          layout: null,
+          endpointAvailability: control.endpointAvailability,
+        });
+        const navigation = store.get().browserNavigation;
+        topology.workspaces[0] = {
+          ...topology.workspaces[0],
+          label: "fresh topology",
+        };
+        const listEntered = Promise.withResolvers<void>();
+        const listRelease = Promise.withResolvers<void>();
+        const entered = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const queuedEntered = Promise.withResolvers<void>();
+        const queuedRelease = Promise.withResolvers<void>();
+        let layoutCalls = 0;
+        control.actionWait = async (method) => {
+          if (
+            method === "workspace.list" &&
+            updateDuring === method &&
+            layoutCalls === 0
+          ) {
+            listEntered.resolve();
+            await listRelease.promise;
+          }
+          if (method !== "pane.layout") return;
+          if (++layoutCalls === 1) {
+            entered.resolve();
+            await release.promise;
+          } else {
+            queuedEntered.resolve();
+            await queuedRelease.promise;
+          }
+        };
+        const refreshed = Promise.withResolvers<void>();
+        const freshAdvertisement = {
+          methods: ["pane.focus", "tab.create"],
+          capabilities: ["health_check"],
+        };
+        const unsubscribe = store.subscribe(() => {
+          if (
+            store
+              .get()
+              .endpointAvailability[terminalId]?.capabilities.includes(
+                "health_check",
+              )
+          )
+            refreshed.resolve();
+        });
+        try {
+          const pending = store.refresh();
+          await (updateDuring === "workspace.list"
+            ? listEntered.promise
+            : entered.promise);
+          store.setTerminalEndpoint(bridge.connection(), terminalId, newer);
+          const updated = store.get().endpointAvailability;
+          listRelease.resolve();
+          await entered.promise;
+          // Only the queued refresh should see this next server observation.
+          control.endpointAvailability = { [terminalId]: freshAdvertisement };
+          release.resolve();
+          await pending;
+          expect(store.get().endpointAvailability).toBe(updated);
+          expect(store.get().browserNavigation.revision).toBe(
+            navigation.revision,
+          );
+          expect(store.get().selectedPaneId).toBe("a1p");
+          expect(store.get().layout?.tab_id).toBe("a1");
+          expect(store.get().workspaces[0].label).toBe("fresh topology");
+          expect(endpointCreationReason(store.get(), "tab.create", "a")).toBe(
+            newer === null
+              ? "Endpoint availability is loading. Open the source terminal and wait for it to connect."
+              : transition === "complete-to-reduced"
+                ? "Herdr endpoint does not advertise tab.create"
+                : null,
+          );
+          await queuedEntered.promise;
+          expect(
+            calls.filter((call) => call.method === "workspace.list"),
+          ).toHaveLength(2);
+          queuedRelease.resolve();
+          await refreshed.promise;
+          expect(store.get().endpointAvailability[terminalId]).toEqual(
+            freshAdvertisement,
+          );
+          expect(
+            endpointCreationReason(store.get(), "tab.create", "a"),
+          ).toBeNull();
+          expect(
+            calls.filter((call) => call.method === "workspace.list"),
+          ).toHaveLength(2);
+        } finally {
+          unsubscribe();
+          listRelease.resolve();
+          release.resolve();
+          queuedRelease.resolve();
+        }
+      });
+    },
+  );
+}

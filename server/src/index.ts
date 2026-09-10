@@ -1062,6 +1062,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
       result = {
         ...result,
         navigation_mode: await terminalBridge.navigationMode(),
+        endpoint_availability: terminalBridge.endpointAvailability(),
       };
     }
     sendReply({ id, result }, method);

@@ -13,6 +13,10 @@
 
 ### Fixed
 
+- Respect each endpoint's advertised methods: disable unsupported creation and
+  history scrolling with a reason, while keeping supported terminal actions
+  usable. Missing required pane focus fails safely without legacy takeover.
+
 - Keep workspace and tab navigation local to each browser on Herdr 0.9.0
   endpoints, including reconnect and closed-pane fallback. Legacy navigation,
   native same-tab pane focus, topology and terminal sizes remain shared.

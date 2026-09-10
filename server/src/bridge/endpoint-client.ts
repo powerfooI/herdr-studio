@@ -96,6 +96,7 @@ export class EndpointClient extends EventEmitter {
   private buf = Buffer.alloc(0);
   private closed = false;
   private welcomed = false;
+  private welcome: EndpointWelcome | null = null;
   private pendingWelcome:
     | {
         resolve: () => void;
@@ -126,6 +127,25 @@ export class EndpointClient extends EventEmitter {
   /** Latest composed surface, for consumers that join mid-stream. */
   get currentSurface(): EndpointSurface | null {
     return this.surface;
+  }
+
+  /** Advertisement belongs to this socket only, never a server-wide cache. */
+  get negotiation(): EndpointWelcome | null {
+    return this.closed || !this.welcome
+      ? null
+      : {
+          ...this.welcome,
+          methods: [...this.welcome.methods],
+          capabilities: [...this.welcome.capabilities],
+        };
+  }
+
+  assertMethod(method: string): void {
+    if (this.closed) throw new Error("endpoint client closed");
+    if (!this.welcome)
+      throw new Error("Herdr endpoint availability is still loading");
+    if (!this.welcome.methods.includes(method))
+      throw new Error(`Herdr endpoint does not advertise ${method}`);
   }
 
   async connect(cols: number, rows: number): Promise<void> {
@@ -185,7 +205,14 @@ export class EndpointClient extends EventEmitter {
     this.write(w.toBuffer());
   }
 
+  private assertNegotiatedCodecs() {
+    if (this.closed) throw new Error("endpoint client closed");
+    if (!this.welcome)
+      throw new Error("Herdr endpoint codecs have not been negotiated");
+  }
+
   resize(cols: number, rows: number) {
+    this.assertNegotiatedCodecs();
     const w = new BinWriter();
     w.variant(CM.ClientShellResize);
     w.varint(0); // cell_width_px
@@ -198,12 +225,14 @@ export class EndpointClient extends EventEmitter {
 
   /** Probe the server; any inbound message (pong or otherwise) is liveness. */
   ping() {
-    this.sendControl(HEALTH_PING_KIND, "{}");
+    if (this.welcome?.capabilities.includes("health_check"))
+      this.sendControl(HEALTH_PING_KIND, "{}");
   }
 
   /** Deliver classified semantic input to one pane. */
   sendPaneInput(paneId: string, events: PaneInputEvent[]) {
     if (events.length === 0) return;
+    this.assertNegotiatedCodecs();
     this.write(encodePaneInput(paneId, events));
   }
 
@@ -217,6 +246,11 @@ export class EndpointClient extends EventEmitter {
     }
     if (!this.bootId) {
       return Promise.reject(new Error("endpoint snapshot has not arrived yet"));
+    }
+    try {
+      this.assertMethod(method);
+    } catch (error) {
+      return Promise.reject(error);
     }
     const requestId = `gui_${++this.requestSeq}`;
     const w = new BinWriter();
@@ -366,12 +400,30 @@ export class EndpointClient extends EventEmitter {
         this.emit("error", error);
         return;
       }
+      if (
+        parsed.generation !== ENDPOINT_GENERATION ||
+        parsed.snapshot_codec !== "shell.snapshot.v1" ||
+        parsed.surface_codec !== "shell.surface.v1" ||
+        parsed.input_codec !== "shell.input.semantic.v1" ||
+        parsed.blob_codec !== "shell.blob.v1"
+      ) {
+        throw new Error("Unsupported Herdr endpoint generation or codecs");
+      }
+      for (const field of ["methods", "capabilities"]) {
+        if (
+          parsed[field] !== undefined &&
+          (!Array.isArray(parsed[field]) ||
+            parsed[field].some((v: unknown) => typeof v !== "string"))
+        )
+          throw new Error(`Malformed Herdr endpoint ${field}`);
+      }
       const welcome: EndpointWelcome = {
         generation: parsed.generation,
         serverVersion: parsed.server_version,
         methods: parsed.methods ?? [],
         capabilities: parsed.capabilities ?? [],
       };
+      this.welcome = welcome;
       this.welcomed = true;
       this.emit("welcome", welcome);
       this.resolveWelcome();
@@ -394,7 +446,8 @@ export class EndpointClient extends EventEmitter {
       return;
     }
     if (kind === HEALTH_PING_KIND) {
-      this.sendControl(HEALTH_PONG_KIND, data);
+      if (this.welcome?.capabilities.includes("health_check"))
+        this.sendControl(HEALTH_PONG_KIND, data);
       return;
     }
     // Unknown named controls are optional and ignored per the contract.

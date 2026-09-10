@@ -57,6 +57,7 @@ export function TerminalComposer({
   draftKey,
   shortcutRows,
   onRunShortcut,
+  shortcutDisabledReason,
   onClose,
   onSubmit,
   onUploadImage,
@@ -65,6 +66,7 @@ export function TerminalComposer({
   draftKey: string;
   shortcutRows: (MobileTerminalShortcut | null)[][];
   onRunShortcut: (shortcut: MobileTerminalShortcut) => void;
+  shortcutDisabledReason?: (shortcut: MobileTerminalShortcut) => string | null;
   onClose: () => void;
   onSubmit: (text: string, submit: boolean) => Promise<void>;
   onUploadImage: (file: File) => Promise<string>;
@@ -259,9 +261,14 @@ export function TerminalComposer({
                   return (
                     <button
                       type="button"
-                      title={option?.label ?? shortcut.label}
                       aria-label={`Send ${option?.label ?? shortcut.label}`}
                       onPointerDown={keepTextareaFocus}
+                      disabled={!!shortcutDisabledReason?.(shortcut)}
+                      title={
+                        shortcutDisabledReason?.(shortcut) ??
+                        option?.label ??
+                        shortcut.label
+                      }
                       onClick={() => onRunShortcut(shortcut)}
                       key={shortcut.id}
                     >

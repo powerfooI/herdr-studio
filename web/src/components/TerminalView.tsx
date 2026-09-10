@@ -440,6 +440,7 @@ export function TerminalView({
       selectedPaneId: state.selectedPaneId,
       status: state.status,
       terminalAttachEpoch: state.terminalAttachEpoch,
+      endpointAvailability: state.endpointAvailability,
     }),
     shallowEqual,
   );
@@ -706,7 +707,8 @@ export function TerminalView({
       if (shouldAvoidVirtualKeyboard()) blurTerminalInput();
       const targetTerminalId =
         desiredTerminalRef.current ?? paneTerminalIdRef.current;
-      if (!targetTerminalId) return;
+      if (!targetTerminalId || store.terminalScrollReason(targetTerminalId))
+        return;
       connectionClient
         .call("terminal.scroll", {
           terminal_id: targetTerminalId,
@@ -935,6 +937,7 @@ export function TerminalView({
       ) {
         return;
       }
+      store.setTerminalEndpoint(connectionClient, closed.terminal_id, null);
       // Herdr closes the direct attach when another client takes the
       // terminal over (or its stream dies). Re-attach, but bound takeover
       // wars between two clients so they cannot evict each other forever.
@@ -1785,7 +1788,15 @@ export function TerminalView({
       }
       const scroll = terminalWheelScroll(e.deltaY, e.deltaMode, term.rows);
       const terminalId = desiredTerminalRef.current;
-      if (!scroll || !terminalId) return;
+      if (
+        !scroll ||
+        !terminalId ||
+        store.terminalScrollReason(
+          terminalId,
+          endpointPresentation.mouseReporting,
+        )
+      )
+        return;
       connectionClient
         .call("terminal.scroll", {
           terminal_id: terminalId,
@@ -1829,7 +1840,13 @@ export function TerminalView({
       if (lines !== 0) {
         touchRemainder -= lines * 24;
         const terminalId = desiredTerminalRef.current;
-        if (terminalId) {
+        if (
+          terminalId &&
+          !store.terminalScrollReason(
+            terminalId,
+            endpointPresentation.mouseReporting,
+          )
+        ) {
           connectionClient
             .call("terminal.scroll", {
               terminal_id: terminalId,
@@ -2051,6 +2068,7 @@ export function TerminalView({
       renderedTerminalRef.current = terminalId;
     }
     resizeSyncRef.current?.markAttached({ cols, rows });
+    store.setTerminalEndpoint(connectionClient, terminalId, null);
     const attachStartedAt = performance.now();
     connectionClient
       .call("terminal.attach", {
@@ -2063,8 +2081,14 @@ export function TerminalView({
           : {}),
       })
       .then(
-        () => {
+        (result) => {
           if (!connectionClient.isCurrent()) return;
+          if (desiredTerminalRef.current === terminalId)
+            store.setTerminalEndpoint(
+              connectionClient,
+              terminalId,
+              result?.endpoint,
+            );
           if (attachingRef.current === terminalId) attachingRef.current = null;
           if (desiredTerminalRef.current === terminalId) {
             attachedRef.current = terminalId;
@@ -2217,6 +2241,11 @@ export function TerminalView({
       detail: message,
     });
   };
+  const mobileShortcutReason = (shortcut: MobileTerminalShortcut) =>
+    mobileTerminalShortcutExecution(shortcut.action)?.type === "scroll" &&
+    pane?.terminal_id
+      ? store.terminalScrollReason(pane.terminal_id)
+      : null;
   const runMobileShortcut = (shortcut: MobileTerminalShortcut) => {
     const execution = mobileTerminalShortcutExecution(shortcut.action);
     if (!execution) return;
@@ -2288,7 +2317,12 @@ export function TerminalView({
                 return (
                   <button
                     type="button"
-                    title={option?.label ?? shortcut.label}
+                    disabled={!!mobileShortcutReason(shortcut)}
+                    title={
+                      mobileShortcutReason(shortcut) ??
+                      option?.label ??
+                      shortcut.label
+                    }
                     aria-label={`Run ${option?.label ?? shortcut.label}`}
                     onPointerDown={preventShortcutFocus}
                     onClick={() => runMobileShortcut(shortcut)}
@@ -2352,7 +2386,12 @@ export function TerminalView({
                       return (
                         <button
                           type="button"
-                          title={option?.label ?? shortcut.label}
+                          disabled={!!mobileShortcutReason(shortcut)}
+                          title={
+                            mobileShortcutReason(shortcut) ??
+                            option?.label ??
+                            shortcut.label
+                          }
                           aria-label={`Send ${option?.label ?? shortcut.label}`}
                           onPointerDown={preventShortcutFocus}
                           onClick={() => runMobileShortcut(shortcut)}
@@ -2373,6 +2412,7 @@ export function TerminalView({
             draftKey={composerDraftKey}
             shortcutRows={mobileShortcuts}
             onRunShortcut={runMobileShortcut}
+            shortcutDisabledReason={mobileShortcutReason}
             onClose={() => setComposerOpen(false)}
             onSubmit={submitTerminalComposer}
             onUploadImage={uploadComposerImage}
@@ -2380,6 +2420,16 @@ export function TerminalView({
           />
         ) : null}
         <div className="terminal-pane-toolbar" aria-label="Pane actions">
+          {s.endpointAvailability[pane.terminal_id] &&
+          store.terminalScrollReason(pane.terminal_id) ? (
+            <span
+              className="muted"
+              role="status"
+              title={store.terminalScrollReason(pane.terminal_id) ?? undefined}
+            >
+              History unavailable: pane.scroll not advertised
+            </span>
+          ) : null}
           <button
             type="button"
             className="terminal-pane-action"

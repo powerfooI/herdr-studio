@@ -33,7 +33,6 @@ export class EndpointTerminalSession extends EventEmitter {
   } | null = null;
   private closed = false;
   private seq = 0;
-  private advertisedMethods = new Set<string>();
   private commandChain: Promise<unknown> = Promise.resolve();
   connecting: Promise<void> | null = null;
 
@@ -56,9 +55,6 @@ export class EndpointTerminalSession extends EventEmitter {
       this.emit("close");
     });
     this.client.on("welcome", (w) => {
-      this.advertisedMethods = new Set(
-        Array.isArray(w.methods) ? w.methods : [],
-      );
       this.emit("welcome", {
         version: w.serverVersion,
         encoding: 1,
@@ -71,9 +67,14 @@ export class EndpointTerminalSession extends EventEmitter {
     return this.closed;
   }
 
+  get negotiation() {
+    return this.client.negotiation;
+  }
+
   connect(cols: number, rows: number): Promise<void> {
     const ready = (async () => {
       await this.client.connect(cols, rows);
+      this.client.assertMethod("pane.focus");
       const paneId = await this.lookupPaneId(this.terminalId);
       if (!paneId) {
         throw new Error(
@@ -153,10 +154,7 @@ export class EndpointTerminalSession extends EventEmitter {
             "Source terminal is not ready. Open its tab and retry creation.",
           );
         for (const requiredMethod of ["pane.focus", method]) {
-          if (!this.advertisedMethods.has(requiredMethod))
-            throw new Error(
-              `Herdr endpoint does not advertise ${requiredMethod}`,
-            );
+          this.client.assertMethod(requiredMethod);
         }
         await validateSource();
         if (!ready())
@@ -318,6 +316,7 @@ export class EndpointTerminalSession extends EventEmitter {
       ]);
       return;
     }
+    this.client.assertMethod("pane.scroll");
     if (!this.lastScroll) return;
     const delta = direction === "up" ? lines : -lines;
     const offset = Math.max(

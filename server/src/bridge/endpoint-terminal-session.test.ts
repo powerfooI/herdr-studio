@@ -143,7 +143,8 @@ const WELCOME = {
  */
 async function startSessionServer(handlers: {
   onRequest?: (method: string, params: any, connection: number) => unknown;
-  methods?: string[];
+  methods?: string[] | ((connection: number) => string[]);
+  capabilities?: (connection: number) => string[];
   onPaneInput?: (paneId: string, reader: BinReader) => void;
   panes?: TestPane[];
   onConnection?: (sendSurface: (panes: TestPane[]) => void) => void;
@@ -202,7 +203,12 @@ async function startSessionServer(handlers: {
                 "endpoint.welcome.v1",
                 JSON.stringify({
                   ...WELCOME,
-                  methods: handlers.methods ?? WELCOME.methods,
+                  capabilities:
+                    handlers.capabilities?.(connection) ?? WELCOME.capabilities,
+                  methods:
+                    typeof handlers.methods === "function"
+                      ? handlers.methods(connection)
+                      : (handlers.methods ?? WELCOME.methods),
                 }),
               ),
             ),
@@ -1052,7 +1058,7 @@ describe("attached endpoint creation and input readiness", () => {
   });
 
   test("missing method advertisements and create rejection fail explicitly without control fallback", async () => {
-    for (const methods of [["pane.focus"], ["tab.create"], creationMethods]) {
+    for (const methods of [["pane.focus"], creationMethods]) {
       const requests: string[] = [];
       const socketPath = await startSessionServer({
         methods,
@@ -1614,3 +1620,131 @@ for (const invalidate of [
     }
   });
 }
+
+test("required pane.focus absent fails attach explicitly without legacy takeover", async () => {
+  const requests: string[] = [];
+  let lookups = 0;
+  const socketPath = await startSessionServer({
+    methods: [],
+    onRequest: (method) => {
+      requests.push(method);
+    },
+  });
+  const { bridge, replies, attach } = creationBridge(socketPath, {
+    lookup: async () => {
+      lookups++;
+      return "w1:p1";
+    },
+  });
+  try {
+    await attach();
+    expect(replies.find((r) => r.id === "attach").error.message).toContain(
+      "does not advertise pane.focus",
+    );
+    expect(requests).toEqual([]);
+    expect(lookups).toBe(0);
+    expect(bridge.statusTerminals()).toEqual([]);
+    expect(await bridge.navigationMode()).toBe("browser-local");
+  } finally {
+    bridge.dispose();
+  }
+});
+
+test("backend dispatch keeps subset input/create usable and rejects unsupported history before sending", async () => {
+  const requests: string[] = [];
+  const inputs: string[] = [];
+  const socketPath = await startSessionServer({
+    methods: ["pane.focus", "tab.create"],
+    onRequest: (method) => {
+      requests.push(method);
+    },
+    onPaneInput: (id) => {
+      inputs.push(id);
+    },
+  });
+  const { bridge, ws, replies, attach } = creationBridge(socketPath);
+  try {
+    await attach();
+    expect(
+      replies.find((r) => r.id === "attach").result.endpoint.methods,
+    ).toEqual(["pane.focus", "tab.create"]);
+    await bridge.handleTerminalRpc(ws, "scroll", "terminal.scroll", {
+      terminal_id: "term1",
+      direction: "up",
+      lines: 1,
+    });
+    expect(replies.find((r) => r.id === "scroll").error.message).toContain(
+      "pane.scroll",
+    );
+    await expect(
+      bridge.createFromTerminal(
+        ws,
+        "workspace.create",
+        { browser_source: creationSource },
+        () => true,
+      ),
+    ).rejects.toThrow("workspace.create");
+    await bridge.handleTerminalRpc(ws, "input", "terminal.input", {
+      terminal_id: "term1",
+      data: "WA==",
+    });
+    await bridge.createFromTerminal(
+      ws,
+      "tab.create",
+      { workspace_id: "w1", browser_source: creationSource },
+      () => true,
+    );
+    expect(inputs).toEqual(["w1:p1"]);
+    expect(requests).toEqual(["pane.focus", "tab.create"]);
+  } finally {
+    bridge.dispose();
+  }
+});
+
+test("reconnect replaces advertisements while other connection runtimes retain their own subset", async () => {
+  const socketPath = await startSessionServer({
+    methods: (connection) =>
+      connection === 1 ? creationMethods : ["pane.focus"],
+    capabilities: (connection) => (connection === 1 ? ["health_check"] : []),
+  });
+  const a = creationBridge(socketPath);
+  const b = creationBridge(socketPath);
+  try {
+    await a.attach();
+    await b.attach();
+    expect(a.bridge.endpointAvailability().term1?.capabilities).toEqual([
+      "health_check",
+    ]);
+    expect(b.bridge.endpointAvailability().term1?.capabilities).toEqual([]);
+    expect(a.bridge.endpointAvailability().term1?.methods).toEqual(
+      creationMethods,
+    );
+    expect(b.bridge.endpointAvailability().term1?.methods).toEqual([
+      "pane.focus",
+    ]);
+    await a.bridge.handleTerminalRpc(a.ws, "detach", "terminal.detach", {
+      terminal_id: "term1",
+    });
+    expect(a.bridge.endpointAvailability()).toEqual({});
+    await a.attach("reattach");
+    expect(a.bridge.endpointAvailability().term1?.capabilities).toEqual([]);
+    expect(b.bridge.endpointAvailability().term1?.capabilities).toEqual([]);
+    expect(a.bridge.endpointAvailability().term1?.methods).toEqual([
+      "pane.focus",
+    ]);
+    expect(b.bridge.endpointAvailability().term1?.methods).toEqual([
+      "pane.focus",
+    ]);
+    await expect(
+      a.bridge.createFromTerminal(
+        a.ws,
+        "tab.create",
+        { workspace_id: "w1", browser_source: creationSource },
+        () => true,
+      ),
+    ).rejects.toThrow("tab.create");
+  } finally {
+    a.bridge.dispose();
+    b.bridge.dispose();
+  }
+});

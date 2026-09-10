@@ -1,3 +1,4 @@
+import { endpointCreationReason } from "../store";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
@@ -58,6 +59,7 @@ type ActionDefinition = {
   shortcut?: string;
   keywords?: string[];
   danger?: boolean;
+  disabledReason?: string | null;
   run: () => void;
 };
 
@@ -248,6 +250,7 @@ export function CommandCombobox({
       selectedPaneId: state.selectedPaneId,
       tabs: state.tabs,
       workspaces: state.workspaces,
+      endpointAvailability: state.endpointAvailability,
     }),
     shallowEqual,
   );
@@ -521,6 +524,11 @@ export function CommandCombobox({
       title: "Create tab",
       detail: workspaceName(focusedWorkspace),
       keywords: ["new tab", "add tab", "open tab"],
+      disabledReason: endpointCreationReason(
+        store.get(),
+        "tab.create",
+        focusedWorkspace.workspace_id,
+      ),
       run: () => store.createTab(focusedWorkspace.workspace_id),
     });
   }
@@ -696,6 +704,11 @@ export function CommandCombobox({
       title: "Create tab",
       detail: workspaceName(focusedWorkspace),
       keywords: ["new tab", "add tab", "open tab"],
+      disabledReason: endpointCreationReason(
+        store.get(),
+        "tab.create",
+        focusedWorkspace.workspace_id,
+      ),
       run: () => store.createTab(focusedWorkspace.workspace_id),
     });
     for (const workspace of otherWorkspaces) {
@@ -705,6 +718,11 @@ export function CommandCombobox({
         title: `Create tab: ${workspaceName(workspace)}`,
         detail: workspace.workspace_id,
         keywords: ["new tab", "add tab", "open tab", workspaceName(workspace)],
+        disabledReason: endpointCreationReason(
+          store.get(),
+          "tab.create",
+          workspace.workspace_id,
+        ),
         run: () => store.createTab(workspace.workspace_id),
       });
     }
@@ -979,8 +997,10 @@ export function CommandCombobox({
           className="command-popover"
           align="end"
           onKeyDownCapture={(event) => {
-            runCommandNumberShortcut(event, numberedActions, (action) =>
-              run(action.run),
+            runCommandNumberShortcut(
+              event,
+              numberedActions,
+              (action) => !action.disabledReason && run(action.run),
             );
           }}
         >
@@ -1015,7 +1035,10 @@ export function CommandCombobox({
                       )}
                       keywords={action.keywords}
                       danger={action.danger}
-                      onSelect={() => run(action.run)}
+                      disabledReason={action.disabledReason}
+                      onSelect={() => {
+                        if (!action.disabledReason) run(action.run);
+                      }}
                     />
                   ))}
                 </CommandGroup>
@@ -1161,6 +1184,7 @@ function ActionItem({
   keywords,
   danger,
   onSelect,
+  disabledReason,
 }: {
   value: string;
   icon: React.ReactNode;
@@ -1171,12 +1195,15 @@ function ActionItem({
   keywords?: string[];
   danger?: boolean;
   onSelect: () => void;
+  disabledReason?: string | null;
 }) {
   const numberShortcut =
     numberShortcutIndex === undefined ? null : `⌥${numberShortcutIndex + 1}`;
   return (
     <CommandItem
       value={value}
+      disabled={!!disabledReason}
+      title={disabledReason ?? undefined}
       keywords={keywords}
       onSelect={onSelect}
       className={danger ? "is-danger" : undefined}
@@ -1189,7 +1216,11 @@ function ActionItem({
       <span className="command-item-icon">{icon}</span>
       <span className="command-item-text">
         <span className="command-item-title">{title}</span>
-        {detail ? <span className="command-item-detail">{detail}</span> : null}
+        {disabledReason || detail ? (
+          <span className="command-item-detail">
+            {disabledReason ?? detail}
+          </span>
+        ) : null}
       </span>
       {numberShortcut || shortcut ? (
         <CommandShortcut>{numberShortcut ?? shortcut}</CommandShortcut>

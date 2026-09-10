@@ -1,4 +1,10 @@
 import {
+  type EndpointAvailability,
+  parseEndpointAdvertisement,
+  parseEndpointAvailability,
+  endpointMethodReason,
+} from "./endpointAvailability";
+import {
   type BrowserNavigation,
   emptyBrowserNavigation,
   selectBrowserTarget,
@@ -41,6 +47,7 @@ export interface ServerSessionState {
   /** ConnectionManager generation that owns every server resource below. */
   serverRuntimeGeneration: number | null;
   navigationMode: "browser-local" | "shared";
+  endpointAvailability: EndpointAvailability;
   browserNavigation: BrowserNavigation;
   workspaces: Workspace[];
   tabs: Tab[];
@@ -154,6 +161,7 @@ export function emptyServerSessionState(
   return {
     serverRuntimeGeneration,
     navigationMode: "shared",
+    endpointAvailability: {},
     browserNavigation: emptyBrowserNavigation(),
     workspaces: [],
     tabs: [],
@@ -335,6 +343,7 @@ const initial: State = {
 const SERVER_SESSION_KEYS: Array<keyof ServerSessionState> = [
   "serverRuntimeGeneration",
   "navigationMode",
+  "endpointAvailability",
   "browserNavigation",
   "workspaces",
   "tabs",
@@ -354,6 +363,7 @@ function serverSessionFromState(snapshot: State): ServerSessionState {
   return {
     serverRuntimeGeneration: snapshot.serverRuntimeGeneration,
     navigationMode: snapshot.navigationMode,
+    endpointAvailability: snapshot.endpointAvailability,
     browserNavigation: snapshot.browserNavigation,
     workspaces: snapshot.workspaces,
     tabs: snapshot.tabs,
@@ -397,6 +407,7 @@ export function activateConnectionState(
       : emptyServerSessionState(runtimeGeneration);
   const newSession = {
     ...restored,
+    endpointAvailability: {},
     // A restored pending focus outlived its action, so treat it as settled:
     // the next fresh observation decides whether it still applies. Reuse the
     // snapshot timestamp as a stable non-null token; wall-clock time is unused.
@@ -983,6 +994,7 @@ const REFRESH_SLICE_KEYS = [
   "panes",
   "layout",
   "browserNavigation",
+  "endpointAvailability",
 ] as const;
 const REFRESH_SCALAR_KEYS = [
   "navigationMode",
@@ -1089,6 +1101,7 @@ async function refreshNow(lease = captureConnectionLease()) {
   // refresh that began after the focus action settled may declare the focus
   // lost, and only while the marker still belongs to that same attempt.
   const navigationAtEntry = state.browserNavigation;
+  const endpointAvailabilityAtEntry = state.endpointAvailability;
   const pendingFocusAtEntry = {
     seq: state.pendingFocusWorkspaceSeq,
     settledAt: state.pendingFocusWorkspaceSettledAt,
@@ -1114,6 +1127,9 @@ async function refreshNow(lease = captureConnectionLease()) {
       wsRes?.navigation_mode === "browser-local" ? "browser-local" : "shared";
     const next: Partial<State> = {
       navigationMode,
+      endpointAvailability: parseEndpointAvailability(
+        wsRes?.endpoint_availability,
+      ),
       workspaces,
       tabs,
       panes,
@@ -1228,6 +1244,12 @@ async function refreshNow(lease = captureConnectionLease()) {
     ) {
       delete next.pendingFocusWorkspaceId;
       delete next.pendingFocusWorkspaceSettledAt;
+    }
+    // Close/reattach can replace advertisements while either RPC is pending.
+    // Keep that newer slice without discarding useful topology/layout updates.
+    if (endpointAvailabilityAtEntry !== state.endpointAvailability) {
+      delete next.endpointAvailability;
+      queuedConnectionKeys.add(refreshKey);
     }
     const patch = stabilizeRefreshPatch(state, next);
     if (patch) {
@@ -1871,6 +1893,41 @@ function browserSelectionIsCurrent(navigation: BrowserNavigation) {
   );
 }
 
+export function endpointCreationReason(
+  snapshot: State,
+  method: "tab.create" | "workspace.create",
+  workspaceId = snapshot.browserNavigation.workspaceId,
+): string | null {
+  if (snapshot.navigationMode === "shared") return null;
+  // Empty bootstrap deliberately uses the validated control API, not an endpoint.
+  if (method === "workspace.create" && snapshot.workspaces.length === 0)
+    return null;
+  const tabId = workspaceId
+    ? snapshot.browserNavigation.tabIds[workspaceId]
+    : undefined;
+  const paneId = tabId ? snapshot.browserNavigation.paneIds[tabId] : undefined;
+  const pane = snapshot.panes.find((pane) => pane.pane_id === paneId);
+  const advertisement = pane
+    ? snapshot.endpointAvailability[pane.terminal_id]
+    : null;
+  return (
+    endpointMethodReason(
+      snapshot.navigationMode,
+      advertisement,
+      "pane.focus",
+    ) ?? endpointMethodReason(snapshot.navigationMode, advertisement, method)
+  );
+}
+
+export function useEndpointCreationReason(
+  method: "tab.create" | "workspace.create",
+  workspaceId?: string,
+) {
+  return useStoreSelector((snapshot) =>
+    endpointCreationReason(snapshot, method, workspaceId),
+  );
+}
+
 function browserCreationSource(workspaceId: string | null) {
   const tabId = workspaceId
     ? state.browserNavigation.tabIds[workspaceId]
@@ -1947,6 +2004,27 @@ function adoptBrowserTarget(lease: StoreConnectionLease, result: unknown) {
 }
 
 export const store = {
+  setTerminalEndpoint(
+    client: ConnectionClient,
+    terminalId: string,
+    advertisement: unknown,
+  ) {
+    if (!client.isCurrent()) return;
+    set({
+      endpointAvailability: {
+        ...state.endpointAvailability,
+        [terminalId]: parseEndpointAdvertisement(advertisement),
+      },
+    });
+  },
+  terminalScrollReason(terminalId: string, mouseReporting = false) {
+    if (mouseReporting) return null; // Wheel input uses the negotiated semantic codec.
+    return endpointMethodReason(
+      state.navigationMode,
+      state.endpointAvailability[terminalId],
+      "pane.scroll",
+    );
+  },
   get: () => state,
   subscribe(l: () => void) {
     listeners.add(l);
@@ -1971,6 +2049,7 @@ export const store = {
     });
     bridge.onStatus((s) => {
       if (s === "disconnected") {
+        set({ endpointAvailability: {} });
         catalogReadyForConnection = false;
         terminalReattachPending = true;
         bridge.setConnectionRuntimeGenerations([]);
@@ -2217,6 +2296,8 @@ export const store = {
     const navigation = state.browserNavigation;
     return action(
       async (lease) => {
+        const reason = endpointCreationReason(state, "tab.create", workspaceId);
+        if (reason) throw new Error(reason);
         const result: unknown = await lease.client.call("tab.create", {
           workspace_id: workspaceId,
           focus: state.navigationMode !== "browser-local",
@@ -2370,6 +2451,8 @@ export const store = {
     const navigation = state.browserNavigation;
     return action(
       async (lease) => {
+        const reason = endpointCreationReason(state, "workspace.create");
+        if (reason) throw new Error(reason);
         const result = await lease.client.call("workspace.create", {
           label,
           cwd,

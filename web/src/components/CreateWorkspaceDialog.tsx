@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { luckyWorkspaceName } from "../luckyName";
-import { store } from "../store";
+import { store, useEndpointCreationReason } from "../store";
 import { CloseButton } from "./CloseButton";
 import { focusDialogElement } from "./dialogFocus";
 
@@ -11,6 +11,7 @@ export function CreateWorkspaceDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const createReason = useEndpointCreationReason("workspace.create");
   const [label, setLabel] = useState("");
   const [cwd, setCwd] = useState("");
   const labelRef = useRef<HTMLInputElement>(null);
@@ -37,6 +38,7 @@ export function CreateWorkspaceDialog({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (createReason) return;
     store.createWorkspace(label.trim() || undefined, cwd.trim() || undefined);
     onClose();
   };
@@ -75,11 +77,18 @@ export function CreateWorkspaceDialog({
           />
         </label>
 
+        {createReason ? <p role="status">{createReason}</p> : null}
         <div className="modal-actions">
           <button type="button" className="ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit">Create</button>
+          <button
+            type="submit"
+            disabled={!!createReason}
+            title={createReason ?? undefined}
+          >
+            Create
+          </button>
         </div>
       </form>
     </div>

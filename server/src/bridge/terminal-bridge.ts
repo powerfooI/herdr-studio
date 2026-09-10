@@ -884,7 +884,12 @@ export function createTerminalBridge(args: {
           size: `${cols}x${rows}`,
           shared: sharedMode,
         });
-        return reply({ ok: true });
+        return reply({
+          ok: true,
+          ...(shared.thin instanceof EndpointTerminalSession
+            ? { endpoint: shared.thin.negotiation }
+            : {}),
+        });
       }
 
       if (method === "terminal.relay_resize") {
@@ -1021,6 +1026,17 @@ export function createTerminalBridge(args: {
     return Array.from(terminalViewers.get(ws) ?? []);
   }
 
+  function endpointAvailability() {
+    return Object.fromEntries(
+      Array.from(sharedTerminals, ([id, session]) => [
+        id,
+        session.thin instanceof EndpointTerminalSession
+          ? session.thin.negotiation
+          : null,
+      ]),
+    );
+  }
+
   function statusTerminals() {
     return Array.from(sharedTerminals.values()).map((session) => ({
       terminal_id: session.terminalId,
@@ -1043,6 +1059,7 @@ export function createTerminalBridge(args: {
   return {
     createFromTerminal,
     navigationMode,
+    endpointAvailability,
     handleTerminalRpc,
     cleanupWs,
     viewedTerminals,

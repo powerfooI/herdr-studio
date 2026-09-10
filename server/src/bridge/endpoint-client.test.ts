@@ -162,6 +162,7 @@ async function startEndpointServer(
   onHello: (hello: any, socket: net.Socket) => void,
   onMessage?: (variant: number, reader: BinReader, socket: net.Socket) => void,
   sendSnapshot = true,
+  welcome: Record<string, unknown> = WELCOME,
 ) {
   const socketPath = path.join(
     tmpdir(),
@@ -191,7 +192,7 @@ async function startEndpointServer(
           expect(reader.remaining).toBe(0);
           socket.write(
             encodeFrame(
-              controlFrame("endpoint.welcome.v1", JSON.stringify(WELCOME)),
+              controlFrame("endpoint.welcome.v1", JSON.stringify(welcome)),
             ),
           );
           if (sendSnapshot) {
@@ -571,4 +572,78 @@ describe("EndpointClient (endpoint generation 1)", () => {
       "unsupported_generation",
     );
   });
+});
+
+test("method subset and absent health capability never send unsupported bytes", async () => {
+  const received: number[] = [];
+  const socketPath = await startEndpointServer(
+    () => {},
+    (variant, _reader, socket) => {
+      received.push(variant);
+      // Resize acts as an ordered wire fence after the rejected operations.
+      if (variant === 12) socket.end();
+    },
+    true,
+    { ...WELCOME, methods: [], capabilities: [] },
+  );
+  const client = new EndpointClient(socketPath);
+  client.on("error", () => {});
+  try {
+    expect(client.negotiation).toBeNull();
+    await client.connect(80, 24);
+    expect(client.negotiation?.methods).toEqual([]);
+    await expect(client.callEndpoint("pane.focus", {})).rejects.toThrow(
+      "does not advertise pane.focus",
+    );
+    client.ping();
+    const closed = new Promise<void>((resolve) =>
+      client.once("close", resolve),
+    );
+    client.resize(80, 24);
+    await closed;
+    expect(received).toEqual([12]);
+    expect(client.negotiation).toBeNull();
+  } finally {
+    client.close();
+  }
+});
+
+for (const invalid of [
+  { generation: 2 },
+  { snapshot_codec: "shell.snapshot.v2" },
+  { surface_codec: "shell.surface.v2" },
+  { input_codec: "shell.input.raw.v2" },
+  { blob_codec: "shell.blob.v2" },
+  { methods: "pane.focus" },
+  { capabilities: [123] },
+]) {
+  test(`rejects unverified negotiation ${JSON.stringify(invalid)}`, async () => {
+    const received: number[] = [];
+    const socketPath = await startEndpointServer(
+      () => {},
+      (variant) => {
+        received.push(variant);
+      },
+      true,
+      { ...WELCOME, ...invalid },
+    );
+    const client = new EndpointClient(socketPath);
+    client.on("error", () => {});
+    try {
+      await expect(client.connect(80, 24)).rejects.toThrow();
+      expect(client.negotiation).toBeNull();
+      expect(received).toEqual([]);
+    } finally {
+      client.close();
+    }
+  });
+}
+
+test("core resize and semantic input wait for verified codecs", () => {
+  const client = new EndpointClient("/unused-issue111.sock");
+  expect(() => client.resize(80, 24)).toThrow("not been negotiated");
+  expect(() =>
+    client.sendPaneInput("p1", [{ type: "paste", text: "blocked" }]),
+  ).toThrow("not been negotiated");
+  client.close();
 });

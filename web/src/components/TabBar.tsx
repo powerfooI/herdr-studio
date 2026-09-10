@@ -1,4 +1,9 @@
-import { shallowEqual, store, useStoreSelector } from "../store";
+import {
+  shallowEqual,
+  store,
+  useStoreSelector,
+  useEndpointCreationReason,
+} from "../store";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PanelRight } from "lucide-react";
@@ -80,6 +85,10 @@ export function TabBar({
   const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const focusedWs = s.workspaces.find((w) => w.focused);
+  const createReason = useEndpointCreationReason(
+    "tab.create",
+    focusedWs?.workspace_id,
+  );
   const tabs = s.tabs
     .filter((t) => t.workspace_id === focusedWs?.workspace_id)
     .sort((a, b) => a.number - b.number);
@@ -144,6 +153,7 @@ export function TabBar({
         }}
         onRename={(tab) => setPendingRenameTab(tab)}
         onCloseTab={(tab) => setPendingCloseTabId(tab.tab_id)}
+        createReason={createReason}
         onCreateTab={() => {
           store.createTab(focusedWs.workspace_id);
         }}
@@ -275,7 +285,8 @@ export function TabBar({
             onClick={() => {
               store.createTab(focusedWs.workspace_id);
             }}
-            title="New tab"
+            disabled={!!createReason}
+            title={createReason ?? "New tab"}
           >
             +
           </button>
@@ -374,6 +385,7 @@ function TabContextMenu({
   onRename,
   onCloseTab,
   onCreateTab,
+  createReason,
 }: {
   state: TabMenuState | null;
   onClose: () => void;
@@ -381,6 +393,7 @@ function TabContextMenu({
   onRename: (tab: Tab) => void;
   onCloseTab: (tab: Tab) => void;
   onCreateTab: () => void;
+  createReason: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -411,7 +424,7 @@ function TabContextMenu({
   const items = [
     { label: "Focus tab", action: () => onFocus(state.tab) },
     { label: "Rename tab...", action: () => onRename(state.tab) },
-    { label: "Create tab", action: onCreateTab },
+    { label: "Create tab", action: onCreateTab, reason: createReason },
     {
       label: "Close tab",
       danger: true,
@@ -438,6 +451,8 @@ function TabContextMenu({
       {items.map((item) => (
         <button
           key={item.label}
+          disabled={!!item.reason}
+          title={item.reason ?? undefined}
           className={`context-menu-item ${item.danger ? "is-danger" : ""}`}
           onClick={() => {
             onClose();

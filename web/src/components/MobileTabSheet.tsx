@@ -1,7 +1,12 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { shallowEqual, store, useStoreSelector } from "../store";
+import {
+  shallowEqual,
+  store,
+  useStoreSelector,
+  useEndpointCreationReason,
+} from "../store";
 import { AgentStatusIcon } from "./AgentStatusIcon";
 import { summarizeTabAgents } from "./agentSession";
 import { CloseButton } from "./CloseButton";
@@ -55,6 +60,10 @@ export function MobileTabSheet({
   };
 
   const focusedWs = s.workspaces.find((w) => w.focused);
+  const createReason = useEndpointCreationReason(
+    "tab.create",
+    focusedWs?.workspace_id,
+  );
   const tabs = focusedWs
     ? s.tabs
         .filter((t) => t.workspace_id === focusedWs.workspace_id)
@@ -162,13 +171,14 @@ export function MobileTabSheet({
         <button
           type="button"
           className="mobile-tab-sheet-new"
-          disabled={transitionPending}
+          title={createReason ?? undefined}
+          disabled={transitionPending || !!createReason}
           onClick={() =>
             void runTabTransition(() => store.createTab(focusedWs.workspace_id))
           }
         >
           <Plus size={15} />
-          <span>New Tab</span>
+          <span>{createReason ?? "New Tab"}</span>
         </button>
       </div>
     </div>,
