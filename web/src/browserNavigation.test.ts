@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { TerminalView } from "./components/TerminalView";
 import {
   browserPaneInDirection,
   emptyBrowserNavigation,
@@ -169,6 +172,7 @@ import {
   activateConnectionState,
   emptyServerSessionState,
   endpointCreationReason,
+  terminalNavigationLoading,
   store,
   type State,
 } from "./store";
@@ -323,7 +327,117 @@ async function withBrowserStore(
   }
 }
 
+function renderTerminalSnapshot() {
+  const snapshot = spyOn(React, "useSyncExternalStore").mockImplementation(
+    (_subscribe, getSnapshot) => getSnapshot(),
+  );
+  const layoutEffect = spyOn(React, "useLayoutEffect").mockImplementation(
+    () => {},
+  );
+  try {
+    return renderToStaticMarkup(
+      React.createElement(TerminalView, { resolvedTheme: "dark" }),
+    );
+  } finally {
+    snapshot.mockRestore();
+    layoutEffect.mockRestore();
+  }
+}
+
 describe("store browser-local navigation", () => {
+  test.each(["workspace", "tab", "agent"])(
+    "%s selection shows loading while its layout is deferred",
+    async (route) => {
+      await withBrowserStore(async (_calls, _topology, control) => {
+        let release!: () => void;
+        control.layoutWait = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const pending =
+          route === "workspace"
+            ? store.focusWorkspace("b")
+            : route === "tab"
+              ? store.focusTab("b1")
+              : store.focusPane("b1p");
+        try {
+          expect(store.get().selectedPaneId).toBe("b1p");
+          expect(store.get().layout).toBeNull();
+          expect(terminalNavigationLoading(store.get())).toBe(true);
+          const waiting = renderTerminalSnapshot();
+          expect(waiting).toContain("Loading terminal");
+          expect(waiting).toContain('role="status"');
+          expect(waiting).not.toContain("Select a workspace");
+          expect(waiting).not.toContain('class="terminal-view"');
+        } finally {
+          release();
+          await pending;
+        }
+        expect(store.get().layout?.tab_id).toBe("b1");
+        expect(terminalNavigationLoading(store.get())).toBe(false);
+        const attaching = renderTerminalSnapshot();
+        expect(attaching).toContain('class="terminal-view"');
+        expect(attaching).toContain("Loading terminal");
+        expect(attaching).not.toContain("Select a workspace");
+      });
+    },
+  );
+
+  test("failed layout requests stop loading and a successful retry restores the terminal", async () => {
+    await withBrowserStore(async (_calls, _topology, control) => {
+      control.actionWait = (method) =>
+        method === "pane.layout"
+          ? Promise.reject(new Error("Layout unavailable"))
+          : Promise.resolve();
+      await store.focusWorkspace("b");
+      expect(store.get().layout).toBeNull();
+      expect(store.get().error).toBe("Layout unavailable");
+      expect(terminalNavigationLoading(store.get())).toBe(false);
+      const failed = renderTerminalSnapshot();
+      expect(failed).toContain('role="alert"');
+      expect(failed).toContain("Layout unavailable");
+      expect(failed).toContain("Retry");
+      expect(failed).not.toContain("Loading terminal");
+      control.actionWait = undefined;
+      await store.refresh();
+      expect(store.get().error).toBeNull();
+      expect(store.get().layout?.tab_id).toBe("b1");
+      expect(renderTerminalSnapshot()).toContain('class="terminal-view"');
+    });
+  });
+
+  test("a workspace with no panes keeps the empty prompt", async () => {
+    await withBrowserStore(async (_calls, topology) => {
+      topology.panes = topology.panes.filter(
+        (pane) => pane.workspace_id !== "b",
+      );
+      await store.focusWorkspace("b");
+      const empty = renderTerminalSnapshot();
+      expect(empty).toContain("Select a workspace");
+      expect(empty).not.toContain("Loading terminal");
+    });
+  });
+
+  test("empty, removed, paused, disconnected and failed targets do not spin", () => {
+    const pending = { ...browserState(), layout: null };
+    expect(terminalNavigationLoading(pending)).toBe(true);
+    for (const patch of [
+      { selectedPaneId: null },
+      { panes: [] },
+      { connectionPaused: true },
+      { status: "disconnected" as const },
+      { error: "Refresh failed" },
+    ]) {
+      expect(terminalNavigationLoading({ ...pending, ...patch })).toBe(false);
+    }
+    expect(
+      terminalNavigationLoading({
+        ...pending,
+        selectedPaneId: null,
+        pendingFocusWorkspaceId: "b",
+      }),
+    ).toBe(true);
+  });
+
   test("all navigation routes avoid shared focus and target input explicitly", async () => {
     await withBrowserStore(async (calls) => {
       await store.focusWorkspace("b");
@@ -395,11 +509,13 @@ describe("store browser-local navigation", () => {
       await Bun.sleep(1);
       await store.focusTab("b1");
       expect(store.get().layout).toBeNull();
+      expect(terminalNavigationLoading(store.get())).toBe(true);
       resolve();
       await refresh;
       await Bun.sleep(5);
       expect(store.get().selectedPaneId).toBe("b1p");
       expect(store.get().layout?.tab_id).toBe("b1");
+      expect(terminalNavigationLoading(store.get())).toBe(false);
     });
   });
 

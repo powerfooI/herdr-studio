@@ -70,11 +70,19 @@ function isDefaultBlank(cell: CellData): boolean {
 }
 
 /** Serialize one frame as a full repaint: home, styled rows, cursor. */
-export function frameToAnsi(frame: FrameData): string {
-  let out = `${RESET}\x1b[H\x1b[2J`;
-  for (let y = 0; y < frame.height; y++) {
+export function frameToAnsi(
+  frame: FrameData,
+  viewport = { cols: frame.width, rows: frame.height },
+): string {
+  const width = Math.min(frame.width, viewport.cols);
+  const height = Math.min(frame.height, viewport.rows);
+  // Frames are positioned cell grids, not flowing text. A stale frame can
+  // exceed the viewer width during resize; never let it wrap and scroll.
+  let out = `${RESET}\x1b[H\x1b[2J\x1b[?7l`;
+  for (let y = 0; y < height; y++) {
+    if (y > 0) out += `\x1b[${y + 1};1H`;
     const rowStart = y * frame.width;
-    let rowEnd = frame.width;
+    let rowEnd = width;
     // Trim trailing default blanks; the terminal background fills them.
     while (rowEnd > 0 && isDefaultBlank(frame.cells[rowStart + rowEnd - 1])) {
       rowEnd--;
@@ -84,6 +92,8 @@ export function frameToAnsi(frame: FrameData): string {
     for (let x = 0; x < rowEnd; x++) {
       const cell = frame.cells[rowStart + x];
       if (cell.skip) continue;
+      const cellWidth = Bun.stringWidth(cell.symbol);
+      if (x + cellWidth > width) break;
       const key = styleKey(cell);
       if (key !== lastStyle) {
         if (linkOpen) {
@@ -103,16 +113,16 @@ export function frameToAnsi(frame: FrameData): string {
       }
       out += cell.symbol;
       // Herdr's wide-character padding is often a normal blank (skip=false).
-      const padding = Math.max(0, Bun.stringWidth(cell.symbol) - 1);
+      const padding = Math.max(0, cellWidth - 1);
       x += padding;
       // xterm can render the same grapheme narrower; anchor the next source cell.
       if (padding && x + 1 < rowEnd) out += `\x1b[${x + 2}G`;
     }
     if (linkOpen) out += "\x1b]8;;\x1b\\";
-    if (y < frame.height - 1) out += "\r\n";
   }
+  out += "\x1b[?7h";
   const cursor = frame.cursor;
-  if (cursor && cursor.visible) {
+  if (cursor?.visible && cursor.x < width && cursor.y < height) {
     out += `${RESET}\x1b[${cursor.y + 1};${cursor.x + 1}H`;
     out += `\x1b[${cursor.shape} q\x1b[?25h`;
   } else {

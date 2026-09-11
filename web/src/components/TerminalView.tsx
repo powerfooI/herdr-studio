@@ -29,7 +29,12 @@ import {
   mobileTerminalShortcutOption,
 } from "../mobileTerminalShortcuts";
 import { paneCanClose } from "../paneJump";
-import { shallowEqual, store, useStoreSelector } from "../store";
+import {
+  shallowEqual,
+  store,
+  terminalNavigationLoading,
+  useStoreSelector,
+} from "../store";
 import {
   createTerminalClipboardProvider,
   decodeTerminalClipboard,
@@ -99,6 +104,7 @@ import {
   TerminalAttachFrameWatchdog,
   TerminalResizeSync,
   terminalAttachWatchdogMs,
+  terminalEndpointViewportSize,
   terminalRelayViewportSize,
 } from "../terminalResize";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
@@ -447,6 +453,8 @@ export function TerminalView({
       status: state.status,
       terminalAttachEpoch: state.terminalAttachEpoch,
       endpointAvailability: state.endpointAvailability,
+      navigationLoading: terminalNavigationLoading(state),
+      error: state.error,
     }),
     shallowEqual,
   );
@@ -493,7 +501,9 @@ export function TerminalView({
   );
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [uploadError, setUploadError] = useState("");
-  const [terminalLoading, setTerminalLoading] = useState(false);
+  const [terminalLoading, setTerminalLoading] = useState(
+    s.status === "connected" && !s.connectionPaused,
+  );
   const [terminalAttachError, setTerminalAttachError] = useState("");
   const [pasteLoading, setPasteLoading] = useState(false);
   const [attachRetry, setAttachRetry] = useState(0);
@@ -884,6 +894,7 @@ export function TerminalView({
     const endpointPresentation = new TerminalEndpointPresentation(
       () => term.hasSelection(),
       (text, parsed) => term.write(colorHttpLinks(text), parsed),
+      () => ({ cols: term.cols, rows: term.rows }),
     );
     endpointPresentationRef.current = endpointPresentation;
     const selectionChange = term.onSelectionChange(() =>
@@ -910,7 +921,10 @@ export function TerminalView({
       setTerminalAttachError("");
       if (typeof t.mouse_reporting === "boolean") {
         term.options.macOptionClickForcesSelection = true;
-        endpointPresentation.update(text, t.mouse_reporting);
+        endpointPresentation.update(text, t.mouse_reporting, {
+          cols: t.width,
+          rows: t.height,
+        });
       } else {
         term.write(colorHttpLinks(text));
       }
@@ -2122,6 +2136,13 @@ export function TerminalView({
     const cols = fitSize?.cols ?? term.cols;
     const rows = fitSize?.rows ?? term.rows;
     const relaySize = relayViewportFor({ cols, rows });
+    const surfaceSize = terminalEndpointViewportSize(
+      { cols, rows },
+      paneLayoutRef.current?.tab_id === paneTabIdRef.current
+        ? paneLayoutRef.current
+        : null,
+      paneIdRef.current,
+    );
     // Keep the current buffer when re-attaching the same terminal (watchdog
     // retry, reconnect): the server repaints a full frame anyway, and keeping
     // the buffer avoids a blank flash plus losing local scrollback.
@@ -2137,6 +2158,9 @@ export function TerminalView({
         terminal_id: terminalId,
         cols,
         rows,
+        ...(surfaceSize
+          ? { surface_cols: surfaceSize.cols, surface_rows: surfaceSize.rows }
+          : {}),
         relay_active: relaySize !== null,
         ...(relaySize
           ? { relay_cols: relaySize.cols, relay_rows: relaySize.rows }
@@ -2331,9 +2355,31 @@ export function TerminalView({
   if (!pane) {
     return (
       <>
-        <div className="terminal-empty muted">
-          Select a workspace or agent to open its terminal.
-        </div>
+        {s.error ? (
+          <div className="terminal-empty" role="alert">
+            <span>{s.error}</span>
+            <button type="button" onClick={() => void store.refresh()}>
+              Retry
+            </button>
+          </div>
+        ) : s.navigationLoading ? (
+          <div className="terminal-shell">
+            <div className="terminal-main">
+              <div
+                className="terminal-loading"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="terminal-loading-dot" />
+                <span>Loading terminal</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="terminal-empty muted">
+            Select a workspace or agent to open its terminal.
+          </div>
+        )}
         <MessageDialog
           open={!!uploadError}
           title="Upload Failed"

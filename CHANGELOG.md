@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Stabilize split-pane sizing and terminal rendering during navigation and resizing.
+- Show loading and retryable errors while terminal layouts are fetched.
+
 ## 0.6.1 - 2026-09-11
 
 - Fix undersized terminal content in split panes when using Herdr 0.9.0 endpoints.

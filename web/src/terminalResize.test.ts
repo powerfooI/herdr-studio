@@ -6,6 +6,7 @@ import {
   forgetTerminalRelayViewportsExcept,
   rememberTerminalRelayViewport,
   terminalAttachWatchdogMs,
+  terminalEndpointViewportSize,
   terminalRelayViewportForTab,
   terminalRelayViewportSize,
 } from "./terminalResize";
@@ -185,6 +186,72 @@ describe("terminal relay viewport", () => {
     expect(
       terminalRelayViewportSize({ cols: 100, rows: 30 }, null, "pane_1"),
     ).toEqual({ cols: 100, rows: 30 });
+  });
+});
+
+describe("endpoint initial viewport", () => {
+  const layout = {
+    area: { x: 26, y: 1, width: 134, height: 69 },
+    panes: [
+      { pane_id: "left", rect: { width: 67, height: 69 } },
+      { pane_id: "right", rect: { width: 67, height: 69 } },
+    ],
+  };
+
+  test("both panes project a full-tab surface without app chrome", () => {
+    for (const paneId of ["left", "right"]) {
+      expect(
+        terminalEndpointViewportSize({ cols: 134, rows: 69 }, layout, paneId),
+      ).toEqual({ cols: 274, rows: 71 });
+    }
+  });
+
+  test("single and zoomed panes include only pane chrome", () => {
+    const fullPane = { pane_id: "left", rect: { width: 134, height: 69 } };
+    for (const panes of [[fullPane], [fullPane, layout.panes[1]]]) {
+      expect(
+        terminalEndpointViewportSize(
+          { cols: 271, rows: 70 },
+          { ...layout, zoomed: true, panes },
+          "left",
+        ),
+      ).toEqual({ cols: 272, rows: 70 });
+    }
+  });
+
+  test("projects nested split dimensions", () => {
+    expect(
+      terminalEndpointViewportSize(
+        { cols: 81, rows: 25 },
+        {
+          area: { x: 26, y: 1, width: 100, height: 40 },
+          panes: [
+            { pane_id: "small", rect: { width: 30, height: 10 } },
+            { pane_id: "other", rect: { width: 70, height: 40 } },
+          ],
+        },
+        "small",
+      ),
+    ).toEqual({ cols: 280, rows: 108 });
+  });
+
+  test("missing or unusable layout leaves sizing to endpoint feedback", () => {
+    expect(
+      terminalEndpointViewportSize({ cols: 134, rows: 69 }, null, "left"),
+    ).toBeNull();
+    expect(
+      terminalEndpointViewportSize({ cols: 134, rows: 69 }, layout, "absent"),
+    ).toBeNull();
+    expect(
+      terminalEndpointViewportSize(
+        { cols: 134, rows: 69 },
+        {
+          ...layout,
+          area: { ...layout.area, width: 0 },
+        },
+        "left",
+      ),
+    ).toBeNull();
   });
 });
 

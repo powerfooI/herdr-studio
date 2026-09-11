@@ -13,6 +13,7 @@ import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
 import { isTerminalHelloProtocol } from "./protocol-compat";
 import { EndpointTerminalSession } from "./endpoint-terminal-session";
+import { frameToAnsi } from "./frame-to-ansi";
 import { isTerminalClipboardPayload } from "./terminal-clipboard";
 
 type TerminalSession = {
@@ -85,7 +86,10 @@ export function createTerminalBridge(args: {
 }) {
   const logger = args.logger ?? silentLogger;
   const terminals = new Map<ServerWebSocket<unknown>, TerminalSession>();
-  const terminalViewers = new Map<ServerWebSocket<unknown>, Set<string>>();
+  const terminalViewers = new Map<
+    ServerWebSocket<unknown>,
+    Map<string, { cols: number; rows: number }>
+  >();
   const sharedTerminals = new Map<string, SharedTerminalSession>();
   const attachmentTokens = new Map<
     ServerWebSocket<unknown>,
@@ -437,7 +441,9 @@ export function createTerminalBridge(args: {
     const viewed = terminalViewers.get(ws);
     const terminalIds = terminalId
       ? [terminalId]
-      : Array.from(viewed ?? (current?.terminalId ? [current.terminalId] : []));
+      : Array.from(
+          viewed?.keys() ?? (current?.terminalId ? [current.terminalId] : []),
+        );
     for (const id of terminalIds) {
       attachmentTokens.get(ws)?.delete(id);
       if (clipboardTarget?.ws === ws && clipboardTarget.terminalId === id) {
@@ -460,7 +466,7 @@ export function createTerminalBridge(args: {
     }
     if (current?.terminalId && !viewed.has(current.terminalId)) {
       terminals.set(ws, {
-        terminalId: Array.from(viewed)[viewed.size - 1] ?? null,
+        terminalId: Array.from(viewed.keys())[viewed.size - 1] ?? null,
         cols: current.cols,
         rows: current.rows,
       });
@@ -471,6 +477,7 @@ export function createTerminalBridge(args: {
     terminalId: string,
     cols: number,
     rows: number,
+    surfaceSize?: { cols: number; rows: number },
   ): Promise<SharedTerminalSession> {
     if (disposed) throw new Error("terminal bridge disposed");
     const creationRevision = lifecycleRevision;
@@ -543,22 +550,35 @@ export function createTerminalBridge(args: {
         shared.firstFrameLogged = true;
         shared.lastFrameLogAt = now;
       }
-      const payload = serialize({
-        terminal: {
-          terminal_id: terminalId,
-          width: t.width,
-          height: t.height,
-          full: t.full,
-          ...(typeof t.mouseReporting === "boolean"
-            ? { mouse_reporting: t.mouseReporting }
-            : {}),
-          bytes: Buffer.from(t.bytes).toString("base64"),
-        },
-      });
+      const payloads = new Map<string, string>();
       for (const viewer of Array.from(shared.viewers)) {
-        if (!terminalViewers.get(viewer)?.has(terminalId)) {
+        const viewport = terminalViewers.get(viewer)?.get(terminalId);
+        if (!viewport) {
           shared.viewers.delete(viewer);
           continue;
+        }
+        const width = t.frame ? Math.min(t.width, viewport.cols) : t.width;
+        const height = t.frame ? Math.min(t.height, viewport.rows) : t.height;
+        const key = `${width}x${height}`;
+        let payload = payloads.get(key);
+        if (!payload) {
+          const bytes =
+            t.frame && (width !== t.width || height !== t.height)
+              ? frameToAnsi(t.frame, viewport)
+              : t.bytes;
+          payload = serialize({
+            terminal: {
+              terminal_id: terminalId,
+              width,
+              height,
+              full: t.full,
+              ...(typeof t.mouseReporting === "boolean"
+                ? { mouse_reporting: t.mouseReporting }
+                : {}),
+              bytes: Buffer.from(bytes).toString("base64"),
+            },
+          });
+          payloads.set(key, payload);
         }
         args.safeSend(viewer, payload, "terminal-frame");
       }
@@ -640,7 +660,7 @@ export function createTerminalBridge(args: {
               }
               thin.attach(terminalId, true);
             })
-        : thin.connect(cols, rows)
+        : thin.connect(cols, rows, surfaceSize)
     ).then(() => {
       if (!isCurrent(creationRevision)) {
         thin.close();
@@ -812,13 +832,35 @@ export function createTerminalBridge(args: {
         const cols = Number(params.cols ?? 100);
         const rows = Number(params.rows ?? 30);
         if (!terminalId) return fail("terminal_id required");
+        let surfaceSize: { cols: number; rows: number } | undefined;
+        if (
+          params.surface_cols !== undefined ||
+          params.surface_rows !== undefined
+        ) {
+          const surfaceCols = params.surface_cols;
+          const surfaceRows = params.surface_rows;
+          if (
+            typeof surfaceCols !== "number" ||
+            typeof surfaceRows !== "number" ||
+            !Number.isInteger(surfaceCols) ||
+            !Number.isInteger(surfaceRows) ||
+            surfaceCols < 1 ||
+            surfaceCols > 65_535 ||
+            surfaceRows < 1 ||
+            surfaceRows > 65_535
+          )
+            return fail(
+              "surface_cols and surface_rows must be integers between 1 and 65535",
+            );
+          surfaceSize = { cols: surfaceCols, rows: surfaceRows };
+        }
         const relaySize = relaySizeFromParams(params, { cols, rows });
         const relayRevision = relaySize ? ++clipboardRelayRevision : null;
 
         const existingShared = sharedTerminals.get(terminalId);
         const sharedMode =
           existingShared && !existingShared.thin.isClosed ? "reused" : "new";
-        const viewed = terminalViewers.get(ws) ?? new Set<string>();
+        const viewed = terminalViewers.get(ws) ?? new Map();
         const refreshReusedTerminal =
           sharedMode === "reused" &&
           !existingShared?.connecting &&
@@ -826,12 +868,17 @@ export function createTerminalBridge(args: {
           existingShared?.cols === cols &&
           existingShared.rows === rows;
         terminals.set(ws, { terminalId, cols, rows });
-        viewed.add(terminalId);
+        viewed.set(terminalId, { cols, rows });
         terminalViewers.set(ws, viewed);
         const tokens = attachmentTokens.get(ws) ?? new Map<string, object>();
         tokens.set(terminalId, {});
         attachmentTokens.set(ws, tokens);
-        const shared = await getSharedTerminal(terminalId, cols, rows);
+        const shared = await getSharedTerminal(
+          terminalId,
+          cols,
+          rows,
+          surfaceSize,
+        );
         shared.viewers.add(ws);
         try {
           await shared.connecting;
@@ -980,6 +1027,7 @@ export function createTerminalBridge(args: {
         const rows = Number(params.rows ?? 30);
         const relaySize = relaySizeFromParams(params, { cols, rows });
         thin.resize(cols, rows);
+        terminalViewers.get(ws)!.set(requestedTerminalId!, { cols, rows });
         shared.cols = cols;
         shared.rows = rows;
         if (relaySize) {
@@ -1023,7 +1071,7 @@ export function createTerminalBridge(args: {
   }
 
   function viewedTerminals(ws: ServerWebSocket<unknown>): string[] {
-    return Array.from(terminalViewers.get(ws) ?? []);
+    return Array.from(terminalViewers.get(ws)?.keys() ?? []);
   }
 
   function endpointAvailability() {

@@ -18,7 +18,10 @@ export class TerminalEndpointPresentation {
   mouseReporting: boolean | undefined;
   selectionDrag = false;
   private appliedMouseReporting: boolean | undefined;
-  private pendingFrame: string | null = null;
+  private pendingFrame: {
+    text: string;
+    size?: { cols: number; rows: number };
+  } | null = null;
   private writing = false;
   private disposed = false;
   private deferredSelection: (() => void) | null = null;
@@ -26,6 +29,7 @@ export class TerminalEndpointPresentation {
   constructor(
     private hasSelection: () => boolean,
     private write: (text: string, parsed: () => void) => void,
+    private viewportSize?: () => { cols: number; rows: number },
   ) {}
 
   get selectionPending(): boolean {
@@ -51,10 +55,14 @@ export class TerminalEndpointPresentation {
     this.flush();
   }
 
-  update(text: string, mouseReporting: boolean): void {
+  update(
+    text: string,
+    mouseReporting: boolean,
+    size?: { cols: number; rows: number },
+  ): void {
     if (this.disposed) return;
     this.mouseReporting = mouseReporting;
-    this.pendingFrame = text;
+    this.pendingFrame = { text, size };
     this.flush();
   }
 
@@ -64,6 +72,17 @@ export class TerminalEndpointPresentation {
       this.writing ||
       this.selectionDrag ||
       this.hasSelection()
+    )
+      return;
+    const frame = this.pendingFrame;
+    this.pendingFrame = null;
+    const viewport = this.viewportSize?.();
+    // A resize can overtake a frame on the wire or while selection holds it.
+    // The bridge clips subsequent frames to the new viewer size.
+    if (
+      frame?.size &&
+      viewport &&
+      (frame.size.cols > viewport.cols || frame.size.rows > viewport.rows)
     )
       return;
     let prefix = "";
@@ -79,11 +98,9 @@ export class TerminalEndpointPresentation {
         : "\x1b[?1002l\x1b[?1006l";
       this.appliedMouseReporting = this.mouseReporting;
     }
-    const frame = this.pendingFrame;
-    this.pendingFrame = null;
     if (prefix || frame !== null) {
       this.writing = true;
-      this.write(prefix + (frame ?? ""), () => {
+      this.write(prefix + (frame?.text ?? ""), () => {
         // reset() cannot cancel the physical xterm write. Its completion must
         // still release the gate for current intent, never restore old state.
         this.writing = false;

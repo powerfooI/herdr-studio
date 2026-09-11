@@ -95,7 +95,11 @@ describe("frameToAnsi", () => {
 
   test("positions and shapes the cursor", () => {
     const f: FrameData = {
-      ...frame([cell("a")], 1, 1),
+      ...frame(
+        Array.from({ length: 12 }, () => cell("a")),
+        3,
+        4,
+      ),
       cursor: { x: 2, y: 3, visible: true, shape: 5 },
     };
     const out = frameToAnsi(f);
@@ -103,11 +107,14 @@ describe("frameToAnsi", () => {
     expect(out).toContain("\x1b[5 q\x1b[?25h");
   });
 
-  test("separates rows with CRLF", () => {
+  test("positions rows without wrapping the cell grid", () => {
     const out = frameToAnsi(
       frame([cell("a"), cell("b"), cell("c"), cell("d")], 2, 2),
     );
     // Each row restarts style tracking, so row 2 opens with a fresh SGR.
-    expect(out).toContain("ab\r\n\x1b[0m\x1b[39;49mcd");
+    expect(out).toContain("ab\x1b[2;1H\x1b[0m\x1b[39;49mcd");
+    expect(out).toContain("\x1b[?7l");
+    expect(out).toContain("\x1b[?7h");
+    expect(out).not.toContain("\r\n");
   });
 });

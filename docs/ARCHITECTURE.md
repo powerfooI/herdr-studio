@@ -39,6 +39,16 @@ capabilities. Attachment waits for the initial snapshot. Each terminal crops its
 pane from the server-rendered tab surface and sends semantic input to that pane;
 panes retain their shared layout dimensions.
 
+`terminal.attach` carries pane content dimensions in `cols`/`rows`. When layout
+is available, the browser also supplies `surface_cols`/`surface_rows` for the
+complete tab, including pane borders but excluding app sidebar/tab-bar insets.
+The bridge validates this optional pair as integers in 1..65535 and uses it in
+new endpoint handshakes. Surface feedback corrects stale or missing hints;
+legacy direct attachments continue to use the pane content dimensions.
+Endpoint repaints are clipped to each viewer's requested viewport, including
+wide-character and cursor boundaries. Browsers discard oversized frames that
+arrive after a local shrink or were held during text selection.
+
 Method/capability advertisements belong to each terminal socket, never another
 terminal or runtime. Reattachment negotiates again; browser reconnect and
 connection changes clear cached availability until refreshed. The bridge returns
