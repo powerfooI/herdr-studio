@@ -15,6 +15,7 @@ import {
   RefreshCw,
   ScrollText,
   Server,
+  SquareTerminal,
   Sun,
   SunMoon,
   Wifi,
@@ -38,10 +39,16 @@ import {
   type MobileTerminalShortcutRows,
   type MobileTerminalSideShortcuts,
 } from "../mobileTerminalShortcuts";
+import {
+  type CustomTerminalTheme,
+  resolveTerminalThemeDefinition,
+  type TerminalThemeSelection,
+} from "../terminalThemes";
 import { AutoSyncRepositoriesDialog } from "./AutoSyncRepositoriesDialog";
 import { ChangelogDialog } from "./ChangelogDialog";
 import { ShortcutLookupDialog } from "./ShortcutLookupDialog";
 import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
+import { TerminalThemeDialog } from "./TerminalThemeDialog";
 
 const APP_VERSION = packageJson.version;
 export const CONFIG_MENU_ID = "herdr-config-menu";
@@ -67,6 +74,8 @@ type ConfigMenuProps = {
   uiScale: number;
   mobileTerminalShortcuts: MobileTerminalShortcutRows;
   mobileTerminalSideShortcuts: MobileTerminalSideShortcuts;
+  terminalThemeSelection: TerminalThemeSelection;
+  customTerminalThemes: CustomTerminalTheme[];
   onThemeChange: (theme: Theme) => void;
   onAccentColorChange: (accentColor: AccentColor) => void;
   onUiScaleChange: (scale: number) => void;
@@ -74,6 +83,8 @@ type ConfigMenuProps = {
   onMobileTerminalSideShortcutsChange: (
     shortcuts: MobileTerminalSideShortcuts,
   ) => void;
+  onTerminalThemeSelectionChange: (selection: TerminalThemeSelection) => void;
+  onCustomTerminalThemesChange: (themes: CustomTerminalTheme[]) => void;
 };
 
 export function ConfigMenu({
@@ -82,11 +93,15 @@ export function ConfigMenu({
   uiScale,
   mobileTerminalShortcuts,
   mobileTerminalSideShortcuts,
+  terminalThemeSelection,
+  customTerminalThemes,
   onThemeChange,
   onAccentColorChange,
   onUiScaleChange,
   onMobileTerminalShortcutsChange,
   onMobileTerminalSideShortcutsChange,
+  onTerminalThemeSelectionChange,
+  onCustomTerminalThemesChange,
 }: ConfigMenuProps) {
   const s = useStoreSelector(
     (state) => ({
@@ -117,6 +132,7 @@ export function ConfigMenu({
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [mobileShortcutsOpen, setMobileShortcutsOpen] = useState(false);
+  const [terminalThemesOpen, setTerminalThemesOpen] = useState(false);
   const [autoSyncOpen, setAutoSyncOpen] = useState(false);
   const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
   const [health, setHealth] = useState<HealthInfo | null>(null);
@@ -326,6 +342,27 @@ export function ConfigMenu({
                   ))}
                 </div>
               </div>
+              <ConfigMenuItem
+                icon={<SquareTerminal size={15} />}
+                label="Terminal theme"
+                description={`Dark: ${
+                  resolveTerminalThemeDefinition(
+                    "dark",
+                    terminalThemeSelection,
+                    customTerminalThemes,
+                  ).name
+                } · Light: ${
+                  resolveTerminalThemeDefinition(
+                    "light",
+                    terminalThemeSelection,
+                    customTerminalThemes,
+                  ).name
+                }`}
+                onClick={() => {
+                  setOpen(false);
+                  setTerminalThemesOpen(true);
+                }}
+              />
               <div className="config-preference-row">
                 <span className="config-item-icon">
                   <ALargeSmall size={15} />
@@ -569,6 +606,14 @@ export function ConfigMenu({
         onChange={onMobileTerminalShortcutsChange}
         onSideChange={onMobileTerminalSideShortcutsChange}
         onClose={() => setMobileShortcutsOpen(false)}
+      />
+      <TerminalThemeDialog
+        open={terminalThemesOpen}
+        selection={terminalThemeSelection}
+        customThemes={customTerminalThemes}
+        onSelectionChange={onTerminalThemeSelectionChange}
+        onCustomThemesChange={onCustomTerminalThemesChange}
+        onClose={() => setTerminalThemesOpen(false)}
       />
       <AutoSyncRepositoriesDialog
         open={autoSyncOpen}

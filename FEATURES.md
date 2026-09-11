@@ -332,6 +332,11 @@ browser and do not change Herdr server configuration.
 - Enable browser task-completion notifications that return directly to the
   relevant pane.
 - Choose light/dark themes (or follow the system color scheme) and persistent accent colors.
+- Pick a terminal color theme per appearance mode from built-in presets
+  (Solarized, Dracula, One Dark, Nord, Tokyo Night, Catppuccin, GitHub, and
+  more) via Menu → Appearance → Terminal theme, or create custom themes with
+  your own base and ANSI colors; themes apply live to every terminal and are
+  stored per browser.
 - Scale the interface from 80% to 150% via Menu → Appearance → Text size,
   useful on mobile where browser zoom shortcuts are unavailable.
 - Install and manage a systemd or launchd user service from the CLI.

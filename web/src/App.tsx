@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ITheme } from "@xterm/xterm";
 import packageJson from "../package.json";
 import {
   type AccentColor,
@@ -73,6 +74,17 @@ import {
   serializeMobileTerminalShortcutRows,
   serializeMobileTerminalSideShortcuts,
 } from "./mobileTerminalShortcuts";
+import {
+  CUSTOM_TERMINAL_THEMES_STORAGE_KEY,
+  type CustomTerminalTheme,
+  parseCustomTerminalThemes,
+  parseTerminalThemeSelection,
+  resolveTerminalTheme,
+  serializeCustomTerminalThemes,
+  serializeTerminalThemeSelection,
+  TERMINAL_THEME_SELECTION_STORAGE_KEY,
+  type TerminalThemeSelection,
+} from "./terminalThemes";
 import {
   activePaneIdForSnapshot,
   type PaneJumpEntry,
@@ -148,7 +160,7 @@ const LazyTerminalView = lazy(() =>
 
 type TerminalViewProps = {
   paneId?: string;
-  resolvedTheme: ResolvedTheme;
+  terminalTheme: ITheme;
   showMobileKeys?: boolean;
   mobileShortcuts?: MobileTerminalShortcutRows;
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
@@ -247,6 +259,18 @@ function loadAccentColor(): AccentColor {
 
 function loadUiScale(): number {
   return normalizeUiScale(localStorage.getItem(UI_SCALE_KEY));
+}
+
+function loadTerminalThemeSelection(): TerminalThemeSelection {
+  return parseTerminalThemeSelection(
+    localStorage.getItem(TERMINAL_THEME_SELECTION_STORAGE_KEY),
+  );
+}
+
+function loadCustomTerminalThemes(): CustomTerminalTheme[] {
+  return parseCustomTerminalThemes(
+    localStorage.getItem(CUSTOM_TERMINAL_THEMES_STORAGE_KEY),
+  );
 }
 
 function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
@@ -765,7 +789,7 @@ function resizeTargetForSplit(
 // Render the active tab's Herdr pane layout; single-pane and zoomed tabs keep
 // the old full terminal view.
 function TerminalPaneLayout({
-  resolvedTheme,
+  terminalTheme,
   mobileShortcuts,
   mobileSideShortcuts,
   composerOpen,
@@ -774,7 +798,7 @@ function TerminalPaneLayout({
   onAgentHistoryOpenChange,
   onOpenWorkspaceFile,
 }: {
-  resolvedTheme: ResolvedTheme;
+  terminalTheme: ITheme;
   mobileShortcuts: MobileTerminalShortcutRows;
   mobileSideShortcuts: MobileTerminalSideShortcuts;
   composerOpen: boolean;
@@ -823,7 +847,7 @@ function TerminalPaneLayout({
     return (
       <TerminalView
         key={mountKeyForPane(activePaneId)}
-        resolvedTheme={resolvedTheme}
+        terminalTheme={terminalTheme}
         mobileShortcuts={mobileShortcuts}
         mobileSideShortcuts={mobileSideShortcuts}
         composerOpen={composerOpen}
@@ -878,7 +902,7 @@ function TerminalPaneLayout({
         <TerminalView
           key={mountKeyForPane(activePaneId)}
           paneId={activePaneId}
-          resolvedTheme={resolvedTheme}
+          terminalTheme={terminalTheme}
           mobileShortcuts={mobileShortcuts}
           mobileSideShortcuts={mobileSideShortcuts}
           composerOpen={composerOpen}
@@ -982,7 +1006,7 @@ function TerminalPaneLayout({
             <TerminalView
               key={mountKeyForPane(layoutPane.pane_id)}
               paneId={layoutPane.pane_id}
-              resolvedTheme={resolvedTheme}
+              terminalTheme={terminalTheme}
               showMobileKeys={isActive}
               mobileShortcuts={mobileShortcuts}
               mobileSideShortcuts={mobileSideShortcuts}
@@ -1069,6 +1093,20 @@ export default function App() {
     useState<MobileTerminalShortcutRows>(loadMobileTerminalShortcuts);
   const [mobileTerminalSideShortcuts, setMobileTerminalSideShortcuts] =
     useState<MobileTerminalSideShortcuts>(loadMobileTerminalSideShortcuts);
+  const [terminalThemeSelection, setTerminalThemeSelection] =
+    useState<TerminalThemeSelection>(loadTerminalThemeSelection);
+  const [customTerminalThemes, setCustomTerminalThemes] = useState<
+    CustomTerminalTheme[]
+  >(loadCustomTerminalThemes);
+  const terminalTheme = useMemo(
+    () =>
+      resolveTerminalTheme(
+        resolvedTheme,
+        terminalThemeSelection,
+        customTerminalThemes,
+      ),
+    [resolvedTheme, terminalThemeSelection, customTerminalThemes],
+  );
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileControlsCollapsed, setMobileControlsCollapsed] = useState(false);
   const [mobileTabSheetOpen, setMobileTabSheetOpen] = useState(false);
@@ -2332,6 +2370,18 @@ export default function App() {
     );
   }, [mobileTerminalSideShortcuts]);
   useEffect(() => {
+    localStorage.setItem(
+      TERMINAL_THEME_SELECTION_STORAGE_KEY,
+      serializeTerminalThemeSelection(terminalThemeSelection),
+    );
+  }, [terminalThemeSelection]);
+  useEffect(() => {
+    localStorage.setItem(
+      CUSTOM_TERMINAL_THEMES_STORAGE_KEY,
+      serializeCustomTerminalThemes(customTerminalThemes),
+    );
+  }, [customTerminalThemes]);
+  useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key === MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY) {
         setMobileTerminalShortcuts(
@@ -2341,6 +2391,10 @@ export default function App() {
         setMobileTerminalSideShortcuts(
           parseMobileTerminalSideShortcuts(event.newValue),
         );
+      } else if (event.key === TERMINAL_THEME_SELECTION_STORAGE_KEY) {
+        setTerminalThemeSelection(parseTerminalThemeSelection(event.newValue));
+      } else if (event.key === CUSTOM_TERMINAL_THEMES_STORAGE_KEY) {
+        setCustomTerminalThemes(parseCustomTerminalThemes(event.newValue));
       }
     };
     window.addEventListener("storage", onStorage);
@@ -2539,6 +2593,8 @@ export default function App() {
               accentColor={accentColor}
               mobileTerminalShortcuts={mobileTerminalShortcuts}
               mobileTerminalSideShortcuts={mobileTerminalSideShortcuts}
+              terminalThemeSelection={terminalThemeSelection}
+              customTerminalThemes={customTerminalThemes}
               onThemeChange={setTheme}
               onAccentColorChange={setAccentColor}
               uiScale={uiScale}
@@ -2547,6 +2603,8 @@ export default function App() {
               onMobileTerminalSideShortcutsChange={
                 setMobileTerminalSideShortcuts
               }
+              onTerminalThemeSelectionChange={setTerminalThemeSelection}
+              onCustomTerminalThemesChange={setCustomTerminalThemes}
             />
           </div>
         </div>
@@ -2858,7 +2916,7 @@ export default function App() {
           >
             <div className="workspace-terminal-surface">
               <TerminalPaneLayout
-                resolvedTheme={resolvedTheme}
+                terminalTheme={terminalTheme}
                 mobileShortcuts={mobileTerminalShortcuts}
                 mobileSideShortcuts={mobileTerminalSideShortcuts}
                 composerOpen={terminalComposerOpen}

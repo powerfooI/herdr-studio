@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add terminal color themes: choose from built-in presets per dark/light mode,
+  or create custom themes with your own colors (Menu → Terminal theme).
+
 ## 0.6.1 - 2026-09-11
 
 - Fix undersized terminal content in split panes when using Herdr 0.9.0 endpoints.
