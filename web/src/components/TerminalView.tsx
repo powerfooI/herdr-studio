@@ -4,7 +4,7 @@ import {
 } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
-import type { IBufferLine, ILink } from "@xterm/xterm";
+import type { IBufferLine, ILink, ITheme } from "@xterm/xterm";
 import { Terminal } from "@xterm/xterm";
 import { Columns2, Keyboard, Maximize2, Rows2, X } from "lucide-react";
 import {
@@ -18,7 +18,6 @@ import {
 } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { bridge, type ConnectionClient } from "../api";
-import type { ResolvedTheme } from "../appearance";
 import { mobileTerminalShortcutExecution } from "../mobileTerminalShortcutAction";
 import {
   defaultMobileTerminalShortcutRows,
@@ -109,7 +108,7 @@ import {
 } from "../terminalResize";
 import { terminalPageScroll, terminalWheelScroll } from "../terminalScroll";
 import { TerminalSelectionDragGuard } from "../terminalSelectionGuard";
-import { applyTerminalTheme, terminalThemeFor } from "../terminalThemes";
+import { applyTerminalTheme } from "../terminalThemes";
 import { paneHasAgentHistory } from "./agentSession";
 import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
 import { TerminalComposer } from "./TerminalComposer";
@@ -420,7 +419,7 @@ export type TerminalWorkspaceFileRequest = {
 
 export function TerminalView({
   paneId,
-  resolvedTheme,
+  terminalTheme,
   showMobileKeys = true,
   mobileShortcuts = defaultMobileTerminalShortcutRows(),
   mobileSideShortcuts = defaultMobileTerminalSideShortcuts(),
@@ -431,7 +430,7 @@ export function TerminalView({
   onOpenWorkspaceFile,
 }: {
   paneId?: string;
-  resolvedTheme: ResolvedTheme;
+  terminalTheme: ITheme;
   showMobileKeys?: boolean;
   mobileShortcuts?: MobileTerminalShortcutRows;
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
@@ -525,7 +524,7 @@ export function TerminalView({
   // fire again, leaving the recreated terminal detached and blank.
   const [termInstance, setTermInstance] = useState<Terminal | null>(null);
   // Theme changes update xterm in place without recreating the terminal.
-  const resolvedThemeRef = useRef(resolvedTheme);
+  const terminalThemeRef = useRef(terminalTheme);
   const fitRef = useRef<FitAddon | null>(null);
   const attachedRef = useRef<string | null>(null);
   const attachingRef = useRef<string | null>(null);
@@ -793,7 +792,7 @@ export function TerminalView({
       disableStdin: composerOpenRef.current,
       fontFamily: FONT_FAMILY,
       ...terminalDensity(),
-      theme: terminalThemeFor(resolvedThemeRef.current),
+      theme: terminalThemeRef.current,
       allowProposedApi: true,
       linkHandler: {
         activate(event, text) {
@@ -2253,9 +2252,9 @@ export function TerminalView({
   ]);
 
   useEffect(() => {
-    resolvedThemeRef.current = resolvedTheme;
-    if (termInstance) applyTerminalTheme(termInstance, resolvedTheme);
-  }, [resolvedTheme, termInstance]);
+    terminalThemeRef.current = terminalTheme;
+    if (termInstance) applyTerminalTheme(termInstance, terminalTheme);
+  }, [terminalTheme, termInstance]);
 
   // Mobile browsers freeze the page while hidden: the socket can die
   // silently, rendering pauses, and composited content may come back blank.

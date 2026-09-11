@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TerminalView } from "./components/TerminalView";
+import { terminalThemeFor } from "./terminalThemes";
 import {
   browserPaneInDirection,
   emptyBrowserNavigation,
@@ -336,7 +337,9 @@ function renderTerminalSnapshot() {
   );
   try {
     return renderToStaticMarkup(
-      React.createElement(TerminalView, { resolvedTheme: "dark" }),
+      React.createElement(TerminalView, {
+        terminalTheme: terminalThemeFor("dark"),
+      }),
     );
   } finally {
     snapshot.mockRestore();
