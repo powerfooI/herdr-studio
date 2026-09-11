@@ -63,7 +63,14 @@ function writeFrame(w: BinWriter, frame: FrameData) {
   w.bytes(Buffer.alloc(0));
 }
 
-type TestPane = { paneId: string; x: number; mouseReporting: boolean };
+type Rect = { x: number; y: number; width: number; height: number };
+type TestPane = {
+  paneId: string;
+  x: number;
+  mouseReporting: boolean;
+  rect?: Rect;
+  innerRect?: Rect;
+};
 const DEFAULT_PANES: TestPane[] = [
   { paneId: "w1:p1", x: 0, mouseReporting: false },
 ];
@@ -74,17 +81,16 @@ function writePane(
   x = 0,
   y = 0,
   mouseReporting = false,
+  rect = { x, y, width: 10, height: 5 },
+  innerRect = { x: x + 1, y: y + 1, width: 8, height: 3 },
 ) {
   w.string(paneId);
   w.varint(1);
-  for (const rect of [
-    { x, y, width: 10, height: 5 },
-    { x: x + 1, y: y + 1, width: 8, height: 3 },
-  ]) {
-    w.varint(rect.x);
-    w.varint(rect.y);
-    w.varint(rect.width);
-    w.varint(rect.height);
+  for (const bounds of [rect, innerRect]) {
+    w.varint(bounds.x);
+    w.varint(bounds.y);
+    w.varint(bounds.width);
+    w.varint(bounds.height);
   }
   w.bool(false);
   w.bool(true); // scroll metrics present
@@ -112,7 +118,15 @@ function surfaceFrame(
   writeFrame(w, frame);
   w.varint(panes.length);
   for (const pane of panes)
-    writePane(w, pane.paneId, pane.x, 0, pane.mouseReporting);
+    writePane(
+      w,
+      pane.paneId,
+      pane.x,
+      0,
+      pane.mouseReporting,
+      pane.rect,
+      pane.innerRect,
+    );
   w.varint(0);
   w.bool(false);
   return w.toBuffer();
@@ -149,6 +163,12 @@ async function startSessionServer(handlers: {
   panes?: TestPane[];
   onConnection?: (sendSurface: (panes: TestPane[]) => void) => void;
   onClipboardConnection?: (send: (data: string) => void) => void;
+  initialSurface?: { frame: FrameData; panes: TestPane[] };
+  onResize?: (
+    cols: number,
+    rows: number,
+    send: (frame: FrameData, panes: TestPane[]) => void,
+  ) => void;
 }) {
   const socketPath = path.join(
     tmpdir(),
@@ -221,7 +241,15 @@ async function startSessionServer(handlers: {
               ),
             ),
           );
-          socket.write(encodeFrame(surfaceFrame(1, frame, handlers.panes)));
+          socket.write(
+            encodeFrame(
+              surfaceFrame(
+                1,
+                handlers.initialSurface?.frame ?? frame,
+                handlers.initialSurface?.panes ?? handlers.panes,
+              ),
+            ),
+          );
           continue;
         }
         if (variant === 15) {
@@ -247,6 +275,16 @@ async function startSessionServer(handlers: {
             );
             socket.write(encodeFrame(w.toBuffer()));
           }
+        } else if (variant === 12) {
+          reader.varint(); // cell_width_px
+          reader.varint(); // cell_height_px
+          const cols = reader.varint();
+          const rows = reader.varint();
+          handlers.onResize?.(cols, rows, (nextFrame, panes) =>
+            socket.write(
+              encodeFrame(surfaceFrame(++revision, nextFrame, panes)),
+            ),
+          );
         } else if (variant === 13) {
           const paneId = reader.string();
           handlers.onPaneInput?.(paneId, reader);
@@ -263,6 +301,90 @@ async function startSessionServer(handlers: {
 }
 
 describe("EndpointTerminalSession", () => {
+  test.each([
+    ["single pane", 1, 1, 0, 1],
+    ["stacked panes", 1, 0.5, 2, 3],
+    ["three stacked panes", 1, 1 / 3, 2, 3],
+    ["side-by-side panes", 0.5, 1, 2, 3],
+    ["unequal nested splits", 0.3, 0.25, 2, 3],
+  ] as const)(
+    "fits pane content through a full-tab surface: %s",
+    async (_name, widthRatio, heightRatio, rowChrome, colChrome) => {
+      const makeSurface = (cols: number, rows: number) => {
+        const rect = {
+          x: 0,
+          y: 0,
+          width: Math.floor(cols * widthRatio),
+          height: Math.floor(rows * heightRatio),
+        };
+        const innerRect = {
+          x: colChrome > 1 ? 1 : 0,
+          y: rowChrome > 0 ? 1 : 0,
+          width: rect.width - colChrome,
+          height: rect.height - rowChrome,
+        };
+        return {
+          frame: {
+            width: cols,
+            height: rows,
+            cells: Array.from({ length: cols * rows }, () => cell(" ")),
+            cursor: null,
+            hyperlinks: [],
+          } satisfies FrameData,
+          panes: [
+            { paneId: "w1:p1", x: 0, mouseReporting: false, rect, innerRect },
+          ],
+        };
+      };
+      const resizes: Array<[number, number]> = [];
+      const initial = makeSurface(100, 30);
+      const socketPath = await startSessionServer({
+        initialSurface: initial,
+        onResize: (cols, rows, send) => {
+          resizes.push([cols, rows]);
+          // A queued old surface must not cause another correction.
+          send(initial.frame, initial.panes);
+          const next = makeSurface(cols, rows);
+          send(next.frame, next.panes);
+        },
+      });
+      const session = new EndpointTerminalSession(
+        socketPath,
+        "term_1",
+        async () => "w1:p1",
+      );
+      const waitForSize = (width: number, height: number) =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            session.off("terminal", onFrame);
+            reject(new Error(`missing ${width}x${height} frame`));
+          }, 2000);
+          const onFrame = (frame: { width: number; height: number }) => {
+            if (frame.width !== width || frame.height !== height) return;
+            clearTimeout(timer);
+            session.off("terminal", onFrame);
+            resolve();
+          };
+          session.on("terminal", onFrame);
+        });
+      try {
+        const first = waitForSize(100, 30);
+        await session.connect(100, 30);
+        await first;
+        expect(resizes.length).toBeLessThanOrEqual(4);
+        const resized = waitForSize(81, 25);
+        session.resize(81, 25);
+        await resized;
+        expect(resizes.length).toBeLessThanOrEqual(9);
+        const refreshed = waitForSize(81, 25);
+        session.resize(81, 25);
+        await refreshed;
+      } finally {
+        session.close();
+      }
+    },
+  );
+
   test("focuses the pane and emits cropped ANSI terminal frames", async () => {
     const requests: Array<{ method: string; params: any }> = [];
     const socketPath = await startSessionServer({
@@ -564,7 +686,8 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
       });
     }
     await Bun.sleep(40);
-    expect(inputs).toEqual(["w1:p1", "w1:p2"]);
+    // Each pane has its own socket; delivery order across sockets is undefined.
+    expect(inputs.toSorted()).toEqual(["w1:p1", "w1:p2"]);
     expect(errors).toHaveLength(1);
     for (const [direction, source] of [
       ["up", "history"],

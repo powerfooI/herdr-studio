@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix undersized terminal content in split panes when using Herdr 0.9.0 endpoints.
+
 ## 0.6.0 - 2026-09-10
 
 - Use stable Herdr 0.9.0 endpoints for terminals, with optional legacy fallback via

@@ -33,6 +33,9 @@ export class EndpointTerminalSession extends EventEmitter {
   } | null = null;
   private closed = false;
   private seq = 0;
+  private paneSize = { cols: 0, rows: 0 };
+  private surfaceSize = { cols: 0, rows: 0 };
+  private fitAttempts = 0;
   private commandChain: Promise<unknown> = Promise.resolve();
   connecting: Promise<void> | null = null;
 
@@ -72,6 +75,9 @@ export class EndpointTerminalSession extends EventEmitter {
   }
 
   connect(cols: number, rows: number): Promise<void> {
+    this.paneSize = { cols, rows };
+    this.surfaceSize = { cols, rows };
+    this.fitAttempts = 4;
     const ready = (async () => {
       await this.client.connect(cols, rows);
       this.client.assertMethod("pane.focus");
@@ -211,6 +217,7 @@ export class EndpointTerminalSession extends EventEmitter {
     const pane = surface.panes.find((p) => p.paneId === this.paneId);
     if (!pane?.mouseReporting) this.pressedMouseButtons.clear();
     if (!pane) return;
+    this.fitSurface(surface);
     this.lastScroll = pane.scroll
       ? {
           offsetFromBottom: pane.scroll.offsetFromBottom,
@@ -231,7 +238,69 @@ export class EndpointTerminalSession extends EventEmitter {
   }
 
   resize(cols: number, rows: number) {
-    this.client.resize(cols, rows);
+    this.paneSize = { cols, rows };
+    this.fitAttempts = 4;
+    const surface = this.latestSurface();
+    // A same-size resize must still repaint for newly attached viewers.
+    this.surfaceSize = surface ? this.sizeForPane(surface) : { cols, rows };
+    this.client.resize(this.surfaceSize.cols, this.surfaceSize.rows);
+  }
+
+  private sizeForPane(surface: EndpointSurface) {
+    const pane = surface.panes.find((p) => p.paneId === this.paneId);
+    if (!pane || pane.rect.width < 1 || pane.rect.height < 1)
+      return this.surfaceSize;
+    // Endpoint dimensions describe the complete tab, unlike legacy direct
+    // terminal attachments. Include pane decorations before undoing the split.
+    const scale = (
+      wanted: number,
+      outer: number,
+      inner: number,
+      total: number,
+    ) =>
+      Math.max(
+        1,
+        Math.min(
+          65_535,
+          Math.round(((wanted + outer - inner) * total) / outer),
+        ),
+      );
+    return {
+      cols: scale(
+        this.paneSize.cols,
+        pane.rect.width,
+        pane.innerRect.width,
+        surface.frame.width,
+      ),
+      rows: scale(
+        this.paneSize.rows,
+        pane.rect.height,
+        pane.innerRect.height,
+        surface.frame.height,
+      ),
+    };
+  }
+
+  private fitSurface(surface: EndpointSurface) {
+    if (
+      this.fitAttempts === 0 ||
+      surface.frame.width !== this.surfaceSize.cols ||
+      surface.frame.height !== this.surfaceSize.rows
+    )
+      return;
+    const next = this.sizeForPane(surface);
+    if (
+      next.cols === this.surfaceSize.cols &&
+      next.rows === this.surfaceSize.rows
+    ) {
+      this.fitAttempts = 0;
+      return;
+    }
+    // Split rounding can require a follow-up. Bound convergence and only use
+    // frames matching the last request, never resize again for stale patches.
+    this.fitAttempts -= 1;
+    this.surfaceSize = next;
+    this.client.resize(next.cols, next.rows);
   }
 
   input(data: Buffer) {
