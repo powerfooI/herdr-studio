@@ -71,7 +71,7 @@ import {
 } from "./FilePreviewContent";
 import { workspaceInspectorLayout } from "./workspaceInspectorLayout";
 
-const DiffContentView = lazyWithReload(() =>
+const DiffContentView = lazyWithReload("diff-content-view", () =>
   import("./DiffContentView").then((module) => ({
     default: module.DiffContentView,
   })),

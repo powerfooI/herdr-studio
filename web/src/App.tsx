@@ -152,7 +152,7 @@ const DEFAULT_SIDEBAR = 284;
 const THEME_KEY = "theme";
 const ACCENT_COLOR_KEY = "accentColor";
 const UI_SCALE_KEY = "uiScale";
-const LazyTerminalView = lazyWithReload(() =>
+const LazyTerminalView = lazyWithReload("terminal-view", () =>
   import("./components/TerminalView").then((module) => ({
     default: module.TerminalView,
   })),
