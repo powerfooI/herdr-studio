@@ -59,7 +59,6 @@ import { GlobalTooltip } from "./components/GlobalTooltip";
 import { MobileTabSheet } from "./components/MobileTabSheet";
 import { requestClosePane, requestCloseTab, TabBar } from "./components/TabBar";
 import type { TerminalWorkspaceFileRequest } from "./components/TerminalView";
-import { WorkspaceInspectorHost } from "./components/WorkspaceInspectorHost";
 import { WorkspaceTree } from "./components/WorkspaceTree";
 import { isIosDevice } from "./downloadFile";
 import { lazyWithReload } from "./lazyWithReload";
@@ -145,6 +144,12 @@ import {
   writeInspectorPreferences,
   writeResourceFileSelection,
 } from "./workspaceResource";
+
+const WorkspaceInspectorHost = lazyWithReload("workspace-inspector", () =>
+  import("./components/WorkspaceInspectorHost").then((module) => ({
+    default: module.WorkspaceInspectorHost,
+  })),
+);
 
 const MIN_SIDEBAR = 180;
 const MAX_SIDEBAR = 560;
@@ -2952,34 +2957,38 @@ export default function App() {
                       : { height: inspectorState.size }
                 }
               >
-                <WorkspaceInspectorHost
-                  key={`${resourceUiKey}:${resourceOwnerKey(inspectorState.scope)}`}
-                  state={inspectorState}
-                  visible={!mobile || mobileView !== "workspaces"}
-                  workspace={inspectorWorkspace}
-                  historyPane={inspectorHistoryPane}
-                  fileSelection={activeFilePreview}
-                  diffSelection={activeDiff}
-                  connectionClient={connectionClient}
-                  onFileSelectionChange={(selection) =>
-                    handleFilePreviewChange(
-                      resourceStateKey(inspectorState.scope),
-                      selection,
-                    )
-                  }
-                  onDiffSelectionChange={(selection) =>
-                    handleDiffSelectionChange(
-                      resourceStateKey(inspectorState.scope),
-                      selection,
-                    )
-                  }
-                  onOpenDiffFile={openDiffFileInExplorer}
-                  onViewChange={setInspectorView}
-                  onDockChange={setInspectorDock}
-                  onExpandedChange={setInspectorExpanded}
-                  onClose={closeInspector}
-                  onBack={clearInspectorDetail}
-                />
+                <Suspense
+                  fallback={<div role="status">Loading Inspector...</div>}
+                >
+                  <WorkspaceInspectorHost
+                    key={`${resourceUiKey}:${resourceOwnerKey(inspectorState.scope)}`}
+                    state={inspectorState}
+                    visible={!mobile || mobileView !== "workspaces"}
+                    workspace={inspectorWorkspace}
+                    historyPane={inspectorHistoryPane}
+                    fileSelection={activeFilePreview}
+                    diffSelection={activeDiff}
+                    connectionClient={connectionClient}
+                    onFileSelectionChange={(selection) =>
+                      handleFilePreviewChange(
+                        resourceStateKey(inspectorState.scope),
+                        selection,
+                      )
+                    }
+                    onDiffSelectionChange={(selection) =>
+                      handleDiffSelectionChange(
+                        resourceStateKey(inspectorState.scope),
+                        selection,
+                      )
+                    }
+                    onOpenDiffFile={openDiffFileInExplorer}
+                    onViewChange={setInspectorView}
+                    onDockChange={setInspectorDock}
+                    onExpandedChange={setInspectorExpanded}
+                    onClose={closeInspector}
+                    onBack={clearInspectorDetail}
+                  />
+                </Suspense>
               </div>
             ) : null}
           </div>

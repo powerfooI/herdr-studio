@@ -1,10 +1,33 @@
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
 const publicRoot = fileURLToPath(new URL("../server/public/", import.meta.url));
 const maxFileCount = 160;
 const maxTotalBytes = 12 * 1024 * 1024;
+const maxInitialJsBytes = 650 * 1024;
+const maxInitialJsGzipBytes = 200 * 1024;
+const maxInitialCssBytes = 192 * 1024;
+
+/** Follow eager imports only; dynamic imports belong to feature budgets. */
+export function initialAssetFiles(manifest) {
+  const entries = Object.keys(manifest).filter((key) => manifest[key].isEntry);
+  if (!entries.length) throw new Error("Vite manifest has no entry points");
+  const visited = new Set();
+  const files = new Set();
+  function visit(key) {
+    if (visited.has(key)) return;
+    const chunk = manifest[key];
+    if (!chunk) throw new Error(`Missing Vite manifest chunk: ${key}`);
+    visited.add(key);
+    files.add(chunk.file);
+    for (const css of chunk.css ?? []) files.add(css);
+    for (const dependency of chunk.imports ?? []) visit(dependency);
+  }
+  for (const entry of entries) visit(entry);
+  return [...files];
+}
 
 async function collectAssetStats(root) {
   const directories = [root];
@@ -29,13 +52,44 @@ async function collectAssetStats(root) {
   return { fileCount, totalBytes };
 }
 
-const { fileCount, totalBytes } = await collectAssetStats(publicRoot);
-const totalMiB = (totalBytes / 1024 / 1024).toFixed(1);
-const message = `web asset budget: ${fileCount}/${maxFileCount} files, ${totalMiB}/${maxTotalBytes / 1024 / 1024} MiB`;
-
-if (fileCount > maxFileCount || totalBytes > maxTotalBytes) {
-  process.stderr.write(`${message.replace("budget:", "budget exceeded:")}\n`);
-  process.exitCode = 1;
-} else {
-  process.stdout.write(`${message}\n`);
+async function checkAssets() {
+  const { fileCount, totalBytes } = await collectAssetStats(publicRoot);
+  let manifest;
+  try {
+    manifest = JSON.parse(
+      await readFile(`${publicRoot}/.vite/manifest.json`, "utf8"),
+    );
+  } catch (cause) {
+    throw new Error(
+      "Cannot read the Vite manifest; run the frontend build first",
+      { cause },
+    );
+  }
+  let jsBytes = 0;
+  let jsGzipBytes = 0;
+  let cssBytes = 0;
+  for (const file of initialAssetFiles(manifest)) {
+    const content = await readFile(`${publicRoot}/${file}`);
+    if (file.endsWith(".js")) {
+      jsBytes += content.length;
+      jsGzipBytes += gzipSync(content).length;
+    } else if (file.endsWith(".css")) {
+      cssBytes += content.length;
+    }
+  }
+  const checks = [
+    ["files", fileCount, maxFileCount, 1, "files"],
+    ["total", totalBytes, maxTotalBytes, 1024 * 1024, "MiB"],
+    ["initial JS", jsBytes, maxInitialJsBytes, 1024, "KiB"],
+    ["initial JS gzip", jsGzipBytes, maxInitialJsGzipBytes, 1024, "KiB"],
+    ["initial CSS", cssBytes, maxInitialCssBytes, 1024, "KiB"],
+  ];
+  for (const [name, actual, max, unit, suffix] of checks) {
+    const exceeded = actual > max;
+    const message = `web asset ${name}: ${(actual / unit).toFixed(1)}/${max / unit} ${suffix}${exceeded ? " (budget exceeded)" : ""}\n`;
+    (exceeded ? process.stderr : process.stdout).write(message);
+    if (exceeded) process.exitCode = 1;
+  }
 }
+
+if (import.meta.main) await checkAssets();

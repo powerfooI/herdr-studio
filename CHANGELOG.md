@@ -8,6 +8,7 @@
   or create custom themes with your own colors (Menu → Terminal theme).
 - Stabilize split-pane sizing and terminal rendering during navigation and resizing.
 - Show loading and retryable errors while terminal layouts are fetched.
+- Load the Inspector and file preview on demand to reduce initial JavaScript downloads.
 
 ## 0.6.1 - 2026-09-11
 

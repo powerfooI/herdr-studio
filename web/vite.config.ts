@@ -18,6 +18,8 @@ export default defineConfig({
     format: "es",
   },
   build: {
+    // The asset check follows static imports from the entry, excluding lazy features.
+    manifest: true,
     // Build straight into the server's static dir so the backend can serve it.
     outDir: "../server/public",
     emptyOutDir: true,

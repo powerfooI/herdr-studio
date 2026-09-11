@@ -2,6 +2,7 @@ import {
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -24,6 +25,7 @@ import { connectionHttpPath } from "../connectionHttp";
 import { connectionStorageKey } from "../connectionStorage";
 import { downloadFileFromUrl } from "../downloadFile";
 import { gitDiffCode, type GitDiffCode } from "../gitDiffStatus";
+import { lazyWithReload } from "../lazyWithReload";
 import {
   refreshGitDiffSummary,
   retireGitDiffSummaryResource,
@@ -54,11 +56,16 @@ import {
   keyboardContextMenuPoint,
   treeKeyboardAction,
 } from "./treeKeyboard";
-import {
-  FilePreviewContent,
-  type ActiveFilePreviewSelection,
-  type FilePreviewSelectionMeta,
+import type {
+  ActiveFilePreviewSelection,
+  FilePreviewSelectionMeta,
 } from "./FilePreviewContent";
+
+const FilePreviewContent = lazyWithReload("file-preview", () =>
+  import("./FilePreviewContent").then((module) => ({
+    default: module.FilePreviewContent,
+  })),
+);
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
@@ -2331,12 +2338,14 @@ function FileExplorerContent({
           </div>
         </div>
         {previewPlacement === "inline" ? (
-          <FilePreviewContent
-            entry={previewEntry}
-            preview={preview}
-            loading={previewLoading}
-            error={previewError}
-          />
+          <Suspense fallback={<div role="status">Loading preview...</div>}>
+            <FilePreviewContent
+              entry={previewEntry}
+              preview={preview}
+              loading={previewLoading}
+              error={previewError}
+            />
+          </Suspense>
         ) : null}
       </div>
       <FileExplorerEntryMenu
