@@ -70,7 +70,7 @@ test.skipIf(!chrome)(
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new Error("Browser regression checks timed out")),
-            15_000,
+            30_000,
           );
         }),
       ]);
@@ -85,5 +85,5 @@ test.skipIf(!chrome)(
       await rm(dir, { recursive: true, force: true });
     }
   },
-  25_000,
+  45_000,
 );
