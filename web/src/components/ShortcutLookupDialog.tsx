@@ -444,8 +444,10 @@ export function ShortcutLookupDialog({
                 used to open it.
               </p>
               <p>
-                Native copy/paste, text editing, editor search navigation, and
-                keys sent directly to your shell or agent follow those
+                Terminal copy uses the selected text; Ctrl+C remains terminal
+                input unless reassigned. Page Up/Down follows the application or
+                shell, while half-page shortcuts scroll terminal history. Native
+                text editing and editor search navigation follow those
                 applications. Browser and operating system shortcuts may take
                 precedence over configured bindings.
               </p>

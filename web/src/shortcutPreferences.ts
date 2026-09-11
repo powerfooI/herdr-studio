@@ -64,6 +64,13 @@ export function validateShortcutPreset(value: unknown): ShortcutPreset {
     if (Object.prototype.hasOwnProperty.call(input.bindings, id))
       bindings[id] = validateShortcutKeys(id, input.bindings[id]);
   }
+  // Older presets predate the copy action. Keep their explicit assignments
+  // and only add new default copy keys that do not conflict with them.
+  if (!Object.prototype.hasOwnProperty.call(input.bindings, "terminal.copy")) {
+    bindings["terminal.copy"] = bindings["terminal.copy"].filter(
+      (key) => shortcutConflicts("terminal.copy", [key], bindings).length === 0,
+    );
+  }
   for (const id of SHORTCUT_IDS) {
     if (shortcutConflicts(id, bindings[id], bindings).length)
       throw new Error(`Conflicting shortcuts for ${id}.`);

@@ -1138,7 +1138,8 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
       ["down", "history"],
       ["up", "page-key"],
     ]) {
-      const before = scrollRequests.length;
+      const beforeScrolls = scrollRequests.length;
+      const beforeInputs = inputs.length;
       await bridge.handleTerminalRpc(ws, "history", "terminal.scroll", {
         terminal_id: "right",
         direction,
@@ -1146,15 +1147,17 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
         source,
       });
       // Verify each routing mode separately; bursts intentionally coalesce.
-      await settleUntil(() => scrollRequests.length > before);
+      if (source === "page-key")
+        await settleUntil(() => inputs.length > beforeInputs);
+      else await settleUntil(() => scrollRequests.length > beforeScrolls);
     }
     await Bun.sleep(40);
     expect(scrollRequests).toEqual([
       { pane_id: "w1:p2", offset_from_bottom: 7 },
       { pane_id: "w1:p2", offset_from_bottom: 0 },
-      { pane_id: "w1:p2", offset_from_bottom: 7 },
     ]);
-    expect(inputs).toHaveLength(2);
+    expect(inputs).toHaveLength(3);
+    expect(inputs.at(-1)).toBe("w1:p2");
   } finally {
     bridge.dispose();
   }
@@ -3211,3 +3214,96 @@ describe("scroll dispatch reconciliation", () => {
     },
   );
 });
+
+test("full page keys use semantic pane input even when history scrolling is unavailable", async () => {
+  const inputs: Array<{ paneId: string; code: number; modifiers: number }> = [];
+  const requests: string[] = [];
+  const socketPath = await startSessionServer({
+    methods: ["pane.focus"],
+    onRequest: (method) => {
+      requests.push(method);
+    },
+    onPaneInput: (paneId, reader) => {
+      expect(reader.varint()).toBe(1); // one event
+      expect(reader.variant()).toBe(0); // Key
+      const code = reader.variant();
+      const modifiers = reader.u8();
+      inputs.push({ paneId, code, modifiers });
+    },
+  });
+  const { bridge, ws, replies, attach } = creationBridge(socketPath);
+  try {
+    await attach();
+    for (const direction of ["up", "down"]) {
+      await bridge.handleTerminalRpc(ws, direction, "terminal.scroll", {
+        terminal_id: "term1",
+        direction,
+        lines: 20,
+        source: "page-key",
+      });
+      expect(replies.find((r) => r.id === direction)?.result).toEqual({
+        ok: true,
+      });
+    }
+    await settleUntil(() => inputs.length === 2);
+    expect(inputs).toEqual([
+      { paneId: "w1:p1", code: 8, modifiers: 0 },
+      { paneId: "w1:p1", code: 9, modifiers: 0 },
+    ]);
+    expect(requests).toEqual(["pane.focus"]);
+  } finally {
+    bridge.dispose();
+  }
+});
+
+for (const invalidate of [false, true]) {
+  test(`page-key input waits for attachment readiness${invalidate ? " and rejects a stale request" : ""}`, async () => {
+    const lookup = deferred<string>();
+    let started = false;
+    let current = true;
+    const inputs: string[] = [];
+    const socketPath = await startSessionServer({
+      onPaneInput: (id) => inputs.push(id),
+    });
+    const { bridge, ws, replies, attach } = creationBridge(socketPath, {
+      lookup: async () => {
+        started = true;
+        return lookup.promise;
+      },
+    });
+    try {
+      const attaching = attach();
+      await settleUntil(() => started);
+      const page = bridge.handleTerminalRpc(
+        ws,
+        "page",
+        "terminal.scroll",
+        {
+          terminal_id: "term1",
+          direction: "down",
+          source: "page-key",
+          lines: 24,
+        },
+        () => current,
+      );
+      await Bun.sleep(10);
+      expect(inputs).toEqual([]);
+      expect(replies.find((r) => r.id === "page")).toBeUndefined();
+      if (invalidate) current = false;
+      lookup.resolve("w1:p1");
+      await Promise.all([attaching, page]);
+      if (invalidate) {
+        expect(replies.find((r) => r.id === "page")?.error).toBeDefined();
+        expect(inputs).toEqual([]);
+      } else {
+        expect(replies.find((r) => r.id === "page")?.result).toEqual({
+          ok: true,
+        });
+        await settleUntil(() => inputs.length === 1);
+        expect(inputs).toEqual(["w1:p1"]);
+      }
+    } finally {
+      bridge.dispose();
+    }
+  });
+}

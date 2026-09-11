@@ -199,14 +199,14 @@ export const MOBILE_TERMINAL_SHORTCUT_OPTIONS = [
   },
   {
     id: "page-up",
-    label: "Page Up (scrollback)",
+    label: "Page Up (application or shell history)",
     defaultButtonLabel: "PgUp",
     group: "Navigation",
     scroll: { direction: "up", amount: "full" },
   },
   {
     id: "page-down",
-    label: "Page Down (scrollback)",
+    label: "Page Down (application or shell history)",
     defaultButtonLabel: "PgDn",
     group: "Navigation",
     scroll: { direction: "down", amount: "full" },

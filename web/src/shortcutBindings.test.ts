@@ -295,3 +295,77 @@ describe("shortcut preset persistence and exchange", () => {
     );
   });
 });
+
+describe("terminal copy shortcuts", () => {
+  test("copies with platform bindings without taking over Ctrl+C", () => {
+    for (const platform of ["windows", "linux", "mac"] as const) {
+      const bindings = defaultShortcutBindings(platform);
+      const copyKey = event({ key: "c", code: "KeyC", ctrlKey: true });
+      expect(matchesShortcut(copyKey, "terminal.copy", bindings)).toBe(false);
+      if (platform === "mac") {
+        expect(
+          matchesShortcut(
+            { ...copyKey, ctrlKey: false, metaKey: true },
+            "terminal.copy",
+            bindings,
+          ),
+        ).toBe(true);
+      } else {
+        expect(
+          matchesShortcut(
+            { ...copyKey, shiftKey: true },
+            "terminal.copy",
+            bindings,
+          ),
+        ).toBe(true);
+        expect(
+          matchesShortcut(
+            { ...copyKey, key: "Insert", code: "Insert" },
+            "terminal.copy",
+            bindings,
+          ),
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("older presets gain only copy defaults that do not conflict with saved assignments", () => {
+    const previous = preset();
+    const bindings: Partial<typeof previous.bindings> = {
+      ...previous.bindings,
+    };
+    delete bindings["terminal.copy"];
+    bindings["tab.create"] = ["Ctrl+Shift+C"];
+    const loaded = parseShortcutPreferences(
+      JSON.stringify({
+        version: 1,
+        active: previous.id,
+        presets: [{ ...previous, bindings }],
+      }),
+    );
+    expect(loaded.active).toBe(previous.id);
+    expect(loaded.presets[0].bindings["tab.create"]).toEqual(["Ctrl+Shift+C"]);
+    expect(loaded.presets[0].bindings["terminal.copy"]).toEqual([
+      "Ctrl+Insert",
+    ]);
+    bindings["tab.close"] = ["Ctrl+Insert"];
+    const bothTaken = validateShortcutPreset({ ...previous, bindings });
+    expect(bothTaken.bindings["terminal.copy"]).toEqual([]);
+  });
+
+  test("explicitly unassigned and customized copy keys survive preset round trips", () => {
+    for (const keys of [[], ["Ctrl+Alt+C"]]) {
+      const saved = preset();
+      saved.bindings["terminal.copy"] = keys;
+      const loaded = validateShortcutPreset(JSON.parse(JSON.stringify(saved)));
+      expect(loaded.bindings["terminal.copy"]).toEqual(keys);
+      expect(
+        matchesShortcut(
+          event({ key: "c", code: "KeyC", ctrlKey: true, shiftKey: true }),
+          "terminal.copy",
+          loaded.bindings,
+        ),
+      ).toBe(false);
+    }
+  });
+});

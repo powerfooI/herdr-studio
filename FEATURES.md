@@ -57,10 +57,12 @@ Closed panes are removed from the history automatically.
   columns, including split-pane layouts.
 - Send normal terminal input, modified Enter sequences, and common macOS
   line-editing shortcuts.
-- Scroll terminal history with a mouse wheel, trackpad, touch gesture,
-  `Page Up`/`Page Down`, or half-page `Alt/Option+Page Up`/`Page Down`.
+- Scroll terminal history with a mouse wheel, trackpad, touch gesture, or
+  half-page `Alt/Option+Page Up`/`Page Down`. Full `Page Up`/`Page Down` keys
+  navigate terminal applications such as nano; Herdr scrolls history when the
+  shell owns those keys. Mobile page buttons follow the same routing.
   Endpoint history scrolling requires the server's advertised support; unavailable
-  controls explain why. Explicit history shortcuts remain history actions even
+  controls explain why. Explicit half-page shortcuts remain history actions even
   in mouse-aware apps.
 - On Herdr 0.9.0 endpoints, clicks, drags, and wheels control mouse-aware terminal
   apps using pane-local cells. To select browser text instead, use Option-drag
@@ -421,6 +423,7 @@ Common defaults (Linux/Android overrides follow the table):
 | Agent history | `Cmd+Shift+H` | `Ctrl+Alt+H` |
 | Search raw preview / diff | `Cmd+F` | `Ctrl+F` |
 | Send composer / add review comment | `Cmd+Enter` | `Ctrl+Enter` |
+| Copy terminal selection | `Cmd+C` | `Ctrl+Shift+C` / `Ctrl+Insert` |
 | Terminal paste | `Cmd+V` | `Ctrl+V` (also `Ctrl+Shift+V` on Linux) |
 | Open terminal links / file paths | `Cmd+Click` | `Ctrl+Click` |
 
@@ -428,9 +431,10 @@ Linux/Android uses `Ctrl+Alt+Shift+T` to create tabs, `Ctrl+Alt+Shift+D` to
 split right, and `Ctrl+Alt+Shift+S` to split down, avoiding common Linux desktop
 shortcuts for launching a terminal or showing the desktop.
 
-Terminal page/half-page scrolling and modified Enter keys are configurable in
-this same dialog. Native copy/paste and text editing, editor search navigation,
-and keys handled directly by a shell or agent follow those applications. Native
+Terminal copy, page/half-page navigation, and modified Enter keys are configurable
+in this same dialog. Copy requires a terminal selection; plain `Ctrl+C` remains
+terminal input. Native text editing, editor search navigation, and keys handled
+directly by a shell or agent follow those applications. Native
 clipboard gestures remain available; remapped paste combinations require the
 browser Clipboard API. Touch buttons retain their separate **Mobile terminal
 shortcuts** editor.
