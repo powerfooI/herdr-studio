@@ -30,22 +30,22 @@ const EDITOR_FALLBACK_COLORS: Record<TerminalThemeColorKey, string> = {
   cursor: "#c9cdd6",
   cursorAccent: "#0b0d12",
   selectionBackground: "#6ea8ff",
-  black: "#000000",
-  red: "#cd0000",
-  green: "#00cd00",
-  yellow: "#cdcd00",
-  blue: "#0000ee",
-  magenta: "#cd00cd",
-  cyan: "#00cdcd",
-  white: "#e5e5e5",
-  brightBlack: "#7f7f7f",
-  brightRed: "#ff0000",
-  brightGreen: "#00ff00",
-  brightYellow: "#ffff00",
-  brightBlue: "#5c5cff",
-  brightMagenta: "#ff00ff",
-  brightCyan: "#00ffff",
-  brightWhite: "#ffffff",
+  black: "#2e3436",
+  red: "#cc0000",
+  green: "#4e9a06",
+  yellow: "#c4a000",
+  blue: "#3465a4",
+  magenta: "#75507b",
+  cyan: "#06989a",
+  white: "#d3d7cf",
+  brightBlack: "#555753",
+  brightRed: "#ef2929",
+  brightGreen: "#8ae234",
+  brightYellow: "#fce94f",
+  brightBlue: "#729fcf",
+  brightMagenta: "#ad7fa8",
+  brightCyan: "#34e2e2",
+  brightWhite: "#eeeeec",
 };
 
 const COLOR_KEY_LABELS: Record<TerminalThemeColorKey, string> = {
@@ -184,9 +184,18 @@ export function TerminalThemeDialog({
   const [pendingDelete, setPendingDelete] =
     useState<CustomTerminalTheme | null>(null);
 
+  const editing = draft !== null;
+  const confirmingDelete = pendingDelete !== null;
+  const canCreate = customThemes.length < MAX_CUSTOM_TERMINAL_THEMES;
+
+  useEffect(() => {
+    if (open && !confirmingDelete) {
+      return focusDialogElement(dialogRef.current);
+    }
+  }, [open, editing, confirmingDelete]);
+
   useEffect(() => {
     if (!open) return;
-    const cancelFocus = focusDialogElement(dialogRef.current);
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       // The delete confirmation handles its own Escape while open.
@@ -198,7 +207,6 @@ export function TerminalThemeDialog({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => {
-      cancelFocus();
       window.removeEventListener("keydown", onKey, { capture: true });
     };
   }, [open, draft, pendingDelete, onClose]);
@@ -250,7 +258,7 @@ export function TerminalThemeDialog({
   };
 
   const saveDraft = () => {
-    if (!draft) return;
+    if (!draft || (!draft.id && !canCreate)) return;
     const theme: CustomTerminalTheme = {
       id: draft.id ?? newCustomThemeId(),
       name: draft.name.trim() || "Custom theme",
@@ -310,7 +318,6 @@ export function TerminalThemeDialog({
 
   const renderSection = (variant: ResolvedTheme, label: string) => {
     const cards = cardsFor(variant);
-    const canCreate = customThemes.length < MAX_CUSTOM_TERMINAL_THEMES;
     // A stale selection id (e.g. edited storage) marks no card active; keep
     // the first card tabbable so the group stays keyboard-reachable.
     const hasActive = cards.some(
@@ -382,7 +389,12 @@ export function TerminalThemeDialog({
                   <button
                     type="button"
                     aria-label={`Duplicate ${card.definition.name}`}
-                    title="Duplicate as custom theme"
+                    title={
+                      canCreate
+                        ? "Duplicate as custom theme"
+                        : `Custom theme limit reached (${MAX_CUSTOM_TERMINAL_THEMES})`
+                    }
+                    disabled={!canCreate}
                     onClick={() => duplicateTheme(card)}
                   >
                     <Copy size={13} aria-hidden="true" />
@@ -498,6 +510,12 @@ export function TerminalThemeDialog({
           </div>
         </div>
 
+        {!current.id && !canCreate ? (
+          <p role="alert">
+            Custom theme limit reached ({MAX_CUSTOM_TERMINAL_THEMES}). Delete a
+            theme before creating another.
+          </p>
+        ) : null}
         <div className="modal-actions">
           <button
             type="button"
@@ -508,7 +526,7 @@ export function TerminalThemeDialog({
           </button>
           <button
             type="button"
-            disabled={!current.name.trim()}
+            disabled={!current.name.trim() || (!current.id && !canCreate)}
             onClick={saveDraft}
           >
             {current.id ? "Save theme" : "Create theme"}
