@@ -2699,12 +2699,16 @@ export default function App() {
           mobileView === "workspaces" ? "is-active" : ""
         }`}
         title="Workspaces"
-        aria-label="Show workspaces"
+        aria-label={
+          mobileView === "workspaces" ? "Hide workspaces" : "Show workspaces"
+        }
         aria-pressed={mobileView === "workspaces"}
         aria-hidden={mobileControlsCollapsed}
         tabIndex={mobileControlsCollapsed ? -1 : 0}
         onPointerDown={blurActiveInput}
-        onClick={openWorkspaces}
+        onClick={
+          mobileView === "workspaces" ? activateTerminalSurface : openWorkspaces
+        }
       >
         <PanelTop size={17} />
       </button>

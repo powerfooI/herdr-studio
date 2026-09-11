@@ -90,9 +90,10 @@ Herdr must already be installed and running. Install the latest standalone
 Herdr Studio binary with:
 
 ```bash
+# Leave empty for latest; set HERDR_GUI_VERSION=X.Y.Z for a specific version (no v prefix).
 curl -fsSL \
   https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh \
-  | sh
+  | HERDR_GUI_VERSION= sh
 ```
 
 Make sure `~/.local/bin` is in `PATH`, then start the application:
