@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reload open tabs once when an update removes their cached code chunks, instead
+  of crashing when Changes or a terminal is opened.
+
 - Stabilize split-pane sizing and terminal rendering during navigation and resizing.
 - Show loading and retryable errors while terminal layouts are fetched.
 

@@ -12,7 +12,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -39,6 +38,7 @@ import {
   type NewReviewAnnotation,
   type ReviewAnnotation,
 } from "../annotations";
+import { lazyWithReload } from "../lazyWithReload";
 import { store, useStoreSelector } from "../store";
 import { copyTextFromUserGesture } from "../terminalClipboard";
 import { terminalPasteRequest } from "../terminalPaste";
@@ -71,7 +71,7 @@ import {
 } from "./FilePreviewContent";
 import { workspaceInspectorLayout } from "./workspaceInspectorLayout";
 
-const DiffContentView = lazy(() =>
+const DiffContentView = lazyWithReload(() =>
   import("./DiffContentView").then((module) => ({
     default: module.DiffContentView,
   })),

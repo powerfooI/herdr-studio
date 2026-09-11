@@ -16,7 +16,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -62,6 +61,7 @@ import type { TerminalWorkspaceFileRequest } from "./components/TerminalView";
 import { WorkspaceInspectorHost } from "./components/WorkspaceInspectorHost";
 import { WorkspaceTree } from "./components/WorkspaceTree";
 import { isIosDevice } from "./downloadFile";
+import { lazyWithReload } from "./lazyWithReload";
 import {
   LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
@@ -140,7 +140,7 @@ const DEFAULT_SIDEBAR = 284;
 const THEME_KEY = "theme";
 const ACCENT_COLOR_KEY = "accentColor";
 const UI_SCALE_KEY = "uiScale";
-const LazyTerminalView = lazy(() =>
+const LazyTerminalView = lazyWithReload(() =>
   import("./components/TerminalView").then((module) => ({
     default: module.TerminalView,
   })),
