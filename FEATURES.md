@@ -377,54 +377,66 @@ Non-loopback binds use a generated login token unless a fixed password is config
 does not provide TLS, rate limiting, multi-user authorization, or sandboxing;
 see [SECURITY.md](./SECURITY.md) before exposing the service.
 
-## Keyboard Shortcut Reference
+## Keyboard Shortcuts
 
-The in-app reference is available on desktop from **Menu → Keyboard shortcuts** (the mobile sheet omits it).
+Open **Menu → Behavior & automation → Keyboard shortcuts** on desktop or mobile
+for the complete, searchable shortcut list and preset editor. The list and UI
+hints always show the active bindings.
 
-### Global
+See the [desktop editor](docs/screenshots/keyboard-shortcuts-desktop.png) and
+[mobile editor](docs/screenshots/keyboard-shortcuts-mobile.png).
 
-| Shortcut | Action |
-| --- | --- |
-| `Cmd/Ctrl+K` | Open or close the command menu |
-| `Alt/Option+1` … `Alt/Option+9` while the command menu is open | Run the corresponding numbered visible action |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Open and navigate the recent Pane switcher |
-| `Cmd+B` | Toggle the desktop sidebar |
-| `Cmd+Shift+B` | Toggle the Workspace Inspector's last compatible view |
-| `Cmd+T` | Create a tab in the focused workspace |
-| `Cmd+W` | Close the active pane; close the tab if only one pane remains |
-| `Cmd+Option+Left` / `Cmd+Option+Right` | Switch tabs, wrapping at either end |
-| `Cmd+Ctrl+Left` / `Cmd+Ctrl+Right` / `Cmd+Ctrl+Up` / `Cmd+Ctrl+Down` | Focus the neighboring pane |
-| `Cmd+D` | Split the active pane right |
-| `Cmd+Shift+D` | Split the active pane down |
-| `Ctrl+1` … `Ctrl+9` | Switch to a numbered tab in the focused workspace |
-| `Ctrl+Shift+W` | Open Workspaces |
-| `Cmd/Ctrl+Shift+E` | Toggle File Explorer |
-| `Ctrl+Shift+G` | Open Diff Viewer |
-| `Esc` | Dismiss the current menu, dialog, notification, or update banner |
+- **Automatic** detects the browser's platform and selects macOS/iOS, Windows,
+  or Linux/Android defaults. Explicit platform presets override detection.
+- Click **Edit** beside any app action to type or record a combination, assign
+  up to three alternatives, restore its default, or unassign it. Editing a
+  built-in preset creates a custom copy. Conflicting bindings in overlapping
+  contexts are rejected; ordinary typing, IME, and dialog dismissal stay available.
+- Use **Save as** to keep multiple named presets and the **Active preset** list
+  to switch between them. Edits save immediately in the current browser and sync
+  to other open tabs on the same origin. **Export** and **Import** transfer a
+  preset as JSON to another browser. Deleting a custom preset returns to Automatic.
+- Letter and number bindings use physical keys, so modifier-produced characters
+  do not change the action. The recorder captures combinations delivered to the
+  page. Browsers and operating systems can reserve some shortcuts, including
+  macOS tab shortcuts; choose another combination when needed.
 
-A host browser can reserve shortcuts such as `Cmd+T`, `Cmd+W`, and `Cmd+D`;
-they are most reliable in an installed PWA or another standalone/webview host.
+Common defaults (Linux/Android overrides follow the table):
 
-### Terminal
+| Action | macOS / iOS | Windows / Linux / Android |
+| --- | --- | --- |
+| Command menu | `Cmd+K` | `Ctrl+Alt+K` |
+| Sidebar | `Cmd+B` | `Ctrl+Alt+B` |
+| Workspace Inspector | `Cmd+Shift+B` | `Ctrl+Alt+Shift+B` |
+| Recent pane switcher | `Ctrl+Tab` | `Ctrl+Alt+J` |
+| Create / close tab or pane | `Cmd+T` / `Cmd+W` | `Ctrl+Alt+T` / `Ctrl+Alt+W` |
+| Previous / next tab | `Cmd+Option+Left/Right` | `Alt+Shift+Left/Right` |
+| Focus neighboring pane | `Cmd+Ctrl+Arrow` | `Ctrl+Shift+Arrow` |
+| Split right / down | `Cmd+D` / `Cmd+Shift+D` | `Ctrl+Alt+D` / `Ctrl+Alt+Shift+D` |
+| Numbered tab | `Ctrl+1…9` | `Ctrl+Alt+1…9` |
+| Numbered command menu action | `Option+1…9` | `Alt+1…9` |
+| Workspaces | `Ctrl+Shift+W` | `Ctrl+Alt+O` |
+| File Explorer | `Cmd+Shift+E` | `Ctrl+Alt+E` |
+| Diff Viewer | `Ctrl+Shift+G` | `Ctrl+Alt+G` |
+| Agent history | `Cmd+Shift+H` | `Ctrl+Alt+H` |
+| Search raw preview / diff | `Cmd+F` | `Ctrl+F` |
+| Send composer / add review comment | `Cmd+Enter` | `Ctrl+Enter` |
+| Terminal paste | `Cmd+V` | `Ctrl+V` (also `Ctrl+Shift+V` on Linux) |
+| Open terminal links / file paths | `Cmd+Click` | `Ctrl+Click` |
 
-| Shortcut | Action |
-| --- | --- |
-| `Page Up` / `Page Down` | Scroll terminal history by one page |
-| `Alt/Option+Page Up` / `Alt/Option+Page Down` | Scroll terminal history by half a page |
-| `Option+Drag` on macOS, `Shift+Drag` elsewhere | Select browser text in a mouse-aware endpoint app |
-| `Shift+Enter` | Send a multiline Enter sequence |
-| `Alt+Enter` | Send an Alt-modified Enter sequence |
-| `Cmd+Left` / `Cmd+Up` | Move to the beginning of the current input line |
-| `Cmd+Right` / `Cmd+Down` | Move to the end of the current input line |
-| `Cmd+Backspace` | Delete to the beginning of the current input line |
-| `Cmd+V` on Apple, `Ctrl+V` elsewhere | Paste text or images |
-| `Cmd/Ctrl+Click` an HTTP(S) link | Open the link |
-| `Cmd/Ctrl+Click` a file path | Preview the workspace file |
-| `Cmd/Ctrl+Shift+H` | Toggle Agent message history for the active terminal |
+Linux/Android uses `Ctrl+Alt+Shift+T` to create tabs, `Ctrl+Alt+Shift+D` to
+split right, and `Ctrl+Alt+Shift+S` to split down, avoiding common Linux desktop
+shortcuts for launching a terminal or showing the desktop.
 
-### Preview and Diff
+Terminal page/half-page scrolling and modified Enter keys are configurable in
+this same dialog. Native copy/paste and text editing, editor search navigation,
+and keys handled directly by a shell or agent follow those applications. Native
+clipboard gestures remain available; remapped paste combinations require the
+browser Clipboard API. Touch buttons retain their separate **Mobile terminal
+shortcuts** editor.
 
-| Shortcut | Action |
-| --- | --- |
-| `Cmd/Ctrl+F` | Search the visible raw file preview or Diff Viewer |
-| `Enter` / `Shift+Enter` in Diff search | Move to the next/previous match |
+Escape dismisses dialogs, menus, notifications, and update banners. Tab and arrow
+keys navigate controls; the recent pane switcher accepts Up/Down and Enter, or
+release of the opening modifier. In Diff search, Enter / Shift+Enter moves to the
+next / previous match. Option+Drag on macOS and Shift+Drag elsewhere select text
+in mouse-aware terminal applications.

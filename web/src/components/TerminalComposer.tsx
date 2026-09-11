@@ -1,4 +1,9 @@
 import {
+  shortcutMatches,
+  shortcutTitle,
+  useShortcutPreferences,
+} from "../shortcutPreferences";
+import {
   CircleHelp,
   CornerDownLeft,
   CornerDownRight,
@@ -72,6 +77,7 @@ export function TerminalComposer({
   onUploadImage: (file: File) => Promise<string>;
   onError: (message: string) => void;
 }) {
+  useShortcutPreferences();
   const [text, setText] = useState(() => readTerminalComposerDraft(draftKey));
   const [submissionPending, setSubmissionPending] = useState(() =>
     terminalComposerSubmissionPending(draftKey),
@@ -321,8 +327,7 @@ export function TerminalComposer({
             if (
               !e.nativeEvent.isComposing &&
               !composingRef.current &&
-              e.key === "Enter" &&
-              (e.metaKey || e.ctrlKey)
+              shortcutMatches(e.nativeEvent, "composer.send")
             ) {
               e.preventDefault();
               void submit(true);
@@ -424,7 +429,10 @@ export function TerminalComposer({
           <button
             type="button"
             className="terminal-composer-submit is-primary"
-            title="Insert into the terminal and send Enter"
+            title={shortcutTitle(
+              "Insert into the terminal and send Enter",
+              "composer.send",
+            )}
             aria-label="Send draft to the terminal"
             disabled={submitDisabled}
             onPointerDown={keepTextareaFocus}

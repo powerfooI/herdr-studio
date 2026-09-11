@@ -1,3 +1,5 @@
+import { getShortcutSnapshot } from "./shortcutPreferences";
+import { matchesShortcut, type ShortcutBindings } from "./shortcutBindings";
 export type PaneShortcutDirection = "left" | "right" | "up" | "down";
 
 export type PaneShortcutAction =
@@ -7,33 +9,21 @@ export type PaneShortcutAction =
 type PaneShortcutEvent = Pick<
   KeyboardEvent,
   "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey"
->;
+> &
+  Partial<Pick<KeyboardEvent, "code" | "isComposing" | "keyCode">>;
 
-const ARROW_DIRECTIONS: Record<string, PaneShortcutDirection> = {
-  ArrowLeft: "left",
-  ArrowRight: "right",
-  ArrowUp: "up",
-  ArrowDown: "down",
-};
-
-/**
- * Maps macOS pane shortcuts without consuming extra modifier variants.
- * Cmd+Ctrl+Arrows focus neighboring panes (Cmd+Option+Arrows stay with tab
- * switching and are also swallowed by some PWA hosts), Cmd+D splits the
- * active pane right, and Cmd+Shift+D splits it down.
- */
+/** Resolve pane commands from the active preset. */
 export function paneShortcutAction(
   event: PaneShortcutEvent,
+  bindings: ShortcutBindings = getShortcutSnapshot().preset.bindings,
 ): PaneShortcutAction | null {
-  if (!event.metaKey || event.altKey) return null;
-
-  if (event.ctrlKey && !event.shiftKey) {
-    const direction = ARROW_DIRECTIONS[event.key];
-    return direction ? { type: "focus", direction } : null;
+  for (const direction of ["left", "right", "up", "down"] as const) {
+    if (matchesShortcut(event, `pane.${direction}`, bindings))
+      return { type: "focus", direction };
   }
-
-  if (!event.ctrlKey && event.key.toLowerCase() === "d") {
-    return { type: "split", direction: event.shiftKey ? "down" : "right" };
-  }
+  if (matchesShortcut(event, "pane.splitRight", bindings))
+    return { type: "split", direction: "right" };
+  if (matchesShortcut(event, "pane.splitDown", bindings))
+    return { type: "split", direction: "down" };
   return null;
 }

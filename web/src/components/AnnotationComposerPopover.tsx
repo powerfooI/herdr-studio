@@ -1,3 +1,8 @@
+import {
+  shortcutMatches,
+  shortcutLabel,
+  useShortcutPreferences,
+} from "../shortcutPreferences";
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 
@@ -17,6 +22,7 @@ export function AnnotationComposerPopover({
   onSave: (comment: string) => void;
   onClose: () => void;
 }) {
+  useShortcutPreferences();
   const formRef = useRef<HTMLFormElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [comment, setComment] = useState("");
@@ -94,7 +100,7 @@ export function AnnotationComposerPopover({
           event.preventDefault();
           event.stopPropagation();
           onClose();
-        } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        } else if (shortcutMatches(event.nativeEvent, "annotation.submit")) {
           event.preventDefault();
           save();
         }
@@ -118,7 +124,7 @@ export function AnnotationComposerPopover({
           Add comment
         </button>
       </div>
-      <small>Cmd/Ctrl+Enter to add</small>
+      <small>{shortcutLabel("annotation.submit")} to add</small>
     </form>,
     document.body,
   );
