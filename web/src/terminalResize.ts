@@ -93,7 +93,21 @@ export function terminalRelayViewportSize(
   layout: TerminalRelayLayout | null | undefined,
   paneId: string | null | undefined,
 ): TerminalSize {
-  if (!validSize(size) || !layout || !paneId) return size;
+  const surface = terminalEndpointViewportSize(size, layout, paneId);
+  if (!surface || !layout) return size;
+  return {
+    cols: Math.min(65_535, surface.cols + Math.max(0, layout.area.x)),
+    rows: Math.min(65_535, surface.rows + Math.max(0, layout.area.y)),
+  };
+}
+
+/** Endpoint surfaces cover the tab, excluding app sidebar and tab-bar insets. */
+export function terminalEndpointViewportSize(
+  size: TerminalSize,
+  layout: TerminalRelayLayout | null | undefined,
+  paneId: string | null | undefined,
+): TerminalSize | null {
+  if (!validSize(size) || !layout || !paneId) return null;
   const pane = layout.panes.find((item) => item.pane_id === paneId);
   const area = layout.area;
   if (
@@ -103,7 +117,7 @@ export function terminalRelayViewportSize(
     pane.rect.width <= 0 ||
     pane.rect.height <= 0
   ) {
-    return size;
+    return null;
   }
 
   const splitLayout = layout.panes.length > 1 && !layout.zoomed;
@@ -118,8 +132,8 @@ export function terminalRelayViewportSize(
     Math.round(((size.rows + paneChromeRows) * area.height) / pane.rect.height),
   );
   return {
-    cols: Math.min(65_535, terminalAreaCols + Math.max(0, area.x)),
-    rows: Math.min(65_535, terminalAreaRows + Math.max(0, area.y)),
+    cols: Math.min(65_535, terminalAreaCols),
+    rows: Math.min(65_535, terminalAreaRows),
   };
 }
 

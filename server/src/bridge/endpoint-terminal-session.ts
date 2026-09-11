@@ -9,6 +9,10 @@ import { MOUSE_KIND, VtInputClassifier } from "./vt-input-classifier";
 
 const ESC_FLUSH_MS = 25;
 const FIRST_SURFACE_WAIT_MS = 10_000;
+// Boot correction plus rounding follow-ups; nested splits can need three.
+const SURFACE_FIT_MAX_ATTEMPTS = 3;
+// How long a misfitting frame waits for the settled replacement.
+const FIT_DEFER_MS = 500;
 
 /**
  * Terminal stream over the stable endpoint protocol (Herdr >= 0.9.0).
@@ -33,9 +37,14 @@ export class EndpointTerminalSession extends EventEmitter {
   } | null = null;
   private closed = false;
   private seq = 0;
+  private deferredFrame: {
+    timer: ReturnType<typeof setTimeout>;
+    emit: () => void;
+  } | null = null;
   private paneSize = { cols: 0, rows: 0 };
-  private surfaceSize = { cols: 0, rows: 0 };
   private fitAttempts = 0;
+  private fitResizeInFlight = false;
+  private lastRequest = { cols: 0, rows: 0 };
   private commandChain: Promise<unknown> = Promise.resolve();
   connecting: Promise<void> | null = null;
 
@@ -44,6 +53,7 @@ export class EndpointTerminalSession extends EventEmitter {
     private terminalId: string,
     private lookupPaneId: (terminalId: string) => Promise<string | null>,
     private logger: Logger = silentLogger,
+    private firstSurfaceWaitMs = FIRST_SURFACE_WAIT_MS,
   ) {
     super();
     this.client = new EndpointClient(socketPath);
@@ -53,8 +63,7 @@ export class EndpointTerminalSession extends EventEmitter {
     });
     this.client.on("error", (e) => this.emit("error", e));
     this.client.on("close", () => {
-      this.pressedMouseButtons.clear();
-      this.closed = true;
+      this.close();
       this.emit("close");
     });
     this.client.on("welcome", (w) => {
@@ -74,12 +83,18 @@ export class EndpointTerminalSession extends EventEmitter {
     return this.client.negotiation;
   }
 
-  connect(cols: number, rows: number): Promise<void> {
+  connect(
+    cols: number,
+    rows: number,
+    surfaceSize = { cols, rows },
+  ): Promise<void> {
     this.paneSize = { cols, rows };
-    this.surfaceSize = { cols, rows };
-    this.fitAttempts = 4;
+    // Browser layout supplies the initial full-tab viewport. Surface
+    // feedback still corrects stale hints and clients without layout data.
+    this.fitAttempts = SURFACE_FIT_MAX_ATTEMPTS;
+    this.lastRequest = surfaceSize;
     const ready = (async () => {
-      await this.client.connect(cols, rows);
+      await this.client.connect(surfaceSize.cols, surfaceSize.rows);
       this.client.assertMethod("pane.focus");
       const paneId = await this.lookupPaneId(this.terminalId);
       if (!paneId) {
@@ -103,6 +118,10 @@ export class EndpointTerminalSession extends EventEmitter {
     })();
     this.connecting = ready
       .catch((e) => {
+        this.logger.warn("endpoint connect failed", {
+          terminal: this.terminalId,
+          error: e instanceof Error ? e.message : String(e),
+        });
         this.close();
         throw e;
       })
@@ -183,7 +202,7 @@ export class EndpointTerminalSession extends EventEmitter {
         reject(
           new Error(`timed out waiting for endpoint surface of ${paneId}`),
         );
-      }, FIRST_SURFACE_WAIT_MS);
+      }, this.firstSurfaceWaitMs);
       const onSurface = (s: EndpointSurface) => {
         if (this.hasPane(s, paneId)) {
           cleanup();
@@ -213,45 +232,96 @@ export class EndpointTerminalSession extends EventEmitter {
   }
 
   private onSurface(surface: EndpointSurface) {
-    if (!this.paneId) return; // connect() replays once the lookup resolves
+    if (this.closed || !this.paneId) return; // connect() replays after lookup
     const pane = surface.panes.find((p) => p.paneId === this.paneId);
     if (!pane?.mouseReporting) this.pressedMouseButtons.clear();
     if (!pane) return;
-    this.fitSurface(surface);
+    this.fitSurface(surface, pane);
     this.lastScroll = pane.scroll
       ? {
           offsetFromBottom: pane.scroll.offsetFromBottom,
           maxOffsetFromBottom: pane.scroll.maxOffsetFromBottom,
         }
       : null;
+
     const cropped = cropFrame(surface.frame, pane.innerRect);
     const bytes = Buffer.from(frameToAnsi(cropped), "utf8");
-    this.seq += 1;
-    this.emit("terminal", {
-      seq: this.seq,
-      width: cropped.width,
-      height: cropped.height,
-      full: true,
-      mouseReporting: pane.mouseReporting,
-      bytes,
-    });
+    const mouseReporting = pane.mouseReporting;
+    const emitFrame = () => {
+      if (this.closed) return;
+      this.seq += 1;
+      this.emit("terminal", {
+        seq: this.seq,
+        width: cropped.width,
+        height: cropped.height,
+        full: true,
+        mouseReporting,
+        bytes,
+        frame: cropped,
+      });
+    };
+    // Wait for the requested geometry regardless of split ratio. New
+    // frames replace the pending payload, never extend its deadline.
+    if (this.fitResizeInFlight) {
+      if (this.deferredFrame) {
+        this.deferredFrame.emit = emitFrame;
+      } else {
+        const timer = setTimeout(() => {
+          const pending = this.deferredFrame;
+          if (pending?.timer !== timer) return;
+          this.deferredFrame = null;
+          this.fitResizeInFlight = false;
+          pending.emit();
+        }, FIT_DEFER_MS);
+        this.deferredFrame = { timer, emit: emitFrame };
+      }
+      return;
+    }
+    this.clearDeferredFrame();
+    emitFrame();
+  }
+
+  private clearDeferredFrame() {
+    if (!this.deferredFrame) return;
+    clearTimeout(this.deferredFrame.timer);
+    this.deferredFrame = null;
   }
 
   resize(cols: number, rows: number) {
+    this.clearDeferredFrame();
     this.paneSize = { cols, rows };
-    this.fitAttempts = 4;
-    const surface = this.latestSurface();
-    // A same-size resize must still repaint for newly attached viewers.
-    this.surfaceSize = surface ? this.sizeForPane(surface) : { cols, rows };
-    this.client.resize(this.surfaceSize.cols, this.surfaceSize.rows);
+    this.fitAttempts = SURFACE_FIT_MAX_ATTEMPTS;
+    const next = this.requestFor(this.latestSurface());
+    // Explicit viewer requests include same-size repaints for new viewers.
+    this.fitResizeInFlight = true;
+    this.lastRequest = next;
+    this.client.resize(next.cols, next.rows);
   }
 
-  private sizeForPane(surface: EndpointSurface) {
-    const pane = surface.panes.find((p) => p.paneId === this.paneId);
-    if (!pane || pane.rect.width < 1 || pane.rect.height < 1)
-      return this.surfaceSize;
-    // Endpoint dimensions describe the complete tab, unlike legacy direct
-    // terminal attachments. Include pane decorations before undoing the split.
+  // The wanted request for the latest observed geometry. The pane ratio
+  // inverts the split so the cropped content lands on the xterm size;
+  // without any observed pane the pane size itself is the best guess.
+  private requestFor(surface: EndpointSurface | null) {
+    const pane = surface?.panes.find((p) => p.paneId === this.paneId);
+    if (!surface || !pane) return { ...this.paneSize };
+    return this.sizeForPane(surface, pane);
+  }
+
+  // Endpoint dimensions describe the complete tab, unlike legacy direct
+  // terminal attachments. Invert the observed pane ratio, including pane
+  // decorations, so the first request already targets the wanted content
+  // size instead of converging through visible reflows.
+  private sizeForPane(
+    surface: EndpointSurface,
+    pane: NonNullable<EndpointSurface["panes"][number]>,
+  ) {
+    if (
+      pane.rect.width < 1 ||
+      pane.rect.height < 1 ||
+      pane.innerRect.width < 1 ||
+      pane.innerRect.height < 1
+    )
+      return { ...this.paneSize };
     const scale = (
       wanted: number,
       outer: number,
@@ -281,25 +351,65 @@ export class EndpointTerminalSession extends EventEmitter {
     };
   }
 
-  private fitSurface(surface: EndpointSurface) {
+  // Convergence is content-shaped, not frame-shaped: once the cropped pane
+  // content matches the xterm size the viewer sees the right geometry and
+  // no further resize may fire, even if the frame is still settling.
+  private fitSurface(
+    surface: EndpointSurface,
+    pane: NonNullable<EndpointSurface["panes"][number]>,
+  ) {
+    // Only the response to the latest request can settle or correct it.
     if (
-      this.fitAttempts === 0 ||
-      surface.frame.width !== this.surfaceSize.cols ||
-      surface.frame.height !== this.surfaceSize.rows
+      surface.frame.width !== this.lastRequest.cols ||
+      surface.frame.height !== this.lastRequest.rows
     )
       return;
-    const next = this.sizeForPane(surface);
+    this.fitResizeInFlight = false;
+    if (this.fitAttempts === 0) return;
     if (
-      next.cols === this.surfaceSize.cols &&
-      next.rows === this.surfaceSize.rows
+      pane.innerRect.width === this.paneSize.cols &&
+      pane.innerRect.height === this.paneSize.rows
+    ) {
+      this.fitAttempts = 0;
+      this.fitResizeInFlight = false;
+      return;
+    }
+    // Small undershoots leave harmless space. Overshoots hide content and
+    // must converge even when the difference is only one cell.
+    const off = (wanted: number, actual: number) =>
+      actual > wanted ||
+      (wanted - actual >= 2 && (wanted - actual) / wanted >= 0.02);
+    if (
+      !off(this.paneSize.cols, pane.innerRect.width) &&
+      !off(this.paneSize.rows, pane.innerRect.height)
     ) {
       this.fitAttempts = 0;
       return;
     }
-    // Split rounding can require a follow-up. Bound convergence and only use
-    // frames matching the last request, never resize again for stale patches.
-    this.fitAttempts -= 1;
-    this.surfaceSize = next;
+    this.requestResize(this.sizeForPane(surface, pane), surface);
+  }
+
+  // Sends at most one in-flight frame request: stale surfaces (frames from
+  // before the last request applied) never trigger another resize, and
+  // repeat requests for the in-flight size are dropped. Corrections resume
+  // once the server streams the requested frame.
+  private requestResize(
+    next: { cols: number; rows: number },
+    surface: EndpointSurface,
+  ) {
+    if (
+      next.cols === this.lastRequest.cols &&
+      next.rows === this.lastRequest.rows
+    )
+      return;
+    if (
+      surface.frame.width !== this.lastRequest.cols ||
+      surface.frame.height !== this.lastRequest.rows
+    )
+      return;
+    if (this.fitAttempts > 0) this.fitAttempts -= 1;
+    this.fitResizeInFlight = true;
+    this.lastRequest = next;
     this.client.resize(next.cols, next.rows);
   }
 
@@ -415,6 +525,7 @@ export class EndpointTerminalSession extends EventEmitter {
     this.closed = true;
     this.pressedMouseButtons.clear();
     if (this.escFlushTimer) clearTimeout(this.escFlushTimer);
+    this.clearDeferredFrame();
     this.client.close();
   }
 }

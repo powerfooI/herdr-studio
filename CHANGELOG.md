@@ -4,6 +4,8 @@
 
 - Add terminal color themes: choose from built-in presets per dark/light mode,
   or create custom themes with your own colors (Menu → Terminal theme).
+- Stabilize split-pane sizing and terminal rendering during navigation and resizing.
+- Show loading and retryable errors while terminal layouts are fetched.
 
 ## 0.6.1 - 2026-09-11
 

@@ -65,7 +65,7 @@ import {
 import { createShutdownController } from "./connections/shutdown";
 import { bindListenerBeforeConnectionStart } from "./connections/startup";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./connections/types";
-import { createAuthHandlers } from "./http/auth";
+import { createAuthHandlers, unauthenticatedLoginRedirect } from "./http/auth";
 import { serveStatic } from "./http/static-files";
 import {
   createUpdateHandlers,
@@ -1211,10 +1211,7 @@ function main() {
           if (!isAuthed(req)) {
             const accept = req.headers.get("accept") ?? "";
             if (req.method === "GET" && accept.includes("text/html")) {
-              return Response.redirect(
-                new URL("/login", req.url).toString(),
-                302,
-              );
+              return unauthenticatedLoginRedirect();
             }
             return new Response("unauthorized", { status: 401 });
           }

@@ -6,6 +6,31 @@ import {
 } from "./terminalEndpointPresentation";
 
 describe("endpoint selection presentation", () => {
+  test.each([false, true])(
+    "drops oversized frames after resize, including selection-held frames (%s)",
+    (held) => {
+      let selected = held;
+      let viewport = { cols: held ? 11 : 10, rows: held ? 4 : 3 };
+      const writes: string[] = [];
+      const presentation = new TerminalEndpointPresentation(
+        () => selected,
+        (text, parsed) => {
+          writes.push(text);
+          parsed();
+        },
+        () => viewport,
+      );
+      presentation.update("oversized", true, { cols: 11, rows: 4 });
+      viewport = { cols: 10, rows: 3 };
+      selected = false;
+      presentation.flush();
+      expect(writes.every((text) => !text.includes("oversized"))).toBe(true);
+      presentation.update("clipped", true, viewport);
+      expect(writes.join("")).toContain("\x1b[?1006h\x1b[?1002h");
+      expect(writes[writes.length - 1]).toContain("clipped");
+    },
+  );
+
   test("selection cannot begin while an endpoint frame is still queued for parsing", async () => {
     let selected = false;
     let visible = "A";

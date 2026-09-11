@@ -712,6 +712,16 @@ function reloadWhenUpdatedServerIsReady(
   return promise;
 }
 
+export function terminalNavigationLoading(s: State): boolean {
+  return (
+    s.status === "connected" &&
+    !s.connectionPaused &&
+    !s.error &&
+    (!!s.pendingFocusWorkspaceId ||
+      (!s.layout && s.panes.some((pane) => pane.pane_id === s.selectedPaneId)))
+  );
+}
+
 function pickActiveTabId(s: State): string | undefined {
   const focusedWs = s.workspaces.find((w) => w.focused);
   if (focusedWs?.active_tab_id) return focusedWs.active_tab_id;
@@ -1221,8 +1231,9 @@ async function refreshNow(lease = captureConnectionLease()) {
         ) {
           next.selectedPaneId = null;
         }
-      } catch {
+      } catch (error) {
         next.layout = null;
+        next.error = error instanceof Error ? error.message : String(error);
       }
     } else {
       next.layout = null;

@@ -163,7 +163,12 @@ async function startSessionServer(handlers: {
   panes?: TestPane[];
   onConnection?: (sendSurface: (panes: TestPane[]) => void) => void;
   onClipboardConnection?: (send: (data: string) => void) => void;
+  onDisconnectConnection?: (disconnect: () => void) => void;
   initialSurface?: { frame: FrameData; panes: TestPane[] };
+  surfaceForHello?: (
+    cols: number,
+    rows: number,
+  ) => { frame: FrameData; panes: TestPane[] };
   onResize?: (
     cols: number,
     rows: number,
@@ -190,6 +195,7 @@ async function startSessionServer(handlers: {
       expect(["EPIPE", "ECONNRESET"]).toContain(error.code ?? "");
     });
     const connection = ++connectionSeq;
+    handlers.onDisconnectConnection?.(() => socket.destroy());
     handlers.onClipboardConnection?.((data) => {
       const w = new BinWriter();
       w.variant(5);
@@ -216,7 +222,12 @@ async function startSessionServer(handlers: {
         if (!greeted) {
           greeted = true;
           reader.string(); // kind
-          reader.string(); // data
+          const hello = JSON.parse(reader.string());
+          const initialSurface =
+            handlers.surfaceForHello?.(
+              hello.surface_size.cols,
+              hello.surface_size.rows,
+            ) ?? handlers.initialSurface;
           socket.write(
             encodeFrame(
               controlFrame(
@@ -245,8 +256,8 @@ async function startSessionServer(handlers: {
             encodeFrame(
               surfaceFrame(
                 1,
-                handlers.initialSurface?.frame ?? frame,
-                handlers.initialSurface?.panes ?? handlers.panes,
+                initialSurface?.frame ?? frame,
+                initialSurface?.panes ?? handlers.panes,
               ),
             ),
           );
@@ -300,7 +311,179 @@ async function startSessionServer(handlers: {
   return socketPath;
 }
 
+function splitSurface(cols: number, rows: number, count = 2) {
+  const frame: FrameData = {
+    width: cols,
+    height: rows,
+    cells: Array.from({ length: cols * rows }, () => cell("x")),
+    cursor: null,
+    hyperlinks: [],
+  };
+  const panes = Array.from({ length: count }, (_, index) => {
+    const x = Math.floor((cols * index) / count);
+    const width = Math.floor((cols * (index + 1)) / count) - x;
+    return {
+      paneId: `w1:p${index + 1}`,
+      x,
+      mouseReporting: false,
+      rect: { x, y: 0, width, height: rows },
+      innerRect: { x: x + 1, y: 1, width: width - 3, height: rows - 2 },
+    };
+  });
+  return { frame, panes };
+}
+
 describe("EndpointTerminalSession", () => {
+  test.each([
+    { cols: 252, rows: 26, count: 3, expected: [249, 26] },
+    { cols: 166, rows: 27, count: 2, expected: [166, 26] },
+  ])("corrects a one-cell overshoot ($cols x $rows)", async (initial) => {
+    const resizes: number[][] = [];
+    const socketPath = await startSessionServer({
+      surfaceForHello: (cols, rows) => splitSurface(cols, rows, initial.count),
+      onResize: (cols, rows, send) => {
+        resizes.push([cols, rows]);
+        const next = splitSurface(cols, rows, initial.count);
+        send(next.frame, next.panes);
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "terminal",
+      async () => "w1:p1",
+    );
+    const frames: Array<{ width: number; height: number }> = [];
+    session.on("terminal", (frame) => frames.push(frame));
+    try {
+      await session.connect(80, 24, { cols: initial.cols, rows: initial.rows });
+      await Bun.sleep(60);
+      expect(resizes).toEqual([[...initial.expected]]);
+      expect(frames.at(-1)).toMatchObject({ width: 80, height: 24 });
+    } finally {
+      session.close();
+    }
+  });
+
+  test.each([
+    [2, 0],
+    [2, 1],
+    [3, 1],
+  ])(
+    "first visible frame fits a %i-way split pane %i without an extra viewer resize",
+    async (count, index) => {
+      const cols = count === 3 ? 135 : 134;
+      const initial = splitSurface(cols, 69, count);
+      const requested = Promise.withResolvers<() => void>();
+      const socketPath = await startSessionServer({
+        initialSurface: initial,
+        onResize: (cols, rows, send) => {
+          const settled = splitSurface(cols, rows, count);
+          send(initial.frame, initial.panes);
+          requested.resolve(() => send(settled.frame, settled.panes));
+        },
+      });
+      const session = new EndpointTerminalSession(
+        socketPath,
+        "terminal",
+        async () => initial.panes[index].paneId,
+      );
+      const frames: Array<{ width: number; height: number }> = [];
+      session.on("terminal", (frame) => frames.push(frame));
+      try {
+        await session.connect(cols, 69);
+        const settle = await requested.promise;
+        await Bun.sleep(60);
+        expect(frames).toEqual([]);
+        settle();
+        await Bun.sleep(60);
+        expect(frames).toEqual([
+          expect.objectContaining({ width: cols, height: 69 }),
+        ]);
+        await Bun.sleep(550);
+        expect(frames).toHaveLength(1); // no stale timer repaint
+      } finally {
+        session.close();
+      }
+    },
+  );
+
+  test("continuous stale frames cannot extend the first-frame deadline", async () => {
+    const initial = splitSurface(134, 69);
+    const requested = Promise.withResolvers<(reporting: boolean) => void>();
+    const socketPath = await startSessionServer({
+      initialSurface: initial,
+      onResize: (_cols, _rows, send) =>
+        requested.resolve((reporting) =>
+          send(
+            initial.frame,
+            initial.panes.map((pane) => ({
+              ...pane,
+              mouseReporting: reporting,
+            })),
+          ),
+        ),
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "terminal",
+      async () => "w1:p1",
+    );
+    const frames: Array<{ width: number; mouseReporting: boolean }> = [];
+    session.on("terminal", (frame) => frames.push(frame));
+    try {
+      await session.connect(134, 69);
+      const send = await requested.promise;
+      expect(frames).toEqual([]);
+      for (let i = 0; i < 7; i++) {
+        send(true);
+        await Bun.sleep(100);
+      }
+      expect(frames.length).toBeGreaterThan(0);
+      expect(frames.at(-1)).toEqual(
+        expect.objectContaining({ width: 64, mouseReporting: true }),
+      );
+      send(false);
+      await Bun.sleep(40);
+      expect(frames.at(-1)?.mouseReporting).toBe(false);
+    } finally {
+      session.close();
+    }
+  });
+
+  test.each(["local", "remote"])(
+    "%s close cancels a pending first frame",
+    async (side) => {
+      const initial = splitSurface(134, 69);
+      const requested = Promise.withResolvers<void>();
+      let disconnect!: () => void;
+      const socketPath = await startSessionServer({
+        initialSurface: initial,
+        onDisconnectConnection: (close) => {
+          disconnect = close;
+        },
+        onResize: () => requested.resolve(),
+      });
+      const session = new EndpointTerminalSession(
+        socketPath,
+        "terminal",
+        async () => "w1:p1",
+      );
+      const frames: unknown[] = [];
+      session.on("terminal", (frame) => frames.push(frame));
+      try {
+        await session.connect(134, 69);
+        await requested.promise;
+        expect(frames).toEqual([]);
+        if (side === "local") session.close();
+        else disconnect();
+        await Bun.sleep(600);
+        expect(session.isClosed).toBe(true);
+        expect(frames).toEqual([]);
+      } finally {
+        session.close();
+      }
+    },
+  );
   test.each([
     ["single pane", 1, 1, 0, 1],
     ["stacked panes", 1, 0.5, 2, 3],
@@ -368,14 +551,15 @@ describe("EndpointTerminalSession", () => {
           session.on("terminal", onFrame);
         });
       try {
-        const first = waitForSize(100, 30);
         await session.connect(100, 30);
-        await first;
-        expect(resizes.length).toBeLessThanOrEqual(4);
+        // The viewer attach drives convergence: one targeted resize, at
+        // most one rounding follow-up, and the crop lands on the pane size.
         const resized = waitForSize(81, 25);
         session.resize(81, 25);
         await resized;
-        expect(resizes.length).toBeLessThanOrEqual(9);
+        // Boot correction + the attach resize + at most one rounding
+        // follow-up; never an iterative chase.
+        expect(resizes.length).toBeLessThanOrEqual(3);
         const refreshed = waitForSize(81, 25);
         session.resize(81, 25);
         await refreshed;
@@ -384,6 +568,128 @@ describe("EndpointTerminalSession", () => {
       }
     },
   );
+
+  test("defers pane fitting while surfaces lack the pane", async () => {
+    // Focus transits through tabs that do not contain the pane. Resizing
+    // from those foreign geometries reflows the whole tab and shows up as
+    // panes first rendering narrow, then expanding.
+    const other = {
+      frame: {
+        width: 48,
+        height: 12,
+        cells: Array.from({ length: 48 * 12 }, () => cell(" ")),
+        cursor: null,
+        hyperlinks: [],
+      } satisfies FrameData,
+      panes: [
+        {
+          paneId: "w1:other",
+          x: 0,
+          mouseReporting: false,
+          rect: { x: 0, y: 0, width: 48, height: 12 },
+          innerRect: { x: 0, y: 1, width: 47, height: 11 },
+        },
+      ],
+    };
+    const own = {
+      frame: {
+        width: 120,
+        height: 40,
+        cells: Array.from({ length: 120 * 40 }, () => cell(" ")),
+        cursor: null,
+        hyperlinks: [],
+      } satisfies FrameData,
+      panes: [
+        {
+          paneId: "w1:p1",
+          x: 0,
+          mouseReporting: false,
+          rect: { x: 0, y: 0, width: 120, height: 40 },
+          innerRect: { x: 0, y: 1, width: 119, height: 39 },
+        },
+      ],
+    };
+    const resizes: Array<[number, number]> = [];
+    const socketPath = await startSessionServer({
+      initialSurface: other,
+      onResize: (cols, rows, send) => {
+        resizes.push([cols, rows]);
+        send(own.frame, own.panes);
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "term_1",
+      async () => "w1:p1",
+      silentLogger,
+      150,
+    );
+    const frames: Array<{ width: number; height: number }> = [];
+    session.on("terminal", (t) => frames.push(t));
+    try {
+      // The foreign surface never contains the pane, so connect times out
+      // rather than fitting against the wrong tab geometry.
+      await expect(session.connect(119, 39)).rejects.toThrow(
+        "timed out waiting for endpoint surface",
+      );
+      // No resize may derive from the foreign 48x12 geometry.
+      expect(resizes).toEqual([]);
+      expect(frames).toEqual([]);
+    } finally {
+      session.close();
+    }
+  });
+
+  test("ignores stale surfaces while a viewer resize is in flight", async () => {
+    // Split-pane attach: the viewer asks for the settled pane size while the
+    // server still streams pre-resize frames. Fitting against that stale
+    // ratio reflows the whole tab away from the requested size.
+    const makeSurface = (cols: number, rows: number, innerW: number) => ({
+      frame: {
+        width: cols,
+        height: rows,
+        cells: Array.from({ length: cols * rows }, () => cell(" ")),
+        cursor: null,
+        hyperlinks: [],
+      } satisfies FrameData,
+      panes: [
+        {
+          paneId: "w1:p1",
+          x: 0,
+          mouseReporting: false,
+          rect: { x: 0, y: 0, width: Math.floor(cols / 2), height: rows },
+          innerRect: { x: 0, y: 1, width: innerW, height: rows - 2 },
+        },
+      ],
+    });
+    const stale = makeSurface(134, 69, 64); // pre-resize split geometry
+    const settled = makeSurface(136, 70, 133); // after applying 136x70
+    const resizes: Array<[number, number]> = [];
+    const socketPath = await startSessionServer({
+      initialSurface: stale,
+      onResize: (cols, rows, send) => {
+        resizes.push([cols, rows]);
+        send(stale.frame, stale.panes); // in-flight stale frames
+        if (cols === 136 && rows === 70) send(settled.frame, settled.panes);
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "term_1",
+      async () => "w1:p1",
+    );
+    try {
+      await session.connect(134, 69);
+      session.resize(134, 69);
+      await Bun.sleep(100);
+      // The attach resize carries the wanted pane size once; stale frames
+      // arriving while it is in flight must not trigger another resize.
+      expect(resizes.length).toBeLessThanOrEqual(2);
+      expect(resizes.every(([c, r]) => c === 274 && r === 71)).toBe(true);
+    } finally {
+      session.close();
+    }
+  });
 
   test("focuses the pane and emits cropped ANSI terminal frames", async () => {
     const requests: Array<{ method: string; params: any }> = [];
@@ -518,8 +824,9 @@ test("endpoint mouse stays pane-local and mode changes route application input v
   const modes: boolean[] = [];
   right.on("terminal", (frame) => modes.push(frame.mouseReporting));
   try {
-    await left.connect(20, 5);
-    await right.connect(20, 5);
+    // These input fixtures have fixed 8x3 content, not a resizing layout.
+    await left.connect(8, 3);
+    await right.connect(8, 3);
     const clickDragWheel = Buffer.from(
       "\x1b[<0;2;3M\x1b[<32;3;2M\x1b[<0;3;2m\x1b[<64;8;3M",
     );
@@ -668,8 +975,8 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
     for (const terminalId of ["left", "right"]) {
       await bridge.handleTerminalRpc(ws, "attach", "terminal.attach", {
         terminal_id: terminalId,
-        cols: 20,
-        rows: 5,
+        cols: 8,
+        rows: 3,
         relay_active: false,
       });
     }
@@ -708,6 +1015,187 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
       { pane_id: "w1:p2", offset_from_bottom: 7 },
     ]);
     expect(inputs).toHaveLength(2);
+  } finally {
+    bridge.dispose();
+  }
+});
+
+test("split tab reattach uses the full surface in every endpoint hello", async () => {
+  const hellos: Array<[number, number]> = [];
+  const resizes: Array<[number, number]> = [];
+  const socketPath = await startSessionServer({
+    surfaceForHello: (cols, rows) => {
+      hellos.push([cols, rows]);
+      return splitSurface(cols, rows);
+    },
+    onResize: (cols, rows, send) => {
+      resizes.push([cols, rows]);
+      const next = splitSurface(cols, rows);
+      send(next.frame, next.panes);
+    },
+  });
+  const frames: Array<{ width: number; height: number }> = [];
+  const errors: string[] = [];
+  const ws = {} as ServerWebSocket<unknown>;
+  const bridge = createTerminalBridge({
+    clientSocketPath: socketPath,
+    herdrProtocol: async () => 22,
+    lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
+    safeSend: (_ws, payload) => {
+      const message = JSON.parse(payload);
+      if (message.terminal)
+        frames.push({
+          width: message.terminal.width,
+          height: message.terminal.height,
+        });
+      return true;
+    },
+    clientLabel: () => "test",
+    markRpcError: (_ws, _id, error) => errors.push(error ?? "error"),
+  });
+  try {
+    for (let visit = 0; visit < 2; visit++) {
+      for (const id of ["left", "right"]) {
+        await bridge.handleTerminalRpc(ws, "attach", "terminal.attach", {
+          terminal_id: id,
+          cols: 134,
+          rows: 69,
+          surface_cols: 274,
+          surface_rows: 71,
+          relay_active: false,
+        });
+      }
+      await Bun.sleep(40);
+      expect(errors).toEqual([]);
+      expect(frames.length).toBeGreaterThan(0);
+      expect(
+        frames.every((frame) => frame.width === 134 && frame.height === 69),
+      ).toBe(true);
+      for (const id of ["left", "right"]) {
+        await bridge.handleTerminalRpc(ws, "detach", "terminal.detach", {
+          terminal_id: id,
+        });
+      }
+      frames.length = 0;
+    }
+    expect(hellos).toEqual(Array.from({ length: 4 }, () => [274, 71]));
+    expect(resizes).toEqual([]);
+  } finally {
+    bridge.dispose();
+  }
+});
+
+test("endpoint frames are clipped per viewer and per terminal after resize", async () => {
+  const initial = splitSurface(26, 6);
+  const socketPath = await startSessionServer({
+    initialSurface: initial,
+    onResize: (_cols, _rows, send) => send(initial.frame, initial.panes),
+  });
+  const small = {} as ServerWebSocket<unknown>;
+  const large = {} as ServerWebSocket<unknown>;
+  const frames: Array<{
+    viewer: ServerWebSocket<unknown>;
+    terminal: { terminal_id: string; width: number; height: number };
+  }> = [];
+  const bridge = createTerminalBridge({
+    clientSocketPath: socketPath,
+    herdrProtocol: async () => 22,
+    lookupPaneId: async (id) => (id === "left" ? "w1:p1" : "w1:p2"),
+    safeSend: (viewer, payload) => {
+      const message = JSON.parse(payload);
+      if (message.terminal) frames.push({ viewer, terminal: message.terminal });
+      return true;
+    },
+    clientLabel: () => "test",
+    markRpcError: () => {},
+  });
+  try {
+    for (const [viewer, terminalId, cols, rows] of [
+      [small, "left", 6, 2],
+      [small, "right", 8, 3],
+      [large, "left", 10, 4],
+    ] as const) {
+      await bridge.handleTerminalRpc(viewer, "attach", "terminal.attach", {
+        terminal_id: terminalId,
+        cols,
+        rows,
+        surface_cols: 26,
+        surface_rows: 6,
+        relay_active: false,
+      });
+    }
+    await Bun.sleep(600);
+    for (const [viewer, terminalId, width, height] of [
+      [small, "left", 6, 2],
+      [small, "right", 8, 3],
+      [large, "left", 10, 4],
+    ] as const) {
+      expect(
+        frames.findLast(
+          (f) => f.viewer === viewer && f.terminal.terminal_id === terminalId,
+        )?.terminal,
+      ).toMatchObject({ width, height });
+    }
+    await bridge.handleTerminalRpc(small, "resize", "terminal.resize", {
+      terminal_id: "right",
+      cols: 7,
+      rows: 2,
+      relay_active: false,
+    });
+    await Bun.sleep(600);
+    expect(frames.at(-1)?.terminal).toMatchObject({
+      terminal_id: "right",
+      width: 7,
+      height: 2,
+    });
+  } finally {
+    bridge.dispose();
+  }
+});
+
+test("invalid initial surface hints are rejected before opening an endpoint", async () => {
+  let connections = 0;
+  const socketPath = await startSessionServer({
+    onConnection: () => {
+      connections++;
+    },
+  });
+  const errors: string[] = [];
+  const bridge = createTerminalBridge({
+    clientSocketPath: socketPath,
+    herdrProtocol: async () => 22,
+    lookupPaneId: async () => "w1:p1",
+    safeSend: () => true,
+    clientLabel: () => "test",
+    markRpcError: (_ws, _id, error) => errors.push(error ?? "error"),
+  });
+  try {
+    const invalid = [
+      { surface_cols: 274 },
+      { surface_cols: 274, surface_rows: 0 },
+      { surface_cols: -1, surface_rows: 71 },
+      { surface_cols: 1.5, surface_rows: 71 },
+      { surface_cols: 65536, surface_rows: 71 },
+      { surface_cols: "274", surface_rows: 71 },
+      { surface_cols: null, surface_rows: 71 },
+      { surface_cols: 274, surface_rows: Infinity },
+    ];
+    for (const hint of invalid) {
+      await bridge.handleTerminalRpc(
+        {} as ServerWebSocket<unknown>,
+        "attach",
+        "terminal.attach",
+        {
+          terminal_id: "terminal",
+          cols: 134,
+          rows: 69,
+          ...hint,
+        },
+      );
+    }
+    expect(errors).toHaveLength(invalid.length);
+    expect(errors.every((error) => error.includes("surface_cols"))).toBe(true);
+    expect(connections).toBe(0);
   } finally {
     bridge.dispose();
   }
