@@ -187,6 +187,8 @@ export function TerminalThemeDialog({
   const editing = draft !== null;
   const confirmingDelete = pendingDelete !== null;
   const canCreate = customThemes.length < MAX_CUSTOM_TERMINAL_THEMES;
+  const missingDraft =
+    draft?.id != null && !customThemes.some((theme) => theme.id === draft.id);
 
   useEffect(() => {
     if (open && !confirmingDelete) {
@@ -258,7 +260,7 @@ export function TerminalThemeDialog({
   };
 
   const saveDraft = () => {
-    if (!draft || (!draft.id && !canCreate)) return;
+    if (!draft || missingDraft || (!draft.id && !canCreate)) return;
     const theme: CustomTerminalTheme = {
       id: draft.id ?? newCustomThemeId(),
       name: draft.name.trim() || "Custom theme",
@@ -475,6 +477,7 @@ export function TerminalThemeDialog({
                   <button
                     key={variant.value}
                     type="button"
+                    aria-label={variant.label}
                     aria-pressed={current.variant === variant.value}
                     className={
                       current.variant === variant.value ? "is-active" : ""
@@ -510,6 +513,12 @@ export function TerminalThemeDialog({
           </div>
         </div>
 
+        {missingDraft ? (
+          <p role="alert">
+            This theme no longer exists. Your unsaved edits are kept here until
+            you close the editor.
+          </p>
+        ) : null}
         {!current.id && !canCreate ? (
           <p role="alert">
             Custom theme limit reached ({MAX_CUSTOM_TERMINAL_THEMES}). Delete a
@@ -526,7 +535,11 @@ export function TerminalThemeDialog({
           </button>
           <button
             type="button"
-            disabled={!current.name.trim() || (!current.id && !canCreate)}
+            disabled={
+              !current.name.trim() ||
+              missingDraft ||
+              (!current.id && !canCreate)
+            }
             onClick={saveDraft}
           >
             {current.id ? "Save theme" : "Create theme"}

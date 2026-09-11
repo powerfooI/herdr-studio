@@ -2,7 +2,11 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Terminal } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
+import "../styles.css";
 import {
+  applyTerminalTheme,
+  terminalThemeFor,
   type CustomTerminalTheme,
   type TerminalThemeSelection,
   MAX_CUSTOM_TERMINAL_THEMES,
@@ -35,6 +39,7 @@ const click = (label: string) => flushSync(() => button(label).click());
 let customThemes: CustomTerminalTheme[] = [];
 let selection: TerminalThemeSelection;
 let replaceThemes: (themes: CustomTerminalTheme[]) => void;
+let replaceSelection: (selection: TerminalThemeSelection) => void;
 
 function Harness() {
   const [themes, setThemes] = useState<CustomTerminalTheme[]>([]);
@@ -45,6 +50,7 @@ function Harness() {
   customThemes = themes;
   selection = selected;
   replaceThemes = setThemes;
+  replaceSelection = setSelected;
   return (
     <TerminalThemeDialog
       open
@@ -89,7 +95,21 @@ async function run() {
     check(input.value === name, "Name input did not update");
   }
 
+  const modes = document.querySelectorAll(
+    ".terminal-theme-variant-field button",
+  );
+  check(
+    modes[0].getAttribute("aria-label") === "Dark mode",
+    "Dark mode button has no accessible name",
+  );
+  check(
+    modes[1].getAttribute("aria-label") === "Light mode",
+    "Light mode button has no accessible name",
+  );
+
   const termElement = document.createElement("div");
+  termElement.className = "terminal-view";
+  termElement.style.cssText = "position:relative;width:800px;height:240px";
   document.body.append(termElement);
   const term = new Terminal();
   term.open(termElement);
@@ -123,6 +143,45 @@ async function run() {
       `Duplicate changed default ANSI ${key}`,
     );
   }
+  const textarea = termElement.querySelector("textarea")!;
+  for (const { mode, theme } of [
+    { mode: "light", theme: { background: "#2b3245", foreground: "#ffffff" } },
+    { mode: "light", theme: terminalThemeFor("light") },
+    { mode: "dark", theme: terminalThemeFor("dark") },
+  ]) {
+    document.documentElement.dataset.theme = mode;
+    applyTerminalTheme(term, theme);
+    textarea.dispatchEvent(
+      new CompositionEvent("compositionstart", { bubbles: true }),
+    );
+    textarea.dispatchEvent(
+      new CompositionEvent("compositionupdate", {
+        data: "test",
+        bubbles: true,
+      }),
+    );
+    await settle();
+    const composition = termElement.querySelector(".composition-view")!;
+    const style = getComputedStyle(composition);
+    const expected = document.createElement("span");
+    expected.style.color = theme.foreground!;
+    check(
+      composition.classList.contains("active") && style.display !== "none",
+      "IME preedit was not activated",
+    );
+    check(
+      style.color === expected.style.color,
+      "IME preedit did not use the terminal foreground",
+    );
+    check(
+      style.color !== style.backgroundColor,
+      "IME preedit text is invisible against its background",
+    );
+    textarea.dispatchEvent(
+      new CompositionEvent("compositionend", { bubbles: true }),
+    );
+  }
+  delete document.documentElement.dataset.theme;
   term.dispose();
   termElement.remove();
 
@@ -248,6 +307,52 @@ async function run() {
       (theme) => theme.id === selection.dark,
     ),
     "The newly selected theme was not persisted",
+  );
+  const saved = customThemes.find((theme) => theme.id === selection.dark)!;
+  click(`Edit ${saved.name}`);
+  await settle();
+  const editedInput = document.querySelector<HTMLInputElement>(
+    ".terminal-theme-name-field input",
+  )!;
+  setValue.call(editedInput, "Unsaved edit");
+  flushSync(() =>
+    editedInput.dispatchEvent(new Event("input", { bubbles: true })),
+  );
+  // Deliver the state produced by deleting the selected theme in another tab.
+  flushSync(() => {
+    replaceThemes(customThemes.filter((theme) => theme.id !== saved.id));
+    replaceSelection({ ...selection, dark: "herdr-dark" });
+  });
+  const synchronized = JSON.stringify({ customThemes, selection });
+  check(
+    button("Save theme").disabled,
+    "Saving a deleted theme remained enabled",
+  );
+  click("Save theme");
+  check(
+    JSON.stringify({ customThemes, selection }) === synchronized,
+    "Saving a deleted theme changed synchronized state",
+  );
+  check(
+    editedInput.isConnected && editedInput.value === "Unsaved edit",
+    "Deleting the theme discarded its open draft",
+  );
+  check(
+    document
+      .querySelector('[role="alert"]')
+      ?.textContent?.includes("no longer exists") === true,
+    "Missing deleted-theme explanation",
+  );
+  flushSync(() => replaceThemes([...customThemes, saved]));
+  check(
+    !button("Save theme").disabled,
+    "Restoring the theme did not re-enable saving",
+  );
+  click("Save theme");
+  check(
+    customThemes.find((theme) => theme.id === saved.id)?.name ===
+      "Unsaved edit",
+    "The preserved draft could not be saved",
   );
   flushSync(() => root.unmount());
   rootElement.remove();

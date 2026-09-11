@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const chrome =
   Bun.env.CHROME_BIN ||
@@ -16,6 +16,7 @@ test.skipIf(!chrome)(
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "terminal-theme-test-"));
     const { promise, resolve } = Promise.withResolvers<unknown>();
+    const assets = new Map<string, Blob>();
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -25,15 +26,13 @@ test.skipIf(!chrome)(
           resolve(await request.json());
           return new Response("ok");
         }
-        if (path === "/test.js") {
-          return new Response(
-            Bun.file(join(dir, "TerminalThemeDialog.browser.js")),
-          );
-        }
+        const asset = assets.get(path);
+        if (asset) return new Response(asset);
         if (path === "/") {
-          return new Response('<body><script src="/test.js"></script></body>', {
-            headers: { "Content-Type": "text/html" },
-          });
+          return new Response(
+            '<head><link rel="stylesheet" href="/TerminalThemeDialog.browser.css"></head><body><script src="/TerminalThemeDialog.browser.js"></script></body>',
+            { headers: { "Content-Type": "text/html" } },
+          );
         }
         return new Response("Not found", { status: 404 });
       },
@@ -47,6 +46,8 @@ test.skipIf(!chrome)(
         target: "browser",
       });
       expect(build.success).toBe(true);
+      for (const asset of build.outputs)
+        assets.set(`/${basename(asset.path)}`, asset);
       const errorOutput = join(dir, "browser.log");
       child = Bun.spawn(
         [

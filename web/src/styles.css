@@ -7612,7 +7612,7 @@ textarea:focus {
 }
 .terminal-view .xterm .composition-view {
   background-color: var(--terminal-canvas-background, var(--terminal-bg));
-  color: var(--terminal-fg);
+  color: var(--terminal-canvas-foreground, var(--terminal-fg));
 }
 .terminal-pane-toolbar {
   position: absolute;

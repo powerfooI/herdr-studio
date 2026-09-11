@@ -652,6 +652,10 @@ export function applyTerminalTheme(term: Terminal, theme: ITheme) {
   // from an application's explicit RGB background. Preserve both; only xterm
   // defaults and its ANSI palette follow the app theme. No repaint/reset is needed.
   term.options.theme = theme;
+  term.element?.style.setProperty(
+    "--terminal-canvas-foreground",
+    theme.foreground ?? "",
+  );
   if (theme.background) {
     term.element?.style.setProperty(
       "--terminal-canvas-background",
