@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createAuthHandlers } from "./auth";
+import { createAuthHandlers, unauthenticatedLoginRedirect } from "./auth";
 import { browserUrlFor, withLoginToken } from "../config/server-config";
 
 function cookieHeader(response: Response): string {
@@ -41,6 +41,13 @@ describe("request authentication boundaries", () => {
     });
 
     expect(handlers.isAuthed(proxiedRequest)).toBe(true);
+  });
+
+  test("redirects unauthenticated HTML requests with a relative location", () => {
+    const response = unauthenticatedLoginRedirect();
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/login");
   });
 });
 

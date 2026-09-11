@@ -183,3 +183,13 @@ export function createAuthHandlers(args: {
 
   return { isAuthed, handleTokenLogin, handleLogin, loginPage };
 }
+
+export function unauthenticatedLoginRedirect(): Response {
+  // Use a relative Location so reverse proxies preserve the public origin
+  // instead of leaking the internal upstream host. Intentionally ignores
+  // request URLs and forwarded headers.
+  return new Response(null, {
+    status: 302,
+    headers: { location: "/login" },
+  });
+}
