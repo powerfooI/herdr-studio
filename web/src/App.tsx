@@ -40,6 +40,7 @@ import {
 import { AgentIcon } from "./components/AgentIcon";
 import { paneHasAgentHistory } from "./components/agentSession";
 import { CloseButton } from "./components/CloseButton";
+import { focusIfUnchanged } from "./components/dialogFocus";
 import { CommandCombobox } from "./components/CommandCombobox";
 import { CONFIG_MENU_ID, ConfigMenu } from "./components/ConfigMenu";
 import { ConnectionSwitcher } from "./components/ConnectionSwitcher";
@@ -1130,6 +1131,24 @@ export default function App() {
   const [inspectorState, setInspectorState] =
     useState<WorkspaceInspectorState | null>(null);
   const inspectorStateRef = useRef<WorkspaceInspectorState | null>(null);
+  const inspectorFocusRequestRef = useRef<{
+    state: WorkspaceInspectorState;
+    source: Element | null;
+  } | null>(null);
+  const finishInspectorFocus = useCallback(() => {
+    const request = inspectorFocusRequestRef.current;
+    if (!request) return;
+    if (inspectorStateRef.current !== request.state || !request.state.open) {
+      inspectorFocusRequestRef.current = null;
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(
+      '.workspace-inspector-tabs [role="tab"][aria-selected="true"]',
+    );
+    if (focusIfUnchanged(target, request.source)) {
+      inspectorFocusRequestRef.current = null;
+    }
+  }, []);
   const inspectorReturnFocusRef = useRef<HTMLElement | null>(null);
   const pendingInspectorRequestRef = useRef<WorkspaceInspectorRequest | null>(
     null,
@@ -1414,19 +1433,14 @@ export default function App() {
         setActiveDiff(emptyActiveDiffSelection());
         setActiveFilePreview(emptyActiveFilePreviewSelection());
       }
+      inspectorFocusRequestRef.current = focusInspector
+        ? { state: nextState, source: document.activeElement }
+        : null;
       commitInspectorState(nextState);
       writeInspectorPreferences(localStorage, nextState);
       setSidebarHidden(false);
       if (mobile) setMobileView(view);
-      if (focusInspector) {
-        requestAnimationFrame(() => {
-          document
-            .querySelector<HTMLElement>(
-              '.workspace-inspector-tabs [role="tab"][aria-selected="true"]',
-            )
-            ?.focus();
-        });
-      }
+      if (focusInspector) requestAnimationFrame(finishInspectorFocus);
 
       const selectedPath =
         options.path ??
@@ -1454,6 +1468,7 @@ export default function App() {
     [
       commitInspectorState,
       connectionClient.connectionId,
+      finishInspectorFocus,
       loadInspectorFilePreview,
       mobile,
     ],
@@ -2963,6 +2978,7 @@ export default function App() {
                   <WorkspaceInspectorHost
                     key={`${resourceUiKey}:${resourceOwnerKey(inspectorState.scope)}`}
                     state={inspectorState}
+                    onReady={finishInspectorFocus}
                     visible={!mobile || mobileView !== "workspaces"}
                     workspace={inspectorWorkspace}
                     historyPane={inspectorHistoryPane}

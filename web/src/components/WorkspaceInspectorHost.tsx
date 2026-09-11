@@ -203,6 +203,7 @@ function InspectorSplitResizer({
 
 export function WorkspaceInspectorHost({
   state,
+  onReady,
   visible,
   workspace,
   historyPane,
@@ -219,6 +220,7 @@ export function WorkspaceInspectorHost({
   onBack,
 }: {
   state: WorkspaceInspectorState;
+  onReady?: () => void;
   visible: boolean;
   workspace?: Workspace;
   historyPane?: Pane;
@@ -237,6 +239,9 @@ export function WorkspaceInspectorHost({
   onBack: () => void;
 }) {
   const hostRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    onReady?.();
+  }, [onReady]);
   const filesTabRef = useRef<HTMLButtonElement | null>(null);
   const changesTabRef = useRef<HTMLButtonElement | null>(null);
   const historyTabRef = useRef<HTMLButtonElement | null>(null);
