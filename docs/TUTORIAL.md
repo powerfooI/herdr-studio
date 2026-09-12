@@ -21,7 +21,7 @@ before starting, or finish every chapter in one sitting.
 >
 > This page is a static tutorial, not your workspace. GitHub Pages hosts the
 > text and screenshots. **It does not run Herdr, keep your terminals alive, or
-> replace the `herdr-gui` service.**
+> replace the `roamgate` service.**
 
 ## 1. Start here: see your own work locally
 
@@ -60,7 +60,7 @@ task from host sleep, shutdown, or a process exiting.
 2. Install Roamgate using the
    [installation guide](./DEPLOYMENT.md#install-a-release). Standalone binaries
    do not require Bun. On Windows, download the matching x64 or ARM64 archive
-   and use `herdr-gui.exe`. Prefer the Herdr plugin? See the
+   and use `roamgate.exe`. Prefer the Herdr plugin? See the
    [plugin instructions](./DEPLOYMENT.md#herdr-plugin).
 3. Start Roamgate using the path for your installation:
 
@@ -68,13 +68,13 @@ task from host sleep, shutdown, or a process exiting.
    computer. Leave the process running.
 
    ```bash
-   herdr-gui
+   roamgate
    ```
 
    **Plugin installation:** follow the
    [plugin startup instructions](./DEPLOYMENT.md#herdr-plugin) to start Roamgate
    and obtain its login URL from the plugin panel or command log. The plugin
-   does not add `herdr-gui` to `PATH`; skip the standalone command above.
+   does not add `roamgate` to `PATH`; skip the standalone command above.
 
 4. In a browser on **the same computer**, open the URL from the standalone
    process or plugin, including any login token. A default standalone launch
@@ -85,10 +85,10 @@ task from host sleep, shutdown, or a process exiting.
 input produces output. Leave ports, domains, and VPNs alone for now. Get local
 access working before adding another network connection.
 
-> **The two startup defaults differ.** Running `herdr-gui` directly defaults
+> **The two startup defaults differ.** Running `roamgate` directly defaults
 > to a local-only listener. The current implementation skips built-in login
 > for that listener, even if a password is configured. A new
-> `herdr-gui service install` service instead listens on `0.0.0.0:8787` with a
+> `roamgate service install` service instead listens on `0.0.0.0:8787` with a
 > login token. The plugin also uses the user service. Check the actual listener
 > address before following the private-access examples later in this tutorial.
 
@@ -436,10 +436,10 @@ Roamgate already runs through the plugin or a user service, do not start a secon
 instance; use the existing-service instructions below instead.
 
 ```bash
-herdr-gui --host 127.0.0.1 --port 8787
+roamgate --host 127.0.0.1 --port 8787
 ```
 
-On Windows, use `herdr-gui.exe`, usually `./herdr-gui.exe` when launching from
+On Windows, use `roamgate.exe`, usually `./roamgate.exe` when launching from
 the current PowerShell directory. Leave this terminal running Roamgate.
 
 > **This setup has no Roamgate login page under the current implementation.**
@@ -460,7 +460,7 @@ restart the service using the command for your installation:
 **Standalone installation:**
 
 ```bash
-herdr-gui service restart
+roamgate service restart
 ```
 
 **Plugin installation:**
@@ -558,7 +558,7 @@ Alternatively, start a local bridge with the command below. Its port must not
 conflict with an existing Roamgate instance.
 
 ```bash
-herdr-gui --ssh-host workbox --host 127.0.0.1
+roamgate --ssh-host workbox --host 127.0.0.1
 ```
 
 **You are done when:** your local browser controls the remote terminal and

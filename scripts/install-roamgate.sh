@@ -50,9 +50,9 @@ if [ -n "$requested_version" ]; then
       fail "invalid HERDR_GUI_VERSION: $requested_version"
       ;;
   esac
-  archive_name="herdr-gui-v${requested_version}-${platform}.tar.xz"
+  archive_name="roamgate-v${requested_version}-${platform}.tar.xz"
 else
-  archive_name="herdr-gui-${platform}.tar.xz"
+  archive_name="roamgate-${platform}.tar.xz"
 fi
 
 # GitHub uses a different asset directory for latest and versioned releases.
@@ -91,14 +91,14 @@ case "$release_base" in
     ;;
   *) fail "release base URL must be an HTTP(S) URL" ;;
 esac
-package_dir="herdr-gui-${platform}"
+package_dir="roamgate-${platform}"
 mkdir -p "$install_dir"
-target="$install_dir/herdr-gui"
+target="$install_dir/roamgate"
 if { [ -e "$target" ] || [ -L "$target" ]; } && \
    { [ ! -f "$target" ] || [ -L "$target" ]; }; then
   fail "install target exists but is not a regular file"
 fi
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/herdr-gui-install.XXXXXX")"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/roamgate-install.XXXXXX")"
 target_tmp=""
 backup_tmp=""
 
@@ -116,7 +116,7 @@ trap 'exit 1' HUP INT TERM
 
 archive="$tmp/$archive_name"
 checksum="$archive.sha256"
-printf 'Downloading herdr-gui for %s...\n' "$platform"
+printf 'Downloading roamgate for %s...\n' "$platform"
 curl --proto "$curl_protocol" --proto-redir "$curl_protocol" \
   -fsSL "$release_base/$archive_name" -o "$archive"
 curl --proto "$curl_protocol" --proto-redir "$curl_protocol" \
@@ -144,11 +144,11 @@ fi
 
 tar -xJf "$archive" -C "$tmp" \
   "$package_dir/VERSION" \
-  "$package_dir/herdr-gui"
+  "$package_dir/roamgate"
 
 extracted_package_dir="$tmp/$package_dir"
 version_file="$extracted_package_dir/VERSION"
-binary="$extracted_package_dir/herdr-gui"
+binary="$extracted_package_dir/roamgate"
 [ -d "$extracted_package_dir" ] && [ ! -L "$extracted_package_dir" ] ||
   fail "package directory is invalid"
 [ -f "$version_file" ] && [ ! -L "$version_file" ] ||
@@ -162,7 +162,7 @@ package_platform=""
 extra_version_field=""
 read -r package_name package_version package_platform extra_version_field \
   < "$version_file" || fail "invalid package VERSION file"
-[ "$package_name" = "herdr-gui" ] || fail "invalid package VERSION file"
+[ "$package_name" = "roamgate" ] || fail "invalid package VERSION file"
 [ -z "$extra_version_field" ] || fail "invalid package VERSION file"
 [ -n "$package_version" ] || fail "package version is missing"
 [ "$package_platform" = "$platform" ] ||
@@ -171,19 +171,19 @@ read -r package_name package_version package_platform extra_version_field \
   fail "package version is $package_version, expected $requested_version"
 
 binary_version="$("$binary" --version)"
-[ "$binary_version" = "herdr-gui $package_version" ] ||
+[ "$binary_version" = "roamgate $package_version" ] ||
   fail "binary version does not match package VERSION"
 
 if { [ -e "$target" ] || [ -L "$target" ]; } && \
    { [ ! -f "$target" ] || [ -L "$target" ]; }; then
   fail "install target changed during installation"
 fi
-target_tmp="$(mktemp "$install_dir/.herdr-gui.new.XXXXXX")"
+target_tmp="$(mktemp "$install_dir/.roamgate.new.XXXXXX")"
 install -m 0755 "$binary" "$target_tmp"
 backup=""
 if [ -f "$target" ] && [ ! -L "$target" ]; then
   backup="$target.previous"
-  backup_tmp="$(mktemp "$install_dir/.herdr-gui.previous.XXXXXX")"
+  backup_tmp="$(mktemp "$install_dir/.roamgate.previous.XXXXXX")"
   install -m 0755 "$target" "$backup_tmp"
   mv -f "$backup_tmp" "$backup"
   backup_tmp=""
@@ -191,13 +191,13 @@ fi
 mv -f "$target_tmp" "$target"
 target_tmp=""
 
-printf 'Installed herdr-gui %s to %s\n' "$package_version" "$target"
+printf 'Installed roamgate %s to %s\n' "$package_version" "$target"
 if [ -n "$backup" ]; then
   printf 'Previous binary saved to %s\n' "$backup"
 fi
 case ":${PATH:-}:" in
   *":$install_dir:"*) ;;
   *)
-    printf 'Add %s to PATH to run herdr-gui directly.\n' "$install_dir"
+    printf 'Add %s to PATH to run roamgate directly.\n' "$install_dir"
     ;;
 esac

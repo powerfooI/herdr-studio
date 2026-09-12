@@ -76,15 +76,15 @@ export function loadServerConfig(appVersion: string): ServerConfig {
     }).values as CliArgs;
   } catch (e) {
     console.error(`[bridge] ${(e as Error).message}`);
-    console.error("Run `herdr-gui --help` for usage.");
+    console.error("Run `roamgate --help` for usage.");
     process.exit(2);
   }
 
   if (args.help) {
     console.log(`Roamgate — web client for Herdr
 
-Usage: herdr-gui [options]
-       herdr-gui service <action>
+Usage: roamgate [options]
+       roamgate service <action>
 
 Service actions:
   install [--force]           install and start the platform user service
@@ -92,7 +92,7 @@ Service actions:
   restart                     restart the managed service
   reload                      reload its definition and restart the service
   uninstall                   stop and remove the service definition
-  Run \`herdr-gui service --help\` for service details.
+  Run \`roamgate service --help\` for service details.
 
 Options (flags override env vars; ROAMGATE_* overrides HERDR_GUI_*):
   --host <addr>              listen address        (env HOST,            default 127.0.0.1)
@@ -112,7 +112,7 @@ Options (flags override env vars; ROAMGATE_* overrides HERDR_GUI_*):
   }
 
   if (args.version) {
-    console.log(`herdr-gui ${appVersion}`);
+    console.log(`roamgate ${appVersion}`);
     process.exit(0);
   }
 

@@ -3,7 +3,12 @@
 ## Unreleased
 
 - Introduce Roamgate, formerly Herdr Studio, as an independent community client
-  for Herdr. Existing commands, configuration, and update paths remain compatible.
+  for Herdr.
+- **Breaking:** commands and release assets now use `roamgate`. Old clients
+  cannot update to Roamgate through their default channel, and old latest
+  installer URLs stop working. Install manually; existing processes, data, and
+  historical releases are preserved. See the
+  [transition guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
 - Accept `ROAMGATE_*` configuration variables alongside `HERDR_GUI_*`; the new
   names take precedence when both are set.
 

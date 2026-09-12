@@ -187,6 +187,14 @@ Production builds embed the frontend and Bun runtime into one platform executabl
 users need neither Bun nor Node.js. Source builds use Bun and Vite. See
 [standalone builds](./DEPLOYMENT.md#build-a-standalone-executable).
 
+Roamgate has a separate release namespace: executable and package members,
+archive/checksum filenames, and manifest identity all use `roamgate`. Every
+release provides a manifest; missing or legacy metadata fails closed without
+an archive-discovery fallback. Publication checks require exactly the six
+platforms' Roamgate assets and prohibit legacy update aliases. Historical
+clients cannot discover Roamgate from their old Latest URLs; see the
+[manual transition contract](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
+
 ## Trust boundary
 
 Roamgate is a trusted single-user administration tool, not a sandbox or multi-user

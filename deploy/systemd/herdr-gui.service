@@ -7,7 +7,7 @@ After=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=-%h/.config/herdr-gui/herdr-gui.env
-ExecStart=%h/.local/bin/herdr-gui
+ExecStart=%h/.local/bin/roamgate
 Restart=always
 RestartSec=2
 TimeoutStopSec=15

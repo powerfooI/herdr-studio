@@ -131,7 +131,7 @@ const copyButton = document.querySelector("[data-copy-command]");
 const copyLabel = copyButton?.querySelector("span");
 const installCommand = document.querySelector("[data-install-command]");
 const commandText =
-  "curl -fsSL https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh | sh";
+  "curl -fsSL https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh | sh";
 
 const copyText = async (text) => {
   if (!navigator.clipboard || !window.isSecureContext) {

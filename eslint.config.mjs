@@ -10,6 +10,7 @@ export default tseslint.config(
       "dist/**",
       "node_modules/**",
       "server/herdr-gui*",
+      "server/roamgate*",
       "server/public/**",
       "server/src/public-files.gen.ts",
       "web/dist/**",

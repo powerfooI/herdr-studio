@@ -7,7 +7,8 @@ Frontend code lives in `web/src`, with reusable UI under `web/src/components`,
 assets under `web/src/assets`, and global styling in `web/src/styles.css`.
 Server and bridge code lives in `server/src`. Release helpers live in `scripts/`.
 Generated build output belongs in `web/dist`, `server/public`,
-`server/src/public-files.gen.ts`, `server/herdr-gui*`, and `dist/`; these paths
+`server/src/public-files.gen.ts`, `server/roamgate*`, legacy `server/herdr-gui*`,
+and `dist/`; these paths
 are ignored and should not be committed.
 
 ## Build, Test, and Development Commands

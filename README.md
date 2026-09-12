@@ -5,9 +5,11 @@ An independent, community-built **web and PWA client** for
 files and diffs from desktop or mobile. A running Herdr server is required.
 Roamgate is not affiliated with or endorsed by the Herdr project.
 
-> **Previously Herdr Studio:** the project now uses its own name. Existing
-> `herdr-gui` commands, release assets, configuration paths, and repository URLs
-> remain supported; changing the display name does not migrate user data.
+> **Breaking change from Herdr Studio / herdr-gui:** install Roamgate manually.
+> Old clients cannot upgrade to Roamgate through their default update channel.
+> Existing processes and historical releases are left intact. Read the
+> [transition guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
+> before switching an existing service.
 
 ## Documentation
 
@@ -91,16 +93,16 @@ Herdr must already be installed and running. Install the latest standalone
 Roamgate binary with:
 
 ```bash
-# Leave empty for latest; set HERDR_GUI_VERSION=X.Y.Z for a specific version (no v prefix).
+# Leave empty for latest; set ROAMGATE_VERSION=X.Y.Z for a Roamgate version (no v prefix).
 curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh \
-  | HERDR_GUI_VERSION= sh
+  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh \
+  | ROAMGATE_VERSION= sh
 ```
 
 Make sure `~/.local/bin` is in `PATH`, then start the application:
 
 ```bash
-herdr-gui
+roamgate
 ```
 
 Open the URL printed by the process. On Windows, download the matching x64 or
@@ -114,13 +116,13 @@ user-service setup.
 ## Install as a PWA
 
 For day-to-day use, install Roamgate as a standalone web app after starting
-and authenticating with `herdr-gui`:
+and authenticating with `roamgate`:
 
 - **iPhone or iPad (Safari):** **Share** -> **Add to Home Screen**.
 - **macOS (Safari 17+):** **File** -> **Add to Dock**.
 - **Chrome or Edge:** choose **Install app** from the browser menu.
 
-The installed app still requires the `herdr-gui` process to be running and
+The installed app still requires the `roamgate` process to be running and
 reachable; PWA mode does not provide offline access.
 
 ## Development

@@ -12,16 +12,16 @@ import {
 describe("releaseAssetFor", () => {
   test("maps every supported platform to an archive and binary name", () => {
     expect(releaseAssetFor("darwin", "arm64")).toEqual({
-      asset: "herdr-gui-darwin-arm64",
-      binary: "herdr-gui",
+      asset: "roamgate-darwin-arm64",
+      binary: "roamgate",
     });
     expect(releaseAssetFor("linux", "x64")).toEqual({
-      asset: "herdr-gui-linux-x64",
-      binary: "herdr-gui",
+      asset: "roamgate-linux-x64",
+      binary: "roamgate",
     });
-    expect(releaseAssetFor("win32", "x64")?.binary).toBe("herdr-gui.exe");
+    expect(releaseAssetFor("win32", "x64")?.binary).toBe("roamgate.exe");
     expect(releaseAssetFor("win32", "arm64")?.asset).toBe(
-      "herdr-gui-windows-arm64",
+      "roamgate-windows-arm64",
     );
   });
 
@@ -34,7 +34,7 @@ describe("releaseAssetFor", () => {
 describe("parseSha256File", () => {
   test("extracts the digest from shasum output", () => {
     const digest = "a".repeat(64);
-    expect(parseSha256File(`${digest}  herdr-gui-darwin-arm64.tar.xz\n`)).toBe(
+    expect(parseSha256File(`${digest}  roamgate-darwin-arm64.tar.xz\n`)).toBe(
       digest,
     );
   });

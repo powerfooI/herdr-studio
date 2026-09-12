@@ -12,7 +12,8 @@ Roamgate is an independent community web client for Herdr. It has two parts:
 - `scripts/`: release and packaging helpers.
 
 Generated build output lives in `server/public`,
-`server/src/public-files.gen.ts`, `server/herdr-gui*`, and `dist/`. These are
+`server/src/public-files.gen.ts`, `server/roamgate*`, legacy `server/herdr-gui*`,
+and `dist/`. These are
 build artifacts; they must not be edited or committed.
 
 ## Review priorities

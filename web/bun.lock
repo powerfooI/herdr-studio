@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "herdr-studio-web",
+      "name": "roamgate-web",
       "dependencies": {
         "@codemirror/commands": "^6.10.4",
         "@codemirror/lang-cpp": "^6.0.3",

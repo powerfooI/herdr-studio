@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BINARY_CANDIDATES =
-  process.platform === "win32" ? ["herdr-gui.exe", "herdr-gui"] : ["herdr-gui"];
+  process.platform === "win32" ? ["roamgate.exe", "roamgate"] : ["roamgate"];
 
 function binaryPath(): string | null {
   for (const name of BINARY_CANDIDATES) {
@@ -76,12 +76,12 @@ export const PLATFORM_ASSETS: Record<
   string,
   { asset: string; binary: string }
 > = {
-  "darwin-arm64": { asset: "herdr-gui-darwin-arm64", binary: "herdr-gui" },
-  "darwin-x64": { asset: "herdr-gui-darwin-x64", binary: "herdr-gui" },
-  "linux-arm64": { asset: "herdr-gui-linux-arm64", binary: "herdr-gui" },
-  "linux-x64": { asset: "herdr-gui-linux-x64", binary: "herdr-gui" },
-  "win32-arm64": { asset: "herdr-gui-windows-arm64", binary: "herdr-gui.exe" },
-  "win32-x64": { asset: "herdr-gui-windows-x64", binary: "herdr-gui.exe" },
+  "darwin-arm64": { asset: "roamgate-darwin-arm64", binary: "roamgate" },
+  "darwin-x64": { asset: "roamgate-darwin-x64", binary: "roamgate" },
+  "linux-arm64": { asset: "roamgate-linux-arm64", binary: "roamgate" },
+  "linux-x64": { asset: "roamgate-linux-x64", binary: "roamgate" },
+  "win32-arm64": { asset: "roamgate-windows-arm64", binary: "roamgate.exe" },
+  "win32-x64": { asset: "roamgate-windows-x64", binary: "roamgate.exe" },
 };
 
 const RELEASE_REPOSITORY = "powerfooI/herdr-studio";
@@ -180,9 +180,7 @@ function buildSource(): number {
 async function ensureBinary(): Promise<string | null> {
   const existing = binaryPath();
   if (existing) return existing;
-  console.error(
-    "studio-plugin: herdr-gui binary missing, downloading it first",
-  );
+  console.error("studio-plugin: roamgate binary missing, downloading it first");
   if ((await downloadPrebuilt()) !== 0) return null;
   const downloaded = binaryPath();
   if (!downloaded) {

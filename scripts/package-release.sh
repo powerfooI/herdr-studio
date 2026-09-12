@@ -8,33 +8,33 @@ version="$(
   bun -e 'console.log(require("./package.json").version)'
 )"
 
-binary_name="herdr-gui"
+binary_name="roamgate"
 case "$platform" in
   darwin-arm64)
     build_script="build:darwin-arm64"
-    binary="$root_dir/server/herdr-gui-darwin-arm64"
+    binary="$root_dir/server/roamgate-darwin-arm64"
     ;;
   darwin-x64)
     build_script="build:darwin-x64"
-    binary="$root_dir/server/herdr-gui-darwin-x64"
+    binary="$root_dir/server/roamgate-darwin-x64"
     ;;
   linux-x64)
     build_script="build:linux-x64"
-    binary="$root_dir/server/herdr-gui-linux-x64"
+    binary="$root_dir/server/roamgate-linux-x64"
     ;;
   linux-arm64)
     build_script="build:linux-arm64"
-    binary="$root_dir/server/herdr-gui-linux-arm64"
+    binary="$root_dir/server/roamgate-linux-arm64"
     ;;
   windows-x64)
     build_script="build:windows-x64"
-    binary="$root_dir/server/herdr-gui-windows-x64.exe"
-    binary_name="herdr-gui.exe"
+    binary="$root_dir/server/roamgate-windows-x64.exe"
+    binary_name="roamgate.exe"
     ;;
   windows-arm64)
     build_script="build:windows-arm64"
-    binary="$root_dir/server/herdr-gui-windows-arm64.exe"
-    binary_name="herdr-gui.exe"
+    binary="$root_dir/server/roamgate-windows-arm64.exe"
+    binary_name="roamgate.exe"
     ;;
   *)
     echo "unsupported platform: $platform" >&2
@@ -43,13 +43,13 @@ case "$platform" in
     ;;
 esac
 
-package_dir_name="herdr-gui-$platform"
+package_dir_name="roamgate-$platform"
 package_dir="$root_dir/dist/$package_dir_name"
-versioned_archive="$root_dir/dist/herdr-gui-v$version-$platform.tar.xz"
-latest_archive="$root_dir/dist/herdr-gui-$platform.tar.xz"
+versioned_archive="$root_dir/dist/roamgate-v$version-$platform.tar.xz"
+latest_archive="$root_dir/dist/roamgate-$platform.tar.xz"
 versioned_checksum="$versioned_archive.sha256"
 latest_checksum="$latest_archive.sha256"
-update_manifest="$root_dir/dist/herdr-gui-$platform.update.json"
+update_manifest="$root_dir/dist/roamgate-$platform.update.json"
 
 cd "$root_dir"
 bun run "$build_script"
@@ -58,7 +58,7 @@ rm -rf "$package_dir"
 mkdir -p "$package_dir"
 cp "$binary" "$package_dir/$binary_name"
 chmod 755 "$package_dir/$binary_name"
-printf 'herdr-gui %s %s\n' "$version" "$platform" > "$package_dir/VERSION"
+printf 'roamgate %s %s\n' "$version" "$platform" > "$package_dir/VERSION"
 
 rm -f \
   "$versioned_archive" \
@@ -101,7 +101,7 @@ printf '%s  %s\n' \
   "$archive_digest" \
   "$(basename "$latest_archive")" > "$latest_checksum"
 printf '%s\n' \
-  "{\"schema\":1,\"name\":\"herdr-gui\",\"version\":\"$version\",\"platform\":\"$platform\",\"archive\":\"$(basename "$latest_archive")\",\"sha256\":\"$archive_digest\"}" \
+  "{\"schema\":1,\"name\":\"roamgate\",\"version\":\"$version\",\"platform\":\"$platform\",\"archive\":\"$(basename "$latest_archive")\",\"sha256\":\"$archive_digest\"}" \
   > "$update_manifest"
 
 cat "$versioned_checksum" "$latest_checksum" "$update_manifest"
