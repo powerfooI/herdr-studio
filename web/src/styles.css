@@ -641,6 +641,7 @@ textarea:focus {
   height: 24px;
   display: block;
   border-radius: 6px;
+  background: #faf9f6;
 }
 
 .status {

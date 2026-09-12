@@ -275,21 +275,12 @@
     letter-spacing: -0.025em;
   }
 
-  .brand-mark {
-    display: grid;
-    width: 38px;
-    height: 38px;
-    overflow: hidden;
-    place-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 11px;
-    background: #d8d8d8;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  }
-
-  .brand-mark img {
-    width: 100%;
-    height: 100%;
+  .brand-logo {
+    display: block;
+    width: 160px;
+    height: auto;
+    border-radius: 8px;
+    background: #faf9f6;
   }
 
   .primary-nav {
@@ -1948,9 +1939,8 @@
     min-height: 68px;
   }
 
-  .brand-mark {
-    width: 34px;
-    height: 34px;
+  .brand-logo {
+    width: 140px;
   }
 
   .hero {

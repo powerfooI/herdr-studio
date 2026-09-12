@@ -4,6 +4,12 @@ Roamgate includes or renders assets from third-party projects. Those assets
 remain under their original licenses and are not relicensed by the project
 MIT license.
 
+## Roamgate artwork
+
+The Roamgate bird, wordmark, icons, and social images were supplied by the
+project owner. They are not Herdr's official logo. The small application marks
+are resized exports of that artwork, displayed on a warm-white background.
+
 ## Nerd Fonts
 
 `web/src/assets/herdr-nerd-symbols.woff2` is a glyph-only derivative of
