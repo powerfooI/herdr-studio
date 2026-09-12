@@ -1,12 +1,13 @@
-# Herdr Studio
+# Roamgate
 
-A minimal **web client** for [Herdr](https://herdr.dev). It connects to a
-running Herdr server through its local socket API and provides a browser and PWA
-dashboard for workspaces, tabs, panes, terminals, agents, files, and diffs.
+An independent, community-built **web and PWA client** for
+[Herdr](https://herdr.dev). Access terminals, inspect agent sessions, and review
+files and diffs from desktop or mobile. A running Herdr server is required.
+Roamgate is not affiliated with or endorsed by the Herdr project.
 
-> **Note:** Herdr Studio was formerly named `herdr-gui`. The command-line
-> binary, release archives, and on-disk configuration paths still use the
-> `herdr-gui` name; only the product branding has changed.
+> **Previously Herdr Studio:** the project now uses its own name. Existing
+> `herdr-gui` commands, release assets, configuration paths, and repository URLs
+> remain supported; changing the display name does not migrate user data.
 
 ## Documentation
 
@@ -87,7 +88,7 @@ Click any screenshot to open the full-resolution image.
 ## Quick start
 
 Herdr must already be installed and running. Install the latest standalone
-Herdr Studio binary with:
+Roamgate binary with:
 
 ```bash
 # Leave empty for latest; set HERDR_GUI_VERSION=X.Y.Z for a specific version (no v prefix).
@@ -112,7 +113,7 @@ user-service setup.
 
 ## Install as a PWA
 
-For day-to-day use, install Herdr Studio as a standalone web app after starting
+For day-to-day use, install Roamgate as a standalone web app after starting
 and authenticating with `herdr-gui`:
 
 - **iPhone or iPad (Safari):** **Share** -> **Add to Home Screen**.
@@ -141,7 +142,7 @@ validation commands and pull request guidelines.
 
 ## Security
 
-Herdr Studio can control terminal sessions and modify workspace files. Keep the
+Roamgate can control terminal sessions and modify workspace files. Keep the
 default loopback binding unless you understand the trust boundary. Read
 [SECURITY.md](./SECURITY.md) before exposing the service to another device.
 

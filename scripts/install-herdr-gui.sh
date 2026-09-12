@@ -2,14 +2,17 @@
 set -eu
 
 github_repository="powerfooI/herdr-studio"
-custom_release_base="${HERDR_GUI_RELEASE_BASE_URL:-}"
-install_dir="${HERDR_GUI_INSTALL_DIR:-$HOME/.local/bin}"
-requested_version="${HERDR_GUI_VERSION:-}"
+# New names take precedence even when explicitly empty (VERSION= means latest).
+custom_release_base="${ROAMGATE_RELEASE_BASE_URL-${HERDR_GUI_RELEASE_BASE_URL:-}}"
+install_dir="${ROAMGATE_INSTALL_DIR-${HERDR_GUI_INSTALL_DIR:-$HOME/.local/bin}}"
+requested_version="${ROAMGATE_VERSION-${HERDR_GUI_VERSION:-}}"
 
 fail() {
-  printf 'herdr-gui installer: %s\n' "$*" >&2
+  printf 'Roamgate installer: %s\n' "$*" >&2
   exit 1
 }
+
+[ -n "$install_dir" ] || fail "install directory must not be empty"
 
 for command in curl tar install uname awk cat mktemp; do
   command -v "$command" >/dev/null 2>&1 ||

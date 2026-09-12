@@ -1,5 +1,5 @@
 [Unit]
-Description=Herdr Studio
+Description=Roamgate
 Documentation=https://github.com/powerfooI/herdr-studio
 Wants=network-online.target
 After=network-online.target

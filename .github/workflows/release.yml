@@ -168,4 +168,4 @@ jobs:
           --verify-tag
           --latest
           --generate-notes
-          --title "Herdr Studio $GITHUB_REF_NAME"
+          --title "Roamgate $GITHUB_REF_NAME"

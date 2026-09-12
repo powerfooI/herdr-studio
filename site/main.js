@@ -89,7 +89,7 @@ const activateShowcaseTab = (tab) => {
     () => {
       if (showcaseImage instanceof HTMLImageElement && imageSource) {
         showcaseImage.src = imageSource;
-        showcaseImage.alt = imageAlt ?? "Herdr Studio product view";
+        showcaseImage.alt = imageAlt ?? "Roamgate product view";
       }
       if (showcaseLink instanceof HTMLAnchorElement && imageSource) {
         showcaseLink.href = imageSource;

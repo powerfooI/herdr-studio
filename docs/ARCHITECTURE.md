@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes Herdr Studio's current system contracts. See
+This document describes Roamgate's current system contracts. See
 [FEATURES.md](../FEATURES.md) for behavior and shortcuts and
 [DEPLOYMENT.md](./DEPLOYMENT.md) for supported configurations.
 
@@ -86,7 +86,7 @@ navigation, not independent native same-tab pane focus. Legacy navigation,
 topology mutations, and terminal dimensions remain shared.
 
 Creation uses explicit context and `focus: false`, adopting returned IDs only
-while the initiating selection and connection lease remain current. Studio-only
+while the initiating selection and connection lease remain current. Roamgate-only
 `browser_source` identifies the source terminal, pane, tab, and workspace. The
 bridge validates attachment ownership and live topology, strips that field, and
 calls the advertised create method on the existing endpoint's serialized
@@ -189,7 +189,7 @@ users need neither Bun nor Node.js. Source builds use Bun and Vite. See
 
 ## Trust boundary
 
-Studio is a trusted single-user administration tool, not a sandbox or multi-user
+Roamgate is a trusted single-user administration tool, not a sandbox or multi-user
 permission system. Authenticated browsers can control terminals, change files,
 manage shared profiles, and execute trusted repository hooks. It provides neither
 TLS termination nor rate limiting; see [SECURITY.md](../SECURITY.md).

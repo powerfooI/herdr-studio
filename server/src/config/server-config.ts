@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { validateSshDestination } from "../bridge/ssh-command";
 import { assertSshTunnelPlatformSupported } from "../bridge/ssh-tunnel";
 import { defaultAuthTokenPath, loadOrCreateAuthToken } from "./auth-token";
+import { roamgateEnv } from "./environment";
 import { type LogLevel, parseLogLevel, serverLogger } from "../utils/logger";
 
 type CliArgs = Partial<{
@@ -80,7 +81,7 @@ export function loadServerConfig(appVersion: string): ServerConfig {
   }
 
   if (args.help) {
-    console.log(`Herdr Studio — web client for Herdr
+    console.log(`Roamgate — web client for Herdr
 
 Usage: herdr-gui [options]
        herdr-gui service <action>
@@ -93,16 +94,16 @@ Service actions:
   uninstall                   stop and remove the service definition
   Run \`herdr-gui service --help\` for service details.
 
-Options (flags override env vars):
+Options (flags override env vars; ROAMGATE_* overrides HERDR_GUI_*):
   --host <addr>              listen address        (env HOST,            default 127.0.0.1)
   --port <n>                 listen port           (env PORT,            default 8787)
-  --password <pw>            fixed login password  (env HERDR_GUI_PASSWORD; otherwise a token is generated)
+  --password <pw>            fixed login password  (env ROAMGATE_PASSWORD; otherwise a token is generated)
   --socket-path <path>       control socket        (env HERDR_SOCKET_PATH)
   --client-socket-path <p>   render socket         (env HERDR_CLIENT_SOCKET_PATH)
   --ssh-host <user@host>     remote Herdr over SSH (env HERDR_SSH_HOST)
   --session <name>           named herdr session   (env HERDR_SESSION)
   --public-dir <path>        static assets dir     (env PUBLIC_DIR,      default: embedded)
-  --log-level <level>        error|warn|info|debug  (env HERDR_GUI_LOG_LEVEL, default: info)
+  --log-level <level>        error|warn|info|debug  (env ROAMGATE_LOG_LEVEL, default: info)
   --open                     open browser on start (env OPEN_BROWSER=1)
   -V, --version              show version
   --help                     show this help
@@ -119,7 +120,7 @@ Options (flags override env vars):
   try {
     logLevel = resolveServerLogLevel(
       args["log-level"],
-      process.env.HERDR_GUI_LOG_LEVEL,
+      roamgateEnv("LOG_LEVEL"),
     );
   } catch (error) {
     console.error(`[bridge] ${(error as Error).message}`);
@@ -129,7 +130,7 @@ Options (flags override env vars):
   const host = String(args.host ?? process.env.HOST ?? "127.0.0.1");
   const port = Number(args.port ?? process.env.PORT ?? 8787);
   const configuredPassword = String(
-    args.password ?? process.env.HERDR_GUI_PASSWORD ?? "",
+    args.password ?? roamgateEnv("PASSWORD") ?? "",
   );
   const authRequired = !isLocalHost(host);
   const generatedAuthTokenPath =

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -98,6 +99,7 @@ cp "$FIXTURE_DIR/\${url##*/}" "$out"
 function runInstaller(
   fixture: ReturnType<typeof createInstallerFixture>,
   releaseBaseUrl = "http://127.0.0.1/releases",
+  environment: Record<string, string | undefined> = {},
 ) {
   return Bun.spawnSync(["sh", join(import.meta.dir, "install-herdr-gui.sh")], {
     env: {
@@ -106,6 +108,10 @@ function runInstaller(
       FIXTURE_DIR: fixture.assets,
       HERDR_GUI_RELEASE_BASE_URL: releaseBaseUrl,
       HERDR_GUI_INSTALL_DIR: fixture.installDir,
+      ROAMGATE_RELEASE_BASE_URL: undefined,
+      ROAMGATE_INSTALL_DIR: undefined,
+      ROAMGATE_VERSION: undefined,
+      ...environment,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -119,6 +125,32 @@ afterEach(() => {
 });
 
 describe("release installer", () => {
+  test("prefers Roamgate variables, including empty VERSION for latest", () => {
+    const fixture = createInstallerFixture();
+    const installDir = join(fixture.root, "new-install");
+    const result = runInstaller(fixture, "https://invalid.example/?rejected", {
+      ROAMGATE_RELEASE_BASE_URL: "http://127.0.0.1/releases",
+      ROAMGATE_INSTALL_DIR: installDir,
+      ROAMGATE_VERSION: "",
+      HERDR_GUI_VERSION: "invalid-version",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(installDir, "herdr-gui"))).toBe(true);
+    expect(existsSync(fixture.installDir)).toBe(false);
+  });
+
+  test("rejects an explicitly empty Roamgate installation directory", () => {
+    const fixture = createInstallerFixture();
+    const result = runInstaller(fixture, undefined, {
+      ROAMGATE_INSTALL_DIR: "",
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain(
+      "install directory must not be empty",
+    );
+    expect(existsSync(fixture.installDir)).toBe(false);
+  });
+
   test("verifies, backs up, and installs the expected platform package", () => {
     const fixture = createInstallerFixture();
     mkdirSync(fixture.installDir, { recursive: true });

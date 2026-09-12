@@ -2,7 +2,7 @@
   "name": "herdr-studio",
   "private": true,
   "version": "0.6.2",
-  "description": "Herdr Studio: a web client for Herdr (local socket bridge + React dashboard).",
+  "description": "Roamgate: an independent community web and PWA client for Herdr.",
   "license": "MIT",
   "author": "Arthur",
   "homepage": "https://powerfooI.github.io/herdr-studio/",

@@ -789,7 +789,10 @@ describe("update helpers", () => {
         throw new Error("should not run");
       },
       shQuote,
-      environment: { HERDR_GUI_DISABLE_UPDATE_CHECK: "1" },
+      environment: {
+        ROAMGATE_DISABLE_UPDATE_CHECK: "1",
+        HERDR_GUI_DISABLE_UPDATE_CHECK: "0",
+      },
     });
     const response = await handlers.handleUpdateCheck(updateCheckRequest());
     expect(response.status).toBe(200);
@@ -797,7 +800,8 @@ describe("update helpers", () => {
       current_version: "0.2.6",
       update_available: false,
       can_auto_update: false,
-      reason: "Update checks are disabled by HERDR_GUI_DISABLE_UPDATE_CHECK.",
+      reason:
+        "Update checks are disabled by ROAMGATE_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
     });
   });
 

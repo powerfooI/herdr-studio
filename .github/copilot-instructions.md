@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Herdr Studio is a web client for Herdr. It has two parts:
+Roamgate is an independent community web client for Herdr. It has two parts:
 
 - `server/src`: Bun-powered local bridge server (HTTP + WebSocket) that talks
   to the local Herdr socket.

@@ -3,7 +3,7 @@
 
 # From your first terminal to a workspace that travels
 
-**Start Studio on the computer running Herdr, then open its browser URL.**
+**Start Roamgate on the computer running Herdr, then open its browser URL.**
 Follow the standalone or plugin startup steps in [chapter 1](#start).
 Not installed yet? Choose an option in the
 [installation guide](./DEPLOYMENT.md#install-a-release), then return here.
@@ -13,7 +13,7 @@ This hands-on tutorial follows one small task all the way through:
 progress from your phone.** You do not need to learn Git, SSH, and networking
 before starting, or finish every chapter in one sitting.
 
-> **Finish one small section first.** With Herdr and Studio already installed,
+> **Finish one small section first.** With Herdr and Roamgate already installed,
 > chapter 1 takes about 5 minutes; the first three chapters take about 25 minutes.
 > Allow another 15-25 minutes for remote access, excluding account approvals,
 > installation, and network troubleshooting. Each exercise has an observable
@@ -36,15 +36,15 @@ Your browser / installed PWA
           |
           | HTTP + WebSocket
           v
-Herdr Studio (the command is still herdr-gui)
+Roamgate (the command is still herdr-gui)
           |
           | Herdr control and terminal-render sockets
           v
 Herdr server -> workspace -> tab -> pane -> shell / agent
 ```
 
-**Herdr owns the terminal sessions. Studio provides the browser interface.
-Your agent is still a CLI running in a terminal.** Studio is not a model
+**Herdr owns the terminal sessions. Roamgate provides the browser interface.
+Your agent is still a CLI running in a terminal.** Roamgate is not a model
 provider, and does not install or sign in to Codex, Claude, Pi, or other tools
 for you.
 
@@ -56,13 +56,13 @@ task from host sleep, shutdown, or a process exiting.
 
 1. Confirm that Herdr is installed and running on the host, with a project you
    trust open. For Herdr's own installation and introduction, visit
-   [herdr.dev](https://herdr.dev). Studio does not start Herdr for you.
-2. Install Studio using the
+   [herdr.dev](https://herdr.dev). Roamgate does not start Herdr for you.
+2. Install Roamgate using the
    [installation guide](./DEPLOYMENT.md#install-a-release). Standalone binaries
    do not require Bun. On Windows, download the matching x64 or ARM64 archive
    and use `herdr-gui.exe`. Prefer the Herdr plugin? See the
    [plugin instructions](./DEPLOYMENT.md#herdr-plugin).
-3. Start Studio using the path for your installation:
+3. Start Roamgate using the path for your installation:
 
    **Standalone installation:** run this command in a terminal on that
    computer. Leave the process running.
@@ -72,7 +72,7 @@ task from host sleep, shutdown, or a process exiting.
    ```
 
    **Plugin installation:** follow the
-   [plugin startup instructions](./DEPLOYMENT.md#herdr-plugin) to start Studio
+   [plugin startup instructions](./DEPLOYMENT.md#herdr-plugin) to start Roamgate
    and obtain its login URL from the plugin panel or command log. The plugin
    does not add `herdr-gui` to `PATH`; skip the standalone command above.
 
@@ -257,7 +257,7 @@ write into the same directory.
    for this repository through **Worktree hooks** before proceeding.
 2. Open **Worktree Lifecycle** from the workspace context menu, or search for
    `worktree lifecycle` in the command menu.
-3. Create and open a documentation worktree. Studio starts it from the latest
+3. Create and open a documentation worktree. Roamgate starts it from the latest
    fetched `origin/main`, without carrying over the source workspace's
    uncommitted changes.
 4. In the new worktree's terminal, run `pwd` and `git status`. Confirm the
@@ -279,7 +279,7 @@ browser.
 every 10 minutes and try to merge it into the current branch of an enabled
 checkout. This is not automatic pushing. Dirty workspaces and detached HEADs
 are skipped, and conflicting merges are aborted. Updates run only while that
-workspace is open in the current Studio connection. Leave this off for your
+workspace is open in the current Roamgate connection. Leave this off for your
 first exercise; enable it once you are comfortable managing changes manually.
 
 ### 3.2 Continue from your phone
@@ -288,7 +288,7 @@ Complete chapter 4's **Tailscale + Serve** setup and access-policy checks
 first, then open its HTTPS address on your phone. On a phone, `127.0.0.1`
 means the phone itself, not your work computer.
 
-1. Open Studio in the mobile browser and select your practice project and
+1. Open Roamgate in the mobile browser and select your practice project and
    agent pane. Authenticate first if your deployment requires login.
 2. Use the floating terminal panel for arrow keys, Ctrl, and other actions
    that are awkward on a touch keyboard. Customize its two shortcut rows
@@ -304,9 +304,9 @@ means the phone itself, not your work computer.
 | macOS Safari 17+ | File > Add to Dock |
 | Chrome / Edge | Browser menu > Install app |
 
-**You are done when:** a Studio icon on your home screen opens the same
+**You are done when:** a Roamgate icon on your home screen opens the same
 project. Confirm that the service address is stable before installing. Install
-your Studio URL, not this tutorial's Pages URL.
+your Roamgate URL, not this tutorial's Pages URL.
 
 ![Mobile terminal with touch shortcut controls](./images/herdr-studio-mobile-terminal.png)
 
@@ -315,7 +315,7 @@ input, inspect a diff, or add feedback. You do not need to reproduce an entire
 desktop workflow on your phone.*
 
 A PWA is a standalone window, **not an offline terminal or a background
-keep-alive mechanism**. Host sleep, a stopped Studio process, or a disconnected
+keep-alive mechanism**. Host sleep, a stopped Roamgate process, or a disconnected
 VPN can interrupt access. Browser task-completion notifications can take you
 back to a pane, but delivery depends on browser permissions and operating
 system background restrictions. Do not treat them as a reliable alerting
@@ -330,7 +330,7 @@ pinned items, or shortcut preferences.
 
 **Server profiles in the connection selector are shared; each browser chooses
 which connection to display independently.** Adding or editing a profile
-changes the connection list available to other authenticated users. Studio
+changes the connection list available to other authenticated users. Roamgate
 does not provide a per-person read-only reviewer role. Do not share a workspace
 URL as if it were an ordinary document link.
 
@@ -345,9 +345,9 @@ between two computers you control.
 
 | Your goal | Recommended route | What you need |
 | --- | --- | --- |
-| Use Studio on the computer running Herdr | Local Studio | No extra networking tool |
+| Use Roamgate on the computer running Herdr | Local Roamgate | No extra networking tool |
 | Reach the workspace from your phone away from home | Tailscale + Serve | Host and phone in the same tailnet |
-| Manage remote Herdr through local Studio | SSH profile / `--ssh-host` | Local Linux/macOS, Herdr already running remotely |
+| Manage remote Herdr through local Roamgate | SSH profile / `--ssh-host` | Local Linux/macOS, Herdr already running remotely |
 | Connect two computers temporarily without a tailnet | Tailcat port forwarding | Tailcat on both ends and a securely exchanged address |
 
 **These are combinations with external tools, not built-in Tailscale or Tailcat
@@ -359,25 +359,25 @@ checks for your chosen route before relying on it regularly.
 ### 4.1 Separate the two network hops
 
 ```text
-Hop A: Browser -> Studio
+Hop A: Browser -> Roamgate
        Tailscale Serve / SSH TCP forwarding / Tailcat port forwarding
 
-Hop B: Studio -> Herdr
-       Local sockets / a Studio SSH profile
+Hop B: Roamgate -> Herdr
+       Local sockets / a Roamgate SSH profile
 ```
 
 The Tailscale and Tailcat examples solve **hop A**, bringing your browser to
-Studio. `--ssh-host` solves **hop B**, bringing Studio to remote Herdr. You can
+Roamgate. `--ssh-host` solves **hop B**, bringing Roamgate to remote Herdr. You can
 combine them, but start with the hop you actually need.
 
 #### Safety checks before connecting
 
-1. Allow only your devices or people you fully trust. Access to the Studio UI
-   is effectively terminal and file access as the user running Studio.
+1. Allow only your devices or people you fully trust. Access to the Roamgate UI
+   is effectively terminal and file access as the user running Roamgate.
 2. **The current implementation skips built-in authentication for listeners
    configured as `127.0.0.1`, `localhost`, or `::1`, even with
    `HERDR_GUI_PASSWORD` set.** Forwarding one of these listeners makes the
-   outer tunnel or proxy the access boundary. There is no extra Studio
+   outer tunnel or proxy the access boundary. There is no extra Roamgate
    password gate.
 3. Prefer HTTPS or a trusted encrypted tunnel, and restrict listener addresses
    and access policies. A password is not TLS, rate limiting, multi-user
@@ -410,7 +410,7 @@ Tailscale Serve on the work computer
           |
           | HTTP, local loopback only
           v
-127.0.0.1:8787 -> Studio -> local Herdr
+127.0.0.1:8787 -> Roamgate -> local Herdr
 ```
 
 #### Prepare both devices: about 5-10 minutes
@@ -424,15 +424,15 @@ Tailscale Serve on the work computer
    just to fix a PATH problem.
 3. Follow the [access-control documentation](https://tailscale.com/docs/features/access-control)
    to allow only the intended users or devices to reach HTTPS port 443 on the
-   Studio node. Check whether existing broad rules still allow other access.
+   Roamgate node. Check whether existing broad rules still allow other access.
    Membership in the same tailnet does not automatically imply least
-   privilege. These rules determine who gets full Studio access; do not
+   privilege. These rules determine who gets full Roamgate access; do not
    enable Serve before confirming their scope.
 
-#### Start Studio with a local-only listener
+#### Start Roamgate with a local-only listener
 
 Run this on **the work computer running Herdr**. Port 8787 must be free. If
-Studio already runs through the plugin or a user service, do not start a second
+Roamgate already runs through the plugin or a user service, do not start a second
 instance; use the existing-service instructions below instead.
 
 ```bash
@@ -440,9 +440,9 @@ herdr-gui --host 127.0.0.1 --port 8787
 ```
 
 On Windows, use `herdr-gui.exe`, usually `./herdr-gui.exe` when launching from
-the current PowerShell directory. Leave this terminal running Studio.
+the current PowerShell directory. Leave this terminal running Roamgate.
 
-> **This setup has no Studio login page under the current implementation.**
+> **This setup has no Roamgate login page under the current implementation.**
 > HTTPS protects transport; Tailscale device identity and access rules control
 > remote admission. Devices allowed to reach this HTTPS endpoint enter the
 > workspace directly. Other local processes can also access loopback. Continue
@@ -513,8 +513,8 @@ the device's Tailscale identity.
 
 > **Serve is not Funnel.** Serve is for your tailnet; Funnel is public. Do not
 > replace `serve` with `funnel` because the names look similar. Serve's identity
-> headers do not automatically give Studio per-person authorization or
-> read-only roles. Mount the proxy at the domain root `/`; do not assume Studio
+> headers do not automatically give Roamgate per-person authorization or
+> read-only roles. Mount the proxy at the domain root `/`; do not assume Roamgate
 > supports an arbitrary `/studio/` subpath.
 
 #### Stop sharing, or make it a regular setup
@@ -529,33 +529,33 @@ tailscale serve status
 
 Do not casually run `tailscale serve reset`: it clears that device's Serve
 configuration and may affect other services. `--bg` keeps Serve configured
-persistently; **it does not start Studio or prevent host sleep**. Once the
-setup is verified, use the deployment guide to configure a Studio user service
+persistently; **it does not start Roamgate or prevent host sleep**. Once the
+setup is verified, use the deployment guide to configure a Roamgate user service
 if needed, retaining loopback binding and strict Tailscale access rules.
 
 <a id="ssh"></a>
 
 ### 4.3 SSH: connect to Herdr, or forward the web interface
 
-#### Option A: local Studio, remote Herdr
+#### Option A: local Roamgate, remote Herdr
 
 Use this when code and agents run on a Linux work machine while your browser
-runs on a Mac, for example. Studio SSH profiles and `--ssh-host` currently
-require **Studio itself to run on Linux or macOS**. Windows Studio supports
+runs on a Mac, for example. Roamgate SSH profiles and `--ssh-host` currently
+require **Roamgate itself to run on Linux or macOS**. Windows Roamgate supports
 native local profiles, but not this Unix socket forwarding transport.
 
 1. Verify connectivity with system SSH, confirm the host fingerprint, and check
    authentication and the already-running remote Herdr server. Put custom
    ports, jump hosts, and keys in local `~/.ssh/config`; for example, configure
    the destination as the alias `workbox`.
-2. In local Studio, add an SSH profile through the connection selector beside
+2. In local Roamgate, add an SSH profile through the connection selector beside
    the title. Set Destination to `workbox`, leaving the control and render
    socket paths empty for automatic resolution.
 3. Test and connect using the selector. Open the remote project and run `pwd`
    in its terminal to confirm the directory.
 
 Alternatively, start a local bridge with the command below. Its port must not
-conflict with an existing Studio instance.
+conflict with an existing Roamgate instance.
 
 ```bash
 herdr-gui --ssh-host workbox --host 127.0.0.1
@@ -572,11 +572,11 @@ at the wrong target. SSH profiles do not store passwords or private keys;
 OpenSSH still controls host-key verification and authentication. See
 [multiple and remote connections](./DEPLOYMENT.md#multiple-and-remote-herdr-connections).
 
-#### Option B: Studio already runs remotely; forward its web port
+#### Option B: Roamgate already runs remotely; forward its web port
 
 This differs from `--ssh-host`: both services stay remote, while system SSH
-forwards one TCP port. Remote Studio should listen on loopback. This skips
-Studio login, so remote admission relies on SSH authentication. Local processes
+forwards one TCP port. Remote Roamgate should listen on loopback. This skips
+Roamgate login, so remote admission relies on SSH authentication. Local processes
 on the visiting computer can also use its forwarded port. The visiting
 computer needs OpenSSH; Windows OpenSSH works for this option too.
 
@@ -592,7 +592,7 @@ the visiting computer and is not directly a phone-access URL.
 
 **Press Ctrl+C in the SSH forwarding terminal when finished.** `-N` means no
 remote command is executed, `18787` is the local port, and the final `8787` is
-the remote Studio port.
+the remote Roamgate port.
 
 <a id="tailcat"></a>
 
@@ -623,14 +623,14 @@ Install a supported version on both computers using the
 [official Tailcat repository](https://github.com/tailscale/tailcat#install).
 Upstream's macOS options include `brew install tailcat`; on other systems,
 choose the appropriate architecture from official releases. **This example
-does not treat the experimental Tailcat web demo as a general-purpose Studio
+does not treat the experimental Tailcat web demo as a general-purpose Roamgate
 proxy or assume that phones can run these CLIs.** Prefer Tailscale for regular
 mobile access.
 
-#### Connect only the Studio port
+#### Connect only the Roamgate port
 
-1. Run Studio on the work computer at `127.0.0.1:8787` and verify its local
-   page. **This listener has no Studio login gate. The experiment relies
+1. Run Roamgate on the work computer at `127.0.0.1:8787` and verify its local
+   page. **This listener has no Roamgate login gate. The experiment relies
    entirely on Tailcat admission; leaking the address leaks access to the
    workspace.** Use only two computers you control, not a demo for other people.
 2. In another terminal on the work computer, start a temporary single-port
@@ -667,10 +667,10 @@ Visiting browser -> 127.0.0.1:18787 -> tailcat forward
                                  WireGuard encryption
                                  (direct or via DERP)
                                           |
-Work host: Herdr <- Studio :8787 <- tailcat serve
+Work host: Herdr <- Roamgate :8787 <- tailcat serve
 ```
 
-**You are done when:** the other trusted computer can use Studio without a
+**You are done when:** the other trusted computer can use Roamgate without a
 public listener, and the old entry point stops working after both forwarding
 processes exit.
 
@@ -686,7 +686,7 @@ permission scope.
 | Consideration | Tailscale + Serve | Tailcat |
 | --- | --- | --- |
 | Best fit | Regular private access across your devices | A short-lived connection between your computers |
-| Who gets access | Tailnet identity and policy; no Studio login gate in this example | The connection address and optional client restrictions; no Studio login gate in this example |
+| Who gets access | Tailnet identity and policy; no Roamgate login gate in this example | The connection address and optional client restrictions; no Roamgate login gate in this example |
 | Browser entry | A private HTTPS hostname | Localhost exposed by the client CLI |
 | Ongoing responsibility | Maintain device sign-ins, policies, and services | Protect the temporary address, check versions, and stop processes |
 
@@ -699,17 +699,17 @@ does not mean encryption is disabled, but performance may differ from your LAN.
 
 ### A page will not open: check in order, about 3 minutes
 
-1. On the **Studio host**, probe its HTTP service:
+1. On the **Roamgate host**, probe its HTTP service:
 
    ```bash
    curl -fsS http://127.0.0.1:8787/healthz
    ```
 
    Use `curl.exe` in Windows PowerShell. This is a service probe, not proof
-   that every Herdr feature works. For a refused connection, check the Studio
+   that every Herdr feature works. For a refused connection, check the Roamgate
    process, port, and service status before changing the VPN.
 
-2. Open Studio locally on its host, authenticating first for a non-loopback
+2. Open Roamgate locally on its host, authenticating first for a non-loopback
    deployment. If the page appears but the terminal does not, check that
    Herdr is running, the selected profile, control and render socket paths,
    and connection errors in the logs.
@@ -722,7 +722,7 @@ does not mean encryption is disabled, but performance may differ from your LAN.
    supports WebSocket upgrades and long-lived connections. Retry locally to
    distinguish proxy trouble from Herdr rendering trouble.
 
-**You are done when:** you can identify whether the failure is in the Studio
+**You are done when:** you can identify whether the failure is in the Roamgate
 service, the Herdr connection, or the external access path, and change only
 that part of the configuration.
 
@@ -731,7 +731,7 @@ that part of the configuration.
 | Symptom | Check this first |
 | --- | --- |
 | Localhost on the phone does not open the computer's workspace | Localhost points to the phone. Use Serve's printed HTTPS URL. |
-| Studio opens directly despite a configured password | Loopback listeners skip built-in authentication. For non-loopback listeners, use a fresh incognito window to rule out an existing cookie. |
+| Roamgate opens directly despite a configured password | Loopback listeners skip built-in authentication. For non-loopback listeners, use a fresh incognito window to rule out an existing cookie. |
 | `Address already in use` | A plugin or user service may already occupy 8787. Do not start a duplicate bridge. |
 | SSH connects, but session history is empty | Check remote transcript readability and the metadata/fallback limitations in chapter 2. |
 | Image paste, clipboard access, or PWA installation is restricted | Check the HTTPS secure context, browser permissions, and platform support. Prefer the Serve HTTPS address. |
@@ -739,7 +739,7 @@ that part of the configuration.
 For token recovery, service restarts, and debug logs, use the
 [deployment guide](./DEPLOYMENT.md). Do not "fix" connectivity by permanently
 disabling authentication or opening the entire firewall. When asking for help,
-share only redacted logs, OS and Studio versions, and the failing step.
+share only redacted logs, OS and Roamgate versions, and the failing step.
 
 ### Your first round is complete
 
@@ -750,7 +750,7 @@ Check these four things. You do not need to learn every remaining feature yet.
 - [ ] I know which host receives file and Git operations.
 - [ ] For remote access, I checked the effective authentication boundary, listener address, allowed users, and how to stop sharing.
 
-**Next time you open Studio, take one small action: find an agent waiting for
+**Next time you open Roamgate, take one small action: find an agent waiting for
 you and inspect one part of its diff.**
 
 ### References and maintenance

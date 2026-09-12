@@ -97,7 +97,7 @@ function parseServiceCommand(args: string[]): ParsedServiceCommand | null {
 }
 
 function serviceHelp(): string {
-  return `Manage Herdr Studio as a user service.
+  return `Manage Roamgate as a user service.
 
 Usage:
   herdr-gui service install [--force]
@@ -350,7 +350,10 @@ function prepareServiceAccess(configPath: string): ServiceAccess {
     throw new Error(`invalid PORT in ${configPath}: ${configuredPort}`);
   }
 
-  const password = readEnvironmentValue(contents, "HERDR_GUI_PASSWORD") ?? "";
+  const password =
+    readEnvironmentValue(contents, "ROAMGATE_PASSWORD") ??
+    readEnvironmentValue(contents, "HERDR_GUI_PASSWORD") ??
+    "";
   const usesFixedPassword = password.length > 0;
   if (
     usesFixedPassword ||

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Introduce Roamgate, formerly Herdr Studio, as an independent community client
+  for Herdr. Existing commands, configuration, and update paths remain compatible.
+- Accept `ROAMGATE_*` configuration variables alongside `HERDR_GUI_*`; the new
+  names take precedence when both are set.
+
 ## 0.6.2 - 2026-09-11
 
 - Reload open tabs once when an update removes their cached code chunks, instead

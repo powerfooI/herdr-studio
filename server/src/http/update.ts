@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { roamgateEnv } from "../config/environment";
 
 type RunProcessWithCodeTimeout = (
   argv: string[],
@@ -231,7 +232,7 @@ export function compareVersion(a: string, b: string): number {
 export function isSupervisorManagedEnvironment(
   environment: Record<string, string | undefined>,
 ): boolean {
-  const override = environment.HERDR_GUI_RESTART_SUPERVISOR;
+  const override = roamgateEnv("RESTART_SUPERVISOR", environment);
   if (override === "1") return true;
   if (override === "0") return false;
   if (environment.INVOCATION_ID) return true;
@@ -272,7 +273,7 @@ export function createUpdateHandlers({
   let updateBaseUrlError: Error | null = null;
   try {
     updateBaseUrlValue = normalizeUpdateBaseUrl(
-      environment.HERDR_GUI_UPDATE_BASE_URL,
+      roamgateEnv("UPDATE_BASE_URL", environment),
     );
   } catch (error) {
     updateBaseUrlError = error as Error;
@@ -499,12 +500,13 @@ export function createUpdateHandlers({
         ...sourceDetails(),
       };
     }
-    if (environment.HERDR_GUI_DISABLE_UPDATE_CHECK === "1") {
+    if (roamgateEnv("DISABLE_UPDATE_CHECK", environment) === "1") {
       return {
         current_version: appVersion,
         update_available: false,
         can_auto_update: false,
-        reason: "Update checks are disabled by HERDR_GUI_DISABLE_UPDATE_CHECK.",
+        reason:
+          "Update checks are disabled by ROAMGATE_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
         platform: updateTarget.platform,
         ...sourceDetails(),
       };

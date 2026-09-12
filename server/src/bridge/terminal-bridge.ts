@@ -11,6 +11,7 @@ import {
 import { type Logger, silentLogger } from "../utils/logger";
 import { NO_TERMINAL_ATTACHED_MESSAGE } from "../utils/rpc-logging";
 import { ThinClient } from "./thin-client";
+import { roamgateEnv } from "../config/environment";
 import { isTerminalHelloProtocol } from "./protocol-compat";
 import { EndpointTerminalSession } from "./endpoint-terminal-session";
 import { frameToAnsi } from "./frame-to-ansi";
@@ -119,7 +120,7 @@ export function createTerminalBridge(args: {
   async function navigationMode(): Promise<"browser-local" | "shared"> {
     return isTerminalHelloProtocol(await bridgeProtocol()) &&
       args.lookupPaneId &&
-      process.env.HERDR_GUI_DISABLE_ENDPOINT !== "1"
+      roamgateEnv("DISABLE_ENDPOINT") !== "1"
       ? "browser-local"
       : "shared";
   }
@@ -286,10 +287,7 @@ export function createTerminalBridge(args: {
       if (disposed) return;
       if (isTerminalHelloProtocol(protocol)) {
         clipboardRelaySkipped = true;
-        if (
-          !args.lookupPaneId ||
-          process.env.HERDR_GUI_DISABLE_ENDPOINT === "1"
-        ) {
+        if (!args.lookupPaneId || roamgateEnv("DISABLE_ENDPOINT") === "1") {
           logger.warn(
             "terminal-program OSC 52 unavailable on the legacy fallback: Herdr protocol 22 routes clipboard only to endpoint shell clients; browser copy/paste is unaffected",
             { connection: args.connectionId ?? "legacy-default" },

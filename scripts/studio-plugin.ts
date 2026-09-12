@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Thin Herdr plugin shim for Herdr Studio. Herdr invokes the verbs below
+// Thin Herdr plugin shim for Roamgate. Herdr invokes the verbs below
 // through herdr-plugin.toml actions; the verb names and their argv mapping
 // are a frozen contract because managed installs call the action set cached
 // at install time.
@@ -303,7 +303,7 @@ function statusText(): string {
 
 function renderPanel(message: string) {
   const lines = [
-    "Herdr Studio",
+    "Roamgate",
     "",
     `Status:  ${statusText()}`,
     `URL:     ${computeUrl()}`,

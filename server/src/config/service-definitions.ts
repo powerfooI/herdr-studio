@@ -122,7 +122,7 @@ export function renderSystemdService(
 ): string {
   return `# ${GENERATED_MARKER}
 [Unit]
-Description=Herdr Studio
+Description=Roamgate
 Wants=network-online.target
 After=network-online.target
 
