@@ -10,7 +10,7 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>set -a; if [ -f "$HOME/.config/herdr-gui/herdr-gui.env" ]; then . "$HOME/.config/herdr-gui/herdr-gui.env"; fi; set +a; exec "$HOME/.local/bin/herdr-gui"</string>
+    <string>set -a; if [ -f "$HOME/.config/herdr-gui/herdr-gui.env" ]; then . "$HOME/.config/herdr-gui/herdr-gui.env"; fi; set +a; exec "$HOME/.local/bin/roamgate"</string>
   </array>
 
   <key>EnvironmentVariables</key>

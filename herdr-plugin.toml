@@ -9,8 +9,9 @@ platforms = ["linux", "macos", "windows"]
 # downloads the checksum-verified prebuilt release binary matching this
 # checkout's version on demand and forwards service verbs to it (systemd,
 # launchd, or Windows Task Scheduler). The verb set is a frozen contract; see
-# scripts/studio-plugin.ts. The shim itself runs on Bun; `build-source`
-# compiles from source for development.
+# scripts/studio-plugin.ts. The shim itself runs on Bun. For an unreleased
+# checkout, run `bun scripts/studio-plugin.ts build-source`, then
+# `herdr plugin link .`; see docs/DEPLOYMENT.md#herdr-plugin.
 # The panel opens as a session-modal popup in the Herdr TUI by default. Open
 # it with --placement split (or tab/zoomed/overlay) to get a regular pane
 # that other Herdr clients, including Roamgate itself, can see.

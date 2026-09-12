@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,6 +17,129 @@ import {
   readServiceEnv,
   releaseAssetFor,
 } from "./studio-plugin";
+
+describe("plugin build commands", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  function checkout() {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "studio-plugin-build-test-")),
+    );
+    roots.push(root);
+    for (const dir of ["scripts", "web", "server", "bin"]) {
+      mkdirSync(join(root, dir));
+    }
+    copyFileSync(
+      join(import.meta.dir, "studio-plugin.ts"),
+      join(root, "scripts/studio-plugin.ts"),
+    );
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ version: "0.6.2" }),
+    );
+    writeFileSync(
+      join(root, "bin/bun"),
+      `#!/bin/sh
+printf '%s: %s\\n' "$PWD" "$*" >> "$BUILD_LOG"
+[ "$PWD" != "$FAIL_DIR" ] || exit 23
+`,
+      { mode: 0o755 },
+    );
+    writeFileSync(
+      join(root, "fetch.js"),
+      `import { appendFileSync } from "node:fs";
+globalThis.fetch = async (url) => {
+  appendFileSync(process.env.FETCH_LOG, url + "\\n");
+  if (process.env.HTTP_STATUS === "throw") throw new Error("network unavailable");
+  return new Response("missing", { status: Number(process.env.HTTP_STATUS) });
+};
+`,
+    );
+    return root;
+  }
+
+  function invoke(
+    root: string,
+    verb: string,
+    env: Record<string, string> = {},
+  ) {
+    return Bun.spawnSync(
+      [
+        process.execPath,
+        "--preload",
+        join(root, "fetch.js"),
+        join(root, "scripts/studio-plugin.ts"),
+        verb,
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${join(root, "bin")}:${process.env.PATH ?? ""}`,
+          BUILD_LOG: join(root, "build.log"),
+          FETCH_LOG: join(root, "fetch.log"),
+          HTTP_STATUS: "404",
+          FAIL_DIR: "",
+          ...env,
+        },
+      },
+    );
+  }
+
+  test("build-source installs all dependencies and builds without downloading a release", () => {
+    const root = checkout();
+    const result = invoke(root, "build-source");
+    expect(result.exitCode).toBe(0);
+    expect(
+      readFileSync(join(root, "build.log"), "utf8").trim().split("\n"),
+    ).toEqual([
+      `${root}: install`,
+      `${root}/web: install`,
+      `${root}/server: install`,
+      `${root}: run build`,
+    ]);
+    expect(existsSync(join(root, "fetch.log"))).toBe(false);
+  });
+
+  test("build-source stops on dependency installation failure", () => {
+    const root = checkout();
+    expect(
+      invoke(root, "build-source", { FAIL_DIR: join(root, "web") }).exitCode,
+    ).toBe(23);
+    expect(
+      readFileSync(join(root, "build.log"), "utf8").trim().split("\n"),
+    ).toHaveLength(2);
+    expect(existsSync(join(root, "fetch.log"))).toBe(false);
+  });
+
+  test.each(["404", "500", "throw"])(
+    "release-only build fails actionably on %s without source or legacy fallback",
+    (status) => {
+      const root = checkout();
+      const result = invoke(root, "build", { HTTP_STATUS: status });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.toString()).toContain(
+        "bun scripts/studio-plugin.ts build-source",
+      );
+      expect(result.stderr.toString()).toContain("herdr plugin link .");
+      expect(result.stderr.toString()).toContain("--ref vX.Y.Z");
+      expect(existsSync(join(root, "build.log"))).toBe(false);
+      const requests = readFileSync(join(root, "fetch.log"), "utf8")
+        .trim()
+        .split("\n");
+      expect(requests).toHaveLength(2);
+      for (const url of requests) {
+        expect(url).toContain("/releases/download/v0.6.2/roamgate-");
+      }
+      expect(existsSync(join(root, "server/roamgate"))).toBe(false);
+      expect(existsSync(join(root, "server/roamgate.exe"))).toBe(false);
+    },
+  );
+});
 
 describe("releaseAssetFor", () => {
   test("maps every supported platform to an archive and binary name", () => {

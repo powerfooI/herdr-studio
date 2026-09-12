@@ -7,8 +7,8 @@
 // Verbs: build, build-source, start, restart, status, url, version,
 // uninstall, panel. The whole shim runs on Bun. `build` downloads the
 // checksum-verified prebuilt release binary matching this checkout's
-// version; `build-source` compiles from source for development. The service
-// verbs (start, restart, status, uninstall) delegate to the binary,
+// version; `build-source` compiles unreleased checkouts before local linking.
+// The service verbs (start, restart, status, uninstall) delegate to the binary,
 // downloading it first when missing. `url` and `version` only read on-disk
 // state. `panel` is the interactive popup TUI behind the manifest [[panes]]
 // entry and downloads on demand for its service keys.
@@ -69,9 +69,8 @@ function capture(argv: string[]): { code: number; out: string; err: string } {
 }
 
 // Release archives ship one prebuilt binary per platform; `build` downloads
-// and checksum-verifies the archive matching this checkout's version, so
-// plugin users never need a source toolchain. `build-source` compiles from
-// source and remains for development.
+// and checksum-verifies the archive matching this checkout's version.
+// Unreleased checkouts require an explicit `build-source`, then local linking.
 export const PLATFORM_ASSETS: Record<
   string,
   { asset: string; binary: string }
@@ -85,6 +84,7 @@ export const PLATFORM_ASSETS: Record<
 };
 
 const RELEASE_REPOSITORY = "powerfooI/herdr-studio";
+const SOURCE_INSTALL_HINT = `For an unreleased checkout, run \`bun scripts/studio-plugin.ts build-source\` in a local clone, then \`herdr plugin link .\`. For release-only installation, select a published Roamgate tag with \`herdr plugin install ${RELEASE_REPOSITORY} --ref vX.Y.Z\`.`;
 
 export function releaseAssetFor(
   platform: string,
@@ -102,7 +102,7 @@ async function downloadPrebuilt(): Promise<number> {
   const target = releaseAssetFor(process.platform, process.arch);
   if (!target) {
     console.error(
-      `studio-plugin: no prebuilt binary for ${process.platform}-${process.arch}`,
+      `studio-plugin: no prebuilt binary for ${process.platform}-${process.arch}. ${SOURCE_INSTALL_HINT}`,
     );
     return 1;
   }
@@ -118,7 +118,7 @@ async function downloadPrebuilt(): Promise<number> {
     ]);
     if (!checksumResponse.ok || !archiveResponse.ok) {
       console.error(
-        `studio-plugin: download failed (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}); does release v${version} exist?`,
+        `studio-plugin: download failed for Roamgate v${version} (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}). ${SOURCE_INSTALL_HINT}`,
       );
       return 1;
     }
@@ -159,7 +159,7 @@ async function downloadPrebuilt(): Promise<number> {
     return 0;
   } catch (error) {
     console.error(
-      `studio-plugin: download failed: ${error instanceof Error ? error.message : String(error)}`,
+      `studio-plugin: download failed: ${error instanceof Error ? error.message : String(error)}. ${SOURCE_INSTALL_HINT}`,
     );
     return 1;
   } finally {

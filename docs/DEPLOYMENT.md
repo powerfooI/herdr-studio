@@ -105,15 +105,21 @@ To switch an existing installation deliberately:
 Configuration paths, the `herdr.studio` plugin ID, service identities, and browser
 storage remain unchanged in this distribution cutover. Environment aliases
 remain supported. Updating the plugin checkout is an explicit switch, not a
-path provided to an already-running old binary by its updater. New plugin
-checkouts download only Roamgate assets; historical versions keep their original
-asset contracts. The repository URL also remains unchanged.
+path provided to an already-running old binary by its updater. Release-only plugin
+installs download only Roamgate assets; unreleased checkouts require a source
+build. Historical versions keep their original asset contracts. The repository
+URL also remains unchanged.
 
 ## Install a release
 
-Prebuilt standalone binaries are available for Linux, macOS, and Windows on
-x86-64 and arm64. On Linux and macOS, the installer verifies the release
-checksum and installs the standalone binary to `~/.local/bin/roamgate`:
+These commands require a published Roamgate release marked GitHub Latest.
+Historical 0.6.2 releases do not contain Roamgate assets. For an unreleased
+checkout, use the [source build instructions](#build-a-standalone-executable)
+or the [source plugin path](#herdr-plugin) instead.
+
+Roamgate releases target Linux, macOS, and Windows on x86-64 and arm64.
+On Linux and macOS, the installer verifies the release checksum and installs
+the standalone binary to `~/.local/bin/roamgate`:
 
 ```bash
 curl -fsSL \
@@ -161,14 +167,36 @@ preserve a replaced executable as `roamgate.previous` for manual recovery.
 
 ## Herdr plugin
 
-Herdr 0.7.2 or newer can install Roamgate as a plugin. The plugin
-downloads the checksum-verified prebuilt release binary matching the plugin
-version, so no source toolchain is needed; the plugin shim itself runs on
-[Bun](https://bun.sh):
+Herdr 0.7.2 or newer can install Roamgate as a plugin. The shim requires
+[Bun](https://bun.sh). Choose the installation path for your checkout:
+
+**Unreleased checkout:** clone the repository to a directory you will keep,
+compile explicitly, then link that local directory:
 
 ```bash
-herdr plugin install powerfooI/herdr-studio
+git clone https://github.com/powerfooI/herdr-studio.git
+cd herdr-studio
+bun scripts/studio-plugin.ts build-source
+herdr plugin link .
 ```
+
+`build-source` installs the root, web, and server dependencies and runs
+`bun run build`. Only link after it succeeds. Linking does not run the manifest's
+release download step; actions use the resulting `server/roamgate` executable
+(`roamgate.exe` on Windows). Keep the checkout in place and rerun `build-source`
+after updating it. Building and linking do not start the Roamgate service.
+
+**Published Roamgate release:** replace `X.Y.Z` with a published Roamgate tag:
+
+```bash
+herdr plugin install powerfooI/herdr-studio --ref vX.Y.Z
+```
+
+Remote installation runs the manifest's `build` command, which downloads and
+checksum-verifies only the Roamgate binary matching that checkout's version.
+It does not compile on download failure or fall back to legacy assets.
+Historical 0.6.2 assets cannot satisfy a Roamgate checkout; an unpublished
+version cannot be installed through this release-only path.
 
 Plugin actions manage the same user service described in
 [Run as a user service](#run-as-a-user-service):
@@ -405,12 +433,16 @@ unit when it still invokes the same Roamgate binary.
 
 ## Build a standalone executable
 
-The build embeds the frontend and Bun runtime in a self-contained executable:
+The build embeds the frontend and Bun runtime in a self-contained executable.
+From a local checkout, install dependencies and compile with the shared source
+build command:
 
 ```bash
-bun run build
-# server/roamgate
+bun scripts/studio-plugin.ts build-source
+# server/roamgate (server/roamgate.exe on Windows)
 ```
+
+With dependencies already installed, `bun run build` rebuilds directly.
 
 The executable serves the frontend, WebSocket bridge, and HTTP APIs and connects
 to the configured Herdr sockets. The target machine does not need Bun.

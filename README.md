@@ -94,8 +94,11 @@ Click any screenshot to open the full-resolution image.
 
 ## Quick start
 
-Herdr must already be installed and running. Install the latest standalone
-Roamgate binary with:
+Herdr must already be installed and running. Unreleased checkouts require a
+[source build](./docs/DEPLOYMENT.md#build-a-standalone-executable) or
+[local plugin build and link](./docs/DEPLOYMENT.md#herdr-plugin); historical
+0.6.2 releases have no Roamgate assets. Once a Roamgate release is published as
+GitHub Latest, install its standalone binary with:
 
 ```bash
 # Leave empty for latest; set ROAMGATE_VERSION=X.Y.Z for a Roamgate version (no v prefix).
