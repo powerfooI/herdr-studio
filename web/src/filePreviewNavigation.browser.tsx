@@ -146,7 +146,7 @@ function commandMenuEvent() {
   ][0];
   const parts = binding.split("+");
   return new KeyboardEvent("keydown", {
-    key: parts.at(-1)!.toLowerCase(),
+    key: parts[parts.length - 1].toLowerCase(),
     ctrlKey: parts.includes("Ctrl"),
     altKey: parts.includes("Alt"),
     metaKey: parts.includes("Meta"),
