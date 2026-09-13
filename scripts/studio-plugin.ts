@@ -83,7 +83,7 @@ export const PLATFORM_ASSETS: Record<
   "win32-x64": { asset: "roamgate-windows-x64", binary: "roamgate.exe" },
 };
 
-const RELEASE_REPOSITORY = "powerfooI/herdr-studio";
+const RELEASE_REPOSITORY = "powerfooI/roamgate";
 const SOURCE_INSTALL_HINT = `For an unreleased checkout, run \`bun scripts/studio-plugin.ts build-source\` in a local clone, then \`herdr plugin link .\`. For release-only installation, select a published Roamgate tag with \`herdr plugin install ${RELEASE_REPOSITORY} --ref vX.Y.Z\`.`;
 
 export function releaseAssetFor(

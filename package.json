@@ -2,16 +2,16 @@
   "name": "roamgate",
   "private": true,
   "version": "0.7.0",
-  "description": "Roamgate: an independent community web and PWA client for Herdr.",
+  "description": "Roamgate: an independent community Web and PWA client for Herdr.",
   "license": "MIT",
   "author": "Arthur",
-  "homepage": "https://powerfooI.github.io/herdr-studio/",
+  "homepage": "https://powerfooI.github.io/roamgate/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/powerfooI/herdr-studio.git"
+    "url": "git+https://github.com/powerfooI/roamgate.git"
   },
   "bugs": {
-    "url": "https://github.com/powerfooI/herdr-studio/issues"
+    "url": "https://github.com/powerfooI/roamgate/issues"
   },
   "engines": {
     "bun": ">=1.4.1"

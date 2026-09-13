@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Roamgate is an independent community web client for Herdr. It has two parts:
+Roamgate is an independent community Web and PWA client for Herdr. It has two parts:
 
 - `server/src`: Bun-powered local bridge server (HTTP + WebSocket) that talks
   to the local Herdr socket.

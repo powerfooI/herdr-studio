@@ -78,10 +78,10 @@ describe("tutorial Markdown", () => {
     );
     expect(content).toContain('href="#tailscale"');
     expect(content).toContain(
-      'href="https://github.com/powerfooI/herdr-studio/blob/main/docs/DEPLOYMENT.md#logging"',
+      'href="https://github.com/powerfooI/roamgate/blob/main/docs/DEPLOYMENT.md#logging"',
     );
     expect(content).toContain(
-      'href="https://github.com/powerfooI/herdr-studio/blob/main/SECURITY.md"',
+      'href="https://github.com/powerfooI/roamgate/blob/main/SECURITY.md"',
     );
     expect(content).toContain('src="../assets/roamgate-desktop-changes.png"');
     expect(content).toContain('width="4998"');

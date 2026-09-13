@@ -105,7 +105,7 @@ describe("update helpers", () => {
 
   test("normalizes safe update base URLs without exposing credentials", () => {
     expect(normalizeUpdateBaseUrl(undefined)).toBe(
-      "https://github.com/powerfooI/herdr-studio/releases/latest/download",
+      "https://github.com/powerfooI/roamgate/releases/latest/download",
     );
     expect(
       normalizeUpdateBaseUrl(" https://downloads.example.com/herdr/// "),
@@ -216,7 +216,7 @@ describe("update helpers", () => {
       can_auto_update: true,
       platform: "darwin-arm64",
       source_url:
-        "https://github.com/powerfooI/herdr-studio/releases/latest/download/roamgate-darwin-arm64.tar.xz",
+        "https://github.com/powerfooI/roamgate/releases/latest/download/roamgate-darwin-arm64.tar.xz",
     });
     expect(commands).toHaveLength(1);
     expect(commands[0]).toContain("--max-filesize 4096");
@@ -249,7 +249,7 @@ describe("update helpers", () => {
       can_auto_update: true,
       platform: "linux-x64",
       source_url:
-        "https://github.com/powerfooI/herdr-studio/releases/latest/download/roamgate-linux-x64.tar.xz",
+        "https://github.com/powerfooI/roamgate/releases/latest/download/roamgate-linux-x64.tar.xz",
     });
     expect(commands[0]).toContain("roamgate-linux-x64.update.json");
     expect(commands[0]).not.toContain(".tar.xz");

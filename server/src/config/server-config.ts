@@ -81,7 +81,7 @@ export function loadServerConfig(appVersion: string): ServerConfig {
   }
 
   if (args.help) {
-    console.log(`Roamgate — web client for Herdr
+    console.log(`Roamgate — Web and PWA client for Herdr
 
 Usage: roamgate [options]
        roamgate service <action>

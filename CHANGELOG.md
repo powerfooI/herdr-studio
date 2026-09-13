@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Move project links to `powerfooI/roamgate` and the website to `/roamgate/`.
+  Old website links do not redirect; update bookmarks. Existing releases and
+  local configuration are preserved.
+
 ## 0.7.0 - 2026-09-13
 
 - Introduce Roamgate, formerly Herdr Studio, as an independent community client

@@ -1,6 +1,6 @@
 # Roamgate Features
 
-Roamgate is a browser and PWA client for a running
+Roamgate is a Web and PWA client for a running
 [Herdr](https://herdr.dev) server. It keeps Herdr's workspace, tab, pane, and
 agent model, while adding repository tools, session inspection, mobile controls,
 and operational features around it.

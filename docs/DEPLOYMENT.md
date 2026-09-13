@@ -73,8 +73,8 @@ For endpoint negotiation, input, and reconnect contracts, see
 
 **Roamgate is a breaking distribution change, not an in-place update offered to
 old clients.** Its releases publish only `roamgate-*` archives, checksums, and
-update manifests, plus `install-roamgate.sh`. Once a Roamgate release becomes
-GitHub Latest, the old default update and latest-installer URLs stop working.
+update manifests, plus `install-roamgate.sh`. Starting with Roamgate 0.7.0,
+the old default update and latest-installer URLs no longer work.
 Old clients may report an update-check error: removing a manifest alone would
 not stop their archive-based fallback, so neither legacy resource is published.
 Existing processes keep running. Historical tagged releases are not modified.
@@ -107,23 +107,34 @@ storage remain unchanged in this distribution cutover. Environment aliases
 remain supported. Updating the plugin checkout is an explicit switch, not a
 path provided to an already-running old binary by its updater. Release-only plugin
 installs download only Roamgate assets; unreleased checkouts require a source
-build. Historical versions keep their original asset contracts. The repository
-URL also remains unchanged.
+build. Historical versions keep their original asset contracts.
+
+### Repository and website addresses
+
+The repository is [powerfooI/roamgate](https://github.com/powerfooI/roamgate).
+GitHub redirects the former `powerfooI/herdr-studio` repository's Git and
+release URLs, allowing already-published binaries and installers to keep their
+original download addresses. Existing tags and release assets are not replaced;
+new builds use the current repository address. Do not reuse the old repository
+name, because doing so removes GitHub's redirects.
+
+The website and tutorial are at <https://powerfooI.github.io/roamgate/>.
+GitHub Pages does not redirect the old `/herdr-studio/` project-site path;
+update bookmarks and external website links to `/roamgate/`.
 
 ### Install historical Herdr Studio
 
 The original [install-herdr-gui.sh](../scripts/install-herdr-gui.sh) remains
 in the repository and installs only `herdr-gui`, never Roamgate. Its default
-Latest download works while Latest still contains legacy assets. After the
-Roamgate cutover, select a historical version explicitly; the retained source
-script is not included in new Roamgate releases and does not restore the old
-update channel.
+Latest download no longer works: select a historical version explicitly. The
+retained source script is not included in Roamgate releases and does not restore
+the old update channel.
 
 For example, install the historical 0.6.2 release with its pinned installer:
 
 ```bash
 curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/download/v0.6.2/install-herdr-gui.sh \
+  https://github.com/powerfooI/roamgate/releases/download/v0.6.2/install-herdr-gui.sh \
   | HERDR_GUI_VERSION=0.6.2 sh
 ```
 
@@ -132,10 +143,10 @@ do not receive future fixes through the retired update channel.
 
 ## Install a release
 
-These commands require a published Roamgate release marked GitHub Latest.
-Historical 0.6.2 releases do not contain Roamgate assets. For an unreleased
-checkout, use the [source build instructions](#build-a-standalone-executable)
-or the [source plugin path](#herdr-plugin) instead.
+Roamgate releases are available starting with 0.7.0. Historical 0.6.2 releases
+do not contain Roamgate assets. To run an unreleased checkout, use the
+[source build instructions](#build-a-standalone-executable) or the
+[source plugin path](#herdr-plugin) instead.
 
 Roamgate releases target Linux, macOS, and Windows on x86-64 and arm64.
 On Linux and macOS, the installer verifies the release checksum and installs
@@ -143,7 +154,7 @@ the standalone binary to `~/.local/bin/roamgate`:
 
 ```bash
 curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh \
+  https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh \
   | sh
 ```
 
@@ -158,7 +169,7 @@ Open the URL printed by the process. Run the installer again to update.
 
 Windows releases provide x64 and ARM64 archives containing `roamgate.exe`.
 Download the matching `roamgate-windows-<arch>.tar.xz` and `.sha256` files from
-the [latest release](https://github.com/powerfooI/herdr-studio/releases/latest),
+the [latest release](https://github.com/powerfooI/roamgate/releases/latest),
 verify the checksum with `Get-FileHash`, and extract the archive with Windows
 11's built-in `tar.exe`. Releases predating native ARM64 support contain only
 the x64 archive; prefer the native ARM64 package when it is available.
@@ -167,7 +178,7 @@ To install into a system directory, set `HERDR_GUI_INSTALL_DIR`:
 
 ```bash
 curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh \
+  https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh \
   | sudo env HERDR_GUI_INSTALL_DIR=/usr/local/bin sh
 ```
 
@@ -176,7 +187,7 @@ Set `ROAMGATE_VERSION` to a published Roamgate version instead of `latest`
 
 ```bash
 curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh \
+  https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh \
   | ROAMGATE_VERSION=X.Y.Z sh
 ```
 
@@ -194,8 +205,8 @@ Herdr 0.7.2 or newer can install Roamgate as a plugin. The shim requires
 compile explicitly, then link that local directory:
 
 ```bash
-git clone https://github.com/powerfooI/herdr-studio.git
-cd herdr-studio
+git clone https://github.com/powerfooI/roamgate.git
+cd roamgate
 bun scripts/studio-plugin.ts build-source
 herdr plugin link .
 ```
@@ -209,7 +220,7 @@ after updating it. Building and linking do not start the Roamgate service.
 **Published Roamgate release:** replace `X.Y.Z` with a published Roamgate tag:
 
 ```bash
-herdr plugin install powerfooI/herdr-studio --ref vX.Y.Z
+herdr plugin install powerfooI/roamgate --ref vX.Y.Z
 ```
 
 Remote installation runs the manifest's `build` command, which downloads and

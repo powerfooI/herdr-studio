@@ -1,6 +1,6 @@
 [Unit]
 Description=Roamgate
-Documentation=https://github.com/powerfooI/herdr-studio
+Documentation=https://github.com/powerfooI/roamgate
 Wants=network-online.target
 After=network-online.target
 

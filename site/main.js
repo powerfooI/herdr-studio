@@ -131,7 +131,7 @@ const copyButton = document.querySelector("[data-copy-command]");
 const copyLabel = copyButton?.querySelector("span");
 const installCommand = document.querySelector("[data-install-command]");
 const commandText =
-  "curl -fsSL https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh | sh";
+  "curl -fsSL https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh | sh";
 
 const copyText = async (text) => {
   if (!navigator.clipboard || !window.isSecureContext) {
@@ -180,7 +180,7 @@ if (!reducedMotion.matches && window.matchMedia("(pointer: fine)").matches) {
 
 const starCount = document.querySelector("[data-star-count]");
 
-fetch("https://api.github.com/repos/powerfooI/herdr-studio", {
+fetch("https://api.github.com/repos/powerfooI/roamgate", {
   headers: { Accept: "application/vnd.github+json" },
 })
   .then((response) => {

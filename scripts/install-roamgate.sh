@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-github_repository="powerfooI/herdr-studio"
+github_repository="powerfooI/roamgate"
 # New names take precedence even when explicitly empty (VERSION= means latest).
 custom_release_base="${ROAMGATE_RELEASE_BASE_URL-${HERDR_GUI_RELEASE_BASE_URL:-}}"
 install_dir="${ROAMGATE_INSTALL_DIR-${HERDR_GUI_INSTALL_DIR:-$HOME/.local/bin}}"
