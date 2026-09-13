@@ -385,6 +385,7 @@ export function ConfigMenu({
               <ConfigMenuItem
                 icon={<Smartphone size={15} />}
                 label="Mobile Layout"
+                className="config-menu-item-row"
                 description="Display mode, breakpoint, and sidebar order"
                 onClick={() => {
                   setOpen(false);
