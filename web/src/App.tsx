@@ -1,3 +1,4 @@
+import { useLayoutPreferences } from "./layoutPreferences";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -323,24 +324,6 @@ function emptyActiveFilePreviewSelection(): ActiveFilePreviewSelection {
     loading: false,
     error: null,
   };
-}
-
-function useMobileLayout() {
-  const [mobile, setMobile] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia("(max-width: 768px)").matches
-      : false,
-  );
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 768px)");
-    const onChange = () => setMobile(query.matches);
-    onChange();
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-
-  return mobile;
 }
 
 const viewportDebugEnabled =
@@ -827,7 +810,7 @@ function TerminalPaneLayout({
     }),
     shallowEqual,
   );
-  const mobile = useMobileLayout();
+  const { mobile } = useLayoutPreferences();
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const layout = s.layout;
   const visiblePanes =
@@ -1083,7 +1066,7 @@ export default function App() {
     shallowEqual,
   );
   const connectionClient = useConnectionClient();
-  const mobile = useMobileLayout();
+  const { mobile, preferences: layoutPreferences } = useLayoutPreferences();
   useEffect(() => {
     activateTerminalComposerDraftScope(
       s.activeConnectionId,
@@ -2604,7 +2587,7 @@ export default function App() {
   };
   return (
     <div
-      className={`app ${sidebarHidden ? "sidebar-hidden" : ""} ${
+      className={`app ${sidebarHidden && !mobile ? "sidebar-hidden" : ""} ${
         mobileControlsCollapsed ? "mobile-controls-collapsed" : ""
       }`}
     >
@@ -2922,6 +2905,11 @@ export default function App() {
         <div className="sidebar">
           <div className="sidebar-content">
             <WorkspaceTree
+              agentsFirst={
+                (mobile
+                  ? layoutPreferences.mobileSidebarOrder
+                  : layoutPreferences.desktopSidebarOrder) === "agents-first"
+              }
               key={`${resourceUiKey}:workspaces`}
               onSelect={(workspace) =>
                 keepInspectorForWorkspace(workspace.workspace_id)

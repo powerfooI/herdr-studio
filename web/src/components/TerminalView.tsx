@@ -1,3 +1,4 @@
+import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../layoutPreferences";
 import { terminalFontOptions } from "../appearance";
 import {
   ClipboardAddon,
@@ -176,9 +177,7 @@ const TERMINAL_EVICTION_MAX_RETRIES = 3;
 const TERMINAL_TOUCH_TAP_SLOP_PX = 8;
 
 function terminalDensity(uiScale: number) {
-  const compact =
-    typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 768px)").matches;
+  const compact = typeof window !== "undefined" && isMobileLayout();
   return terminalFontOptions(compact, uiScale);
 }
 
@@ -188,10 +187,7 @@ function isApplePlatform() {
 }
 
 function shouldAvoidVirtualKeyboard() {
-  return (
-    window.matchMedia("(max-width: 768px)").matches ||
-    window.matchMedia("(pointer: coarse)").matches
-  );
+  return isMobileLayout() || window.matchMedia("(pointer: coarse)").matches;
 }
 
 function terminalCellAtPoint(term: Terminal, clientX: number, clientY: number) {
@@ -1100,13 +1096,12 @@ export function TerminalView({
     });
     resizeSyncRef.current = resizeSync;
 
-    const densityQuery = window.matchMedia("(max-width: 768px)");
     const applyDensity = () => {
       term.options = terminalDensity(uiScaleRef.current);
       const size = fitVisibleTerminal();
       if (size) resizeSync.sendNow(size);
     };
-    densityQuery.addEventListener("change", applyDensity);
+    window.addEventListener(LAYOUT_CHANGE_EVENT, applyDensity);
 
     const ro = new ResizeObserver(() => {
       const size = fitVisibleTerminal();
@@ -2087,7 +2082,7 @@ export function TerminalView({
       offClipboard();
       offClosed();
       unregisterConnectionDisposer();
-      densityQuery.removeEventListener("change", applyDensity);
+      window.removeEventListener(LAYOUT_CHANGE_EVENT, applyDensity);
       ro.disconnect();
       resizeSync.dispose();
       resizeSyncRef.current = null;

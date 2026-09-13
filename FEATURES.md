@@ -306,6 +306,18 @@ before mutation, rejecting stale menus rather than destroying newer work.
 
 - Responsive workspace, terminal, File Explorer, and Diff Viewer layouts with
   mobile-safe viewport and keyboard handling.
+- Set **Menu → Appearance → Mobile Layout → Display mode** to Automatic,
+  Mobile, or Desktop.
+  Automatic uses **Mobile up to (px)** (768 by default, adjustable from 320 to
+  2560 CSS pixels). A larger threshold keeps an unfolded phone in mobile mode;
+  choosing Mobile keeps it there at any width, including after reload.
+- Bookmark `?layout=mobile`, `?layout=desktop`, or `?layout=auto` to override the
+  saved mode for that URL. Choosing a display mode in the menu clears the URL
+  override while preserving other query parameters.
+- Choose **Agents on top** or **Workspaces on top** independently for mobile
+  and desktop under **Menu → Appearance → Mobile Layout**. This applies to the
+  separate Agents panel;
+  mobile defaults to agents first and desktop to workspaces first.
 - A floating terminal panel with two rows of configurable key actions.
 - A direct `2×8` shortcut editor: empty slots retain their position in the
   editor but are compacted out of the runtime panel.

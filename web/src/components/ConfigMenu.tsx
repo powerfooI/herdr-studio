@@ -1,5 +1,6 @@
+import { lazyWithReload } from "../lazyWithReload";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import {
   ALargeSmall,
   Bell,
@@ -16,6 +17,7 @@ import {
   ScrollText,
   Server,
   SquareTerminal,
+  Smartphone,
   Sun,
   SunMoon,
   Wifi,
@@ -49,6 +51,12 @@ import { ChangelogDialog } from "./ChangelogDialog";
 import { ShortcutLookupDialog } from "./ShortcutLookupDialog";
 import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 import { TerminalThemeDialog } from "./TerminalThemeDialog";
+
+const MobileLayoutDialog = lazyWithReload("mobile-layout", () =>
+  import("./MobileLayoutDialog").then((module) => ({
+    default: module.MobileLayoutDialog,
+  })),
+);
 
 const APP_VERSION = packageJson.version;
 export const CONFIG_MENU_ID = "herdr-config-menu";
@@ -133,6 +141,7 @@ export function ConfigMenu({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [mobileShortcutsOpen, setMobileShortcutsOpen] = useState(false);
   const [terminalThemesOpen, setTerminalThemesOpen] = useState(false);
+  const [mobileLayoutOpen, setMobileLayoutOpen] = useState(false);
   const [autoSyncOpen, setAutoSyncOpen] = useState(false);
   const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
   const [health, setHealth] = useState<HealthInfo | null>(null);
@@ -362,6 +371,15 @@ export function ConfigMenu({
                 onClick={() => {
                   setOpen(false);
                   setTerminalThemesOpen(true);
+                }}
+              />
+              <ConfigMenuItem
+                icon={<Smartphone size={15} />}
+                label="Mobile Layout"
+                description="Display mode, breakpoint, and sidebar order"
+                onClick={() => {
+                  setOpen(false);
+                  setMobileLayoutOpen(true);
                 }}
               />
               <div className="config-preference-row">
@@ -616,6 +634,17 @@ export function ConfigMenu({
         onCustomThemesChange={onCustomTerminalThemesChange}
         onClose={() => setTerminalThemesOpen(false)}
       />
+      <Suspense fallback={null}>
+        {mobileLayoutOpen ? (
+          <MobileLayoutDialog
+            open={mobileLayoutOpen}
+            onClose={() => {
+              setMobileLayoutOpen(false);
+              window.requestAnimationFrame(() => triggerRef.current?.focus());
+            }}
+          />
+        ) : null}
+      </Suspense>
       <AutoSyncRepositoriesDialog
         open={autoSyncOpen}
         onClose={() => setAutoSyncOpen(false)}

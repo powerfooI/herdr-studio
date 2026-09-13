@@ -1,3 +1,4 @@
+import { initializeLayoutPreferences } from "./layoutPreferences";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
@@ -32,6 +33,8 @@ class ErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
+
+initializeLayoutPreferences();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
