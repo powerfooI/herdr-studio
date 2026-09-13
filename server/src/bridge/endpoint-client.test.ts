@@ -97,9 +97,16 @@ function writePane(
   w.varint(0); // pixel_height
 }
 
+type TestPane = {
+  paneId: string;
+  focused?: boolean;
+  mouseReporting?: boolean;
+};
+
 function surfaceFrame(payload: {
   surfaceRevision: number;
   frame: FrameData;
+  panes?: TestPane[];
 }): Buffer {
   const w = new BinWriter();
   w.variant(13); // PaneSurface
@@ -107,8 +114,10 @@ function surfaceFrame(payload: {
   w.varint(1); // projection_revision
   w.varint(payload.surfaceRevision);
   writeFrame(w, payload.frame);
-  w.varint(1); // one pane
-  writePane(w, "w1:p1");
+  const panes = payload.panes ?? [{ paneId: "w1:p1" }];
+  w.varint(panes.length);
+  for (const pane of panes)
+    writePane(w, pane.paneId, pane.focused, pane.mouseReporting);
   w.varint(0); // splits
   w.bool(false); // popup
   // SurfaceGraphicsScene tail: the client stops reading before it.
@@ -119,7 +128,8 @@ function patchFrame(payload: {
   baseSurfaceRevision: number;
   surfaceRevision: number;
   rows: Array<{ x: number; y: number; cells: CellData[] }>;
-  cursor?: { x: number; y: number; visible: boolean; shape: number };
+  cursor?: FrameData["cursor"];
+  panes?: TestPane[];
   mouseReporting?: boolean;
 }): Buffer {
   const w = new BinWriter();
@@ -135,8 +145,12 @@ function patchFrame(payload: {
     w.varint(row.cells.length);
     for (const c of row.cells) writeCell(w, c);
   }
-  w.varint(1);
-  writePane(w, "w1:p1", true, payload.mouseReporting);
+  const panes = payload.panes ?? [
+    { paneId: "w1:p1", mouseReporting: payload.mouseReporting },
+  ];
+  w.varint(panes.length);
+  for (const pane of panes)
+    writePane(w, pane.paneId, pane.focused, pane.mouseReporting);
   w.option(payload.cursor, (cur) => {
     w.varint(cur.x);
     w.varint(cur.y);
@@ -466,6 +480,7 @@ describe("EndpointClient (endpoint generation 1)", () => {
     expect(surfaces[0].panes).toEqual([
       {
         paneId: "w1:p1",
+        contentRevision: 1,
         rect: { x: 0, y: 0, width: 10, height: 5 },
         innerRect: { x: 0, y: 0, width: 10, height: 5 },
         scroll: null,
@@ -488,6 +503,193 @@ describe("EndpointClient (endpoint generation 1)", () => {
       shape: 1,
     });
     client.close();
+  });
+
+  test("keeps pane metadata through cursor-only hide, clear, and show patches", async () => {
+    const visible = { x: 4, y: 1, visible: true, shape: 5 };
+    const cursors = [
+      visible,
+      { ...visible, visible: false },
+      null,
+      { ...visible, x: 6 },
+    ];
+    const socketPath = await startEndpointServer((_hello, socket) => {
+      socket.write(
+        encodeFrame(
+          surfaceFrame({
+            surfaceRevision: 1,
+            frame: {
+              cells: Array.from({ length: 50 }, () => cell(" ")),
+              width: 10,
+              height: 5,
+              cursor: visible,
+              hyperlinks: [],
+            },
+            panes: [{ paneId: "w1:p1" }, { paneId: "w1:p2", focused: false }],
+          }),
+        ),
+      );
+      for (let i = 1; i < cursors.length; i++) {
+        socket.write(
+          encodeFrame(
+            patchFrame({
+              baseSurfaceRevision: i,
+              surfaceRevision: i + 1,
+              rows: [],
+              panes: [],
+              cursor: cursors[i],
+            }),
+          ),
+        );
+      }
+    });
+    const client = new EndpointClient(socketPath);
+    const surfaces: EndpointSurface[] = [];
+    client.on("surface", (surface) => surfaces.push(surface));
+    try {
+      await client.connect(10, 5);
+      await Bun.sleep(50);
+      expect(surfaces).toHaveLength(cursors.length);
+      for (let i = 0; i < cursors.length; i++) {
+        expect(surfaces[i].frame.cursor).toEqual(cursors[i]);
+        expect(surfaces[i].panes).toEqual(surfaces[0].panes);
+        expect(surfaces[i].panes.map((pane) => pane.paneId)).toEqual([
+          "w1:p1",
+          "w1:p2",
+        ]);
+        expect(surfaces[i].frame.cells).toEqual(surfaces[0].frame.cells);
+      }
+    } finally {
+      client.close();
+    }
+  });
+
+  test("merges partial pane updates without losing other panes or mutating earlier surfaces", async () => {
+    const socketPath = await startEndpointServer((_hello, socket) => {
+      socket.write(
+        encodeFrame(
+          surfaceFrame({
+            surfaceRevision: 1,
+            frame: {
+              cells: Array.from({ length: 50 }, () => cell(" ")),
+              width: 10,
+              height: 5,
+              cursor: null,
+              hyperlinks: [],
+            },
+            panes: [{ paneId: "w1:p1" }, { paneId: "w1:p2", focused: false }],
+          }),
+        ),
+      );
+      socket.write(
+        encodeFrame(
+          patchFrame({
+            baseSurfaceRevision: 1,
+            surfaceRevision: 2,
+            rows: [{ x: 1, y: 0, cells: [cell("a")] }],
+            panes: [{ paneId: "w1:p2", focused: false, mouseReporting: true }],
+            cursor: { x: 4, y: 1, visible: true, shape: 5 },
+          }),
+        ),
+      );
+      socket.write(
+        encodeFrame(
+          patchFrame({
+            baseSurfaceRevision: 2,
+            surfaceRevision: 3,
+            rows: [],
+            panes: [{ paneId: "w1:p1", mouseReporting: true }],
+            cursor: null,
+          }),
+        ),
+      );
+    });
+    const client = new EndpointClient(socketPath);
+    const surfaces: EndpointSurface[] = [];
+    client.on("surface", (surface) => surfaces.push(surface));
+    try {
+      await client.connect(10, 5);
+      await Bun.sleep(50);
+      expect(surfaces).toHaveLength(3);
+      expect(
+        surfaces.map((surface) =>
+          surface.panes.map((pane) => [pane.paneId, pane.mouseReporting]),
+        ),
+      ).toEqual([
+        [
+          ["w1:p1", false],
+          ["w1:p2", false],
+        ],
+        [
+          ["w1:p1", false],
+          ["w1:p2", true],
+        ],
+        [
+          ["w1:p1", true],
+          ["w1:p2", true],
+        ],
+      ]);
+      expect(surfaces[0].frame.cells[1].symbol).toBe(" ");
+      expect(surfaces[1].frame.cells[1].symbol).toBe("a");
+      expect(surfaces[1].frame.cursor?.visible).toBe(true);
+      expect(surfaces[2].frame.cursor).toBeNull();
+    } finally {
+      client.close();
+    }
+  });
+
+  test("rejects unknown-pane patches without changing the retained surface", async () => {
+    const base: FrameData = {
+      cells: Array.from({ length: 50 }, () => cell(" ")),
+      width: 10,
+      height: 5,
+      cursor: null,
+      hyperlinks: [],
+    };
+    const socketPath = await startEndpointServer((_hello, socket) => {
+      socket.write(
+        encodeFrame(surfaceFrame({ surfaceRevision: 1, frame: base })),
+      );
+      socket.write(
+        encodeFrame(
+          patchFrame({
+            baseSurfaceRevision: 1,
+            surfaceRevision: 2,
+            rows: [{ x: 0, y: 0, cells: [cell("X")] }],
+            panes: [{ paneId: "unknown" }],
+            cursor: { x: 4, y: 1, visible: true, shape: 5 },
+          }),
+        ),
+      );
+      socket.write(
+        encodeFrame(
+          patchFrame({
+            baseSurfaceRevision: 1,
+            surfaceRevision: 3,
+            rows: [{ x: 1, y: 0, cells: [cell("Y")] }],
+            panes: [],
+            cursor: null,
+          }),
+        ),
+      );
+    });
+    const client = new EndpointClient(socketPath);
+    const surfaces: EndpointSurface[] = [];
+    client.on("surface", (surface) => surfaces.push(surface));
+    try {
+      await client.connect(10, 5);
+      await Bun.sleep(50);
+      expect(surfaces.map((surface) => surface.surfaceRevision)).toEqual([
+        1, 3,
+      ]);
+      expect(surfaces[0].frame).toEqual(base);
+      expect(surfaces[1].frame.cells[0].symbol).toBe(" ");
+      expect(surfaces[1].frame.cells[1].symbol).toBe("Y");
+      expect(surfaces[1].frame.cursor).toBeNull();
+      expect(surfaces[1].panes).toEqual(surfaces[0].panes);
+    } finally {
+      client.close();
+    }
   });
 
   test("encodes resize and answers health pings with a pong", async () => {

@@ -55,3 +55,12 @@ export function clampUiScale(value: number): number {
 export function normalizeUiScale(value: string | null): number {
   return value === null ? UI_SCALE_DEFAULT : clampUiScale(Number(value));
 }
+
+// The terminal surface cancels page zoom so xterm's mouse coordinates, cell
+// measurements, and IME overlay share CSS pixels. Scale its font explicitly.
+export function terminalFontOptions(compact: boolean, uiScale: number) {
+  return {
+    fontSize: ((compact ? 12 : 13) * uiScale) / 100,
+    lineHeight: compact ? 1.12 : 1.18,
+  };
+}

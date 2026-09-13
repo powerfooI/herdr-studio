@@ -4,7 +4,7 @@ import {
   keyboardContextMenuPoint,
   treeKeyboardAction,
 } from "./treeKeyboard";
-import { store } from "../store";
+import { store, useStoreSelector } from "../store";
 import type { Pane } from "../types";
 import { agentClass, basename, shortId } from "../utils";
 import { shouldShowAgentStatusLabel } from "./agentSession";
@@ -66,6 +66,15 @@ export function AgentRow({
     onDragEnd: () => void;
   };
 }) {
+  const tabLabel = useStoreSelector((state) => {
+    const label = state.tabs
+      .find(
+        (tab) =>
+          tab.tab_id === pane.tab_id && tab.workspace_id === pane.workspace_id,
+      )
+      ?.label.trim();
+    return label && !/^(?:Tab )?\d+$/.test(label) ? label : "";
+  });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const longPressTriggered = useRef(false);
@@ -187,8 +196,8 @@ export function AgentRow({
         e.preventDefault();
         openMenu(e.clientX, e.clientY);
       }}
-      title={[pane.pane_id, pane.cwd].filter(Boolean).join(" · ")}
-      aria-label={`${pane.agent ?? "Agent"} pane, status ${pane.agent_status}`}
+      title={[pane.pane_id, tabLabel, pane.cwd].filter(Boolean).join(" · ")}
+      aria-label={`${pane.agent ?? "Agent"} pane${tabLabel ? `, tab ${tabLabel}` : ""}, status ${pane.agent_status}`}
     >
       <AgentStatusIcon agent={pane.agent} status={pane.agent_status} />
       <div className="agent-info">
@@ -197,6 +206,7 @@ export function AgentRow({
             {nested
               ? (pane.agent ?? "Agent")
               : (workspaceLabel ?? pane.workspace_id)}
+            {tabLabel ? <span className="muted"> · {tabLabel}</span> : null}
             {showPaneId ? (
               <span className="muted"> · {shortId(pane.pane_id)}</span>
             ) : null}

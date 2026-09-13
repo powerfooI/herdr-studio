@@ -179,6 +179,8 @@ export interface TerminalPush {
   full: boolean;
   /** Present only for endpoint full pane repaints; absent on legacy streams. */
   mouse_reporting?: boolean;
+  /** Absolute rows of a complete endpoint pane viewport. */
+  history?: import("./terminalHistorySelection").TerminalHistoryViewport;
   /** base64-encoded ANSI bytes */
   bytes: string;
 }
