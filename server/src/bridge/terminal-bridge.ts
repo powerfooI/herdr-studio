@@ -96,6 +96,10 @@ export function createTerminalBridge(args: {
     ServerWebSocket<unknown>,
     Map<string, object>
   >();
+  // Different panes have different endpoint lanes. Preserve each browser's
+  // selection order across them, and discard superseded queued selections.
+  const focusIntents = new Map<ServerWebSocket<unknown>, object>();
+  const focusChains = new Map<ServerWebSocket<unknown>, Promise<void>>();
   let clipboardRelay: ThinClient | null = null;
   let clipboardRelayConnecting: Promise<void> | null = null;
   let clipboardTarget: ClipboardTarget | null = null;
@@ -573,6 +577,11 @@ export function createTerminalBridge(args: {
               ...(typeof t.mouseReporting === "boolean"
                 ? { mouse_reporting: t.mouseReporting }
                 : {}),
+              ...(t.history &&
+              width === t.history.cols &&
+              height === t.history.rows
+                ? { history: t.history }
+                : {}),
               bytes: Buffer.from(bytes).toString("base64"),
             },
           });
@@ -992,6 +1001,42 @@ export function createTerminalBridge(args: {
         });
         return reply({ ok: true });
       }
+      if (method === "terminal.focus") {
+        if (!thin || thin.isClosed || !shared || !requestedTerminalId) {
+          return fail(NO_TERMINAL_ATTACHED_MESSAGE);
+        }
+        // Legacy streams already have their own per-terminal cursor.
+        if (!(thin instanceof EndpointTerminalSession))
+          return reply({ ok: true });
+        const intent = {};
+        const token = attachmentTokens.get(ws)?.get(requestedTerminalId);
+        focusIntents.set(ws, intent);
+        const run = async () => {
+          if (focusIntents.get(ws) !== intent) return;
+          const validateAttachment = await waitForOwnedTerminal(
+            ws,
+            requestedTerminalId,
+            shared,
+            () =>
+              requestIsCurrent() &&
+              attachmentTokens.get(ws)?.get(requestedTerminalId) === token,
+          );
+          await thin.focus(() => {
+            validateAttachment();
+            return focusIntents.get(ws) === intent;
+          });
+        };
+        const previous = focusChains.get(ws) ?? Promise.resolve();
+        const task = previous.then(run, run);
+        focusChains.set(ws, task);
+        try {
+          await task;
+        } finally {
+          if (focusChains.get(ws) === task) focusChains.delete(ws);
+          if (focusIntents.get(ws) === intent) focusIntents.delete(ws);
+        }
+        return reply({ ok: true });
+      }
       if (method === "terminal.input") {
         if (!thin || thin.isClosed || !shared || !requestedTerminalId) {
           return fail(NO_TERMINAL_ATTACHED_MESSAGE);
@@ -1065,6 +1110,8 @@ export function createTerminalBridge(args: {
   }
 
   function cleanupWs(ws: ServerWebSocket<unknown>) {
+    focusIntents.delete(ws);
+    focusChains.delete(ws);
     detachTerminalViewer(ws);
   }
 
@@ -1099,6 +1146,8 @@ export function createTerminalBridge(args: {
     sharedTerminals.clear();
     terminalViewers.clear();
     attachmentTokens.clear();
+    focusIntents.clear();
+    focusChains.clear();
     terminals.clear();
   }
 

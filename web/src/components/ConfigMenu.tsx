@@ -345,6 +345,7 @@ export function ConfigMenu({
               <ConfigMenuItem
                 icon={<SquareTerminal size={15} />}
                 label="Terminal theme"
+                className="config-menu-item-row"
                 description={`Dark: ${
                   resolveTerminalThemeDefinition(
                     "dark",

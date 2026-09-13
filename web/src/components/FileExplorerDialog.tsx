@@ -795,6 +795,7 @@ export function FileExplorerPanel({
   resourceKey,
   initialDirectory,
   activePath,
+  previewRequestRef,
   keyboardActive = false,
   onClose,
   onPreviewChange,
@@ -805,6 +806,7 @@ export function FileExplorerPanel({
   resourceKey?: string;
   initialDirectory?: string;
   activePath?: string;
+  previewRequestRef?: React.MutableRefObject<number>;
   keyboardActive?: boolean;
   onClose: () => void;
   onPreviewChange?: (
@@ -826,6 +828,7 @@ export function FileExplorerPanel({
         showCloseButton={false}
         previewPlacement="external"
         activePath={activePath}
+        previewRequestRef={previewRequestRef}
         keyboardActive={keyboardActive}
         onPreviewChange={onPreviewChange}
         onActiveDiffEntriesChange={onActiveDiffEntriesChange}
@@ -975,6 +978,7 @@ function FileExplorerContent({
   onClose,
   showCloseButton,
   previewPlacement = "inline",
+  previewRequestRef,
   activePath,
   keyboardActive = false,
   onPreviewChange,
@@ -987,6 +991,7 @@ function FileExplorerContent({
   onClose: () => void;
   showCloseButton: boolean;
   previewPlacement?: "inline" | "external";
+  previewRequestRef?: React.MutableRefObject<number>;
   activePath?: string;
   keyboardActive?: boolean;
   onPreviewChange?: (
@@ -1039,6 +1044,7 @@ function FileExplorerContent({
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewFragment, setPreviewFragment] = useState<string>();
   const [focusedTreePath, setFocusedTreePath] = useState<string | null>(
     activePath ?? null,
   );
@@ -1048,6 +1054,7 @@ function FileExplorerContent({
   const longPressTriggered = useRef(false);
   const previewRequestKeyRef = useRef<string | null>(null);
   const previewRequestSequenceRef = useRef(0);
+  const navigationRequestRef = previewRequestRef ?? previewRequestSequenceRef;
   const previousCacheResourceKeyRef = useRef<string | undefined>(undefined);
   const fileTreeRef = useRef<HTMLDivElement | null>(null);
   const treeAutoFocusAppliedRef = useRef(false);
@@ -1544,30 +1551,38 @@ function FileExplorerContent({
     updateCache({ expanded: next });
   };
 
-  const loadPreview = async (entry: FileExplorerEntry) => {
+  const loadPreview = async (entry: FileExplorerEntry, fragment?: string) => {
     if (!workspace?.workspace_id || entry.type === "directory") return;
     onActiveDiffEntriesChange?.(
       gitStatusMaps.fileStatuses.get(entry.path)?.entries ?? [],
     );
     const workspaceId = workspace.workspace_id;
     const key = filePreviewCacheKey(connectionClient, workspaceId, entry.path);
-    const requestKey = `${key}:${++previewRequestSequenceRef.current}`;
+    // Links, quick-open and tree selections must retire each other at start,
+    // before either the cached preview or a deferred response can be published.
+    const requestId = ++navigationRequestRef.current;
+    const requestKey = `${key}:${requestId}`;
     previewRequestKeyRef.current = requestKey;
+    const requestIsCurrent = () =>
+      connectionClient.isCurrent() &&
+      navigationRequestRef.current === requestId &&
+      previewRequestKeyRef.current === requestKey;
     setPreviewEntry(entry);
+    setPreviewFragment(fragment);
     setPreviewError(null);
     const cached = readCachedPreview(key);
     if (cached) {
       setPreview(cached);
       setPreviewLoading(false);
       emitPreviewChange(
-        { entry, preview: cached, loading: false, error: null },
+        { entry, fragment, preview: cached, loading: false, error: null },
         { userInitiated: true },
       );
     } else {
       setPreview(null);
       setPreviewLoading(true);
       emitPreviewChange(
-        { entry, preview: null, loading: true, error: null },
+        { entry, fragment, preview: null, loading: true, error: null },
         { userInitiated: true },
       );
     }
@@ -1576,34 +1591,24 @@ function FileExplorerContent({
         refresh: Boolean(cached),
         client: connectionClient,
       });
-      if (
-        connectionClient.isCurrent() &&
-        previewRequestKeyRef.current === requestKey
-      ) {
+      if (requestIsCurrent()) {
         setPreview(next);
         emitPreviewChange(
-          { entry, preview: next, loading: false, error: null },
+          { entry, fragment, preview: next, loading: false, error: null },
           { userInitiated: true },
         );
       }
     } catch (e) {
-      if (
-        connectionClient.isCurrent() &&
-        previewRequestKeyRef.current === requestKey &&
-        !cached
-      ) {
+      if (requestIsCurrent() && !cached) {
         const message = (e as Error).message;
         setPreviewError(message);
         emitPreviewChange(
-          { entry, preview: null, loading: false, error: message },
+          { entry, fragment, preview: null, loading: false, error: message },
           { userInitiated: true },
         );
       }
     } finally {
-      if (
-        connectionClient.isCurrent() &&
-        previewRequestKeyRef.current === requestKey
-      ) {
+      if (requestIsCurrent()) {
         setPreviewLoading(false);
       }
     }
@@ -1721,6 +1726,7 @@ function FileExplorerContent({
       entry.type === "directory",
     );
     if (!deletedSelection) return;
+    navigationRequestRef.current += 1;
     setPreviewEntry(null);
     setPreview(null);
     setPreviewLoading(false);
@@ -2344,6 +2350,20 @@ function FileExplorerContent({
               preview={preview}
               loading={previewLoading}
               error={previewError}
+              fragment={previewFragment}
+              onOpenFile={(path, fragment) =>
+                void loadPreview(
+                  {
+                    name: path.split("/").pop() ?? path,
+                    path,
+                    type: "file",
+                    size: 0,
+                    mtime_ms: 0,
+                    hidden: false,
+                  },
+                  fragment,
+                )
+              }
             />
           </Suspense>
         ) : null}

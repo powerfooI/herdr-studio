@@ -66,7 +66,11 @@ Closed panes are removed from the history automatically.
   apps using pane-local cells. To select browser text instead, use Option-drag
   on macOS or Shift-drag elsewhere; ordinary output needs no modifier. Selection
   pauses visible endpoint output until cleared, then catches up to the latest
-  repaint. Pixel mouse is not supported.
+  repaint. Drag beyond the top or bottom of a pane to scroll while selecting;
+  copying includes the rows that have scrolled offscreen. Releasing the mouse or
+  losing window focus stops scrolling. If terminal output changes during the
+  drag, finish the current selection before scrolling further. Pixel mouse is
+  not supported.
 - Paste multiline text through terminal paste handling.
 - Paste a clipboard image to upload it on the Herdr host and insert the resulting
   path into the terminal. This also works through `--ssh-host`.
@@ -120,7 +124,15 @@ panel.
   exports stay complete. See [History synchronization](docs/HISTORY.md).
 - Use the History minimap to jump between messages; inspect tool details on demand.
 - Keep agents nested under their workspace, or choose **Agents: Separate** at the
-  bottom of the Workspaces panel for a dedicated panel.
+  bottom of the Workspaces panel for a dedicated panel. The separate panel
+  defaults to **Attention first**: blocked, done, working, idle, then unknown.
+  Use the Sort and Group icons beside **Agents** to choose an order or grouping.
+  Choose workspace order or manual order; manual order with no grouping supports
+  drag-to-reorder. Group by status, workspace, or agent type and collapse groups.
+  Sorting and grouping are remembered in the browser; manual ordering is saved
+  per connection.
+- Agent rows show the tab name before the pane ID in both nested and separate
+  views. Blank labels and numbered defaults such as `2` or `Tab 2` are omitted.
 - Inspect turn count, token usage, update time, session ID, session file, and
   other session details.
 - Open Session Inspector in Timeline, ATIF, or raw transcript mode, with search
@@ -232,6 +244,10 @@ Lifecycle to manage saved per-checkout settings.
   rendered as diagrams.
 - Render `.mmd`/`.mermaid` Mermaid sources as diagrams with a Raw/Rendered
   toggle.
+- Follow relative file links in Markdown previews within the current Inspector.
+  Links resolve from the document's directory; leading `/` resolves from the
+  workspace root. Heading fragments scroll within the destination document.
+  External links continue to open in a new browser tab.
 - Preview common images, PDFs, and workspace-local Markdown images; unsupported
   binary files remain download-only.
 - Drag files onto the workspace root or a directory to upload them.

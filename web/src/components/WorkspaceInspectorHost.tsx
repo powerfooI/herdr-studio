@@ -208,11 +208,13 @@ export function WorkspaceInspectorHost({
   workspace,
   historyPane,
   fileSelection,
+  previewRequestRef,
   diffSelection,
   connectionClient,
   onFileSelectionChange,
   onDiffSelectionChange,
   onOpenDiffFile,
+  onOpenDocument,
   onViewChange,
   onDockChange,
   onExpandedChange,
@@ -225,12 +227,14 @@ export function WorkspaceInspectorHost({
   workspace?: Workspace;
   historyPane?: Pane;
   fileSelection: ActiveFilePreviewSelection;
+  previewRequestRef: React.MutableRefObject<number>;
   diffSelection: ActiveDiffSelection;
   connectionClient: ConnectionClient;
   onFileSelectionChange: Parameters<
     typeof FileExplorerPanel
   >[0]["onPreviewChange"];
   onDiffSelectionChange: DiffViewerPanelProps["onSelectionChange"];
+  onOpenDocument: (path: string, fragment?: string) => void;
   onOpenDiffFile: (entry: ActiveDiffSelection["entry"]) => void;
   onViewChange: (view: InspectorView) => void;
   onDockChange: (dock: InspectorDock) => void;
@@ -734,6 +738,7 @@ export function WorkspaceInspectorHost({
                 resourceKey={resourceKey}
                 initialDirectory={state.initialDirectory}
                 activePath={fileSelection.entry?.path}
+                previewRequestRef={previewRequestRef}
                 keyboardActive={
                   state.view === "files" && (!compact || !hasDetail)
                 }
@@ -765,6 +770,8 @@ export function WorkspaceInspectorHost({
                 preview={fileSelection.preview}
                 loading={fileSelection.loading}
                 error={fileSelection.error}
+                fragment={fileSelection.fragment}
+                onOpenFile={onOpenDocument}
                 backAction={
                   compact && drillInByView.files && fileSelection.entry
                     ? {

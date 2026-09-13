@@ -1,3 +1,4 @@
+import { terminalFontOptions } from "../appearance";
 import {
   ClipboardAddon,
   type ClipboardSelectionType,
@@ -27,7 +28,7 @@ import {
   type MobileTerminalSideShortcuts,
   mobileTerminalShortcutOption,
 } from "../mobileTerminalShortcuts";
-import { paneCanClose } from "../paneJump";
+import { activePaneIdForSnapshot, paneCanClose } from "../paneJump";
 import {
   shallowEqual,
   store,
@@ -82,6 +83,7 @@ import {
   macCommandEditingSequence,
   modifiedEnterSequence,
 } from "../terminalKeys";
+import { TerminalHistorySelection } from "../terminalHistorySelection";
 import {
   findTerminalHttpLinks,
   sanitizeTerminalHttpUrl,
@@ -112,6 +114,23 @@ import { applyTerminalTheme } from "../terminalThemes";
 import { paneHasAgentHistory } from "./agentSession";
 import { ConfirmDialog, MessageDialog } from "./ModalDialogs";
 import { TerminalComposer } from "./TerminalComposer";
+
+function focusTerminalEndpoint(
+  client: ConnectionClient,
+  terminalId: string | undefined,
+) {
+  if (
+    !terminalId ||
+    !client.isCurrent() ||
+    !store
+      .get()
+      .endpointAvailability[terminalId]?.methods.includes("pane.focus")
+  )
+    return;
+  void client
+    .call("terminal.focus", { terminal_id: terminalId })
+    .catch(() => null);
+}
 
 const SYSTEM_CLIPBOARD = "c" as ClipboardSelectionType;
 
@@ -156,13 +175,11 @@ const TERMINAL_EVICTION_WINDOW_MS = 60_000;
 const TERMINAL_EVICTION_MAX_RETRIES = 3;
 const TERMINAL_TOUCH_TAP_SLOP_PX = 8;
 
-function terminalDensity() {
+function terminalDensity(uiScale: number) {
   const compact =
     typeof window !== "undefined" &&
     window.matchMedia("(max-width: 768px)").matches;
-  return compact
-    ? { fontSize: 12, lineHeight: 1.12 }
-    : { fontSize: 13, lineHeight: 1.18 };
+  return terminalFontOptions(compact, uiScale);
 }
 
 function isApplePlatform() {
@@ -420,6 +437,7 @@ export type TerminalWorkspaceFileRequest = {
 export function TerminalView({
   paneId,
   terminalTheme,
+  uiScale,
   showMobileKeys = true,
   mobileShortcuts = defaultMobileTerminalShortcutRows(),
   mobileSideShortcuts = defaultMobileTerminalSideShortcuts(),
@@ -431,6 +449,7 @@ export function TerminalView({
 }: {
   paneId?: string;
   terminalTheme: ITheme;
+  uiScale: number;
   showMobileKeys?: boolean;
   mobileShortcuts?: MobileTerminalShortcutRows;
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
@@ -525,6 +544,7 @@ export function TerminalView({
   const [termInstance, setTermInstance] = useState<Terminal | null>(null);
   // Theme changes update xterm in place without recreating the terminal.
   const terminalThemeRef = useRef(terminalTheme);
+  const uiScaleRef = useRef(uiScale);
   const fitRef = useRef<FitAddon | null>(null);
   const attachedRef = useRef<string | null>(null);
   const attachingRef = useRef<string | null>(null);
@@ -612,7 +632,12 @@ export function TerminalView({
     if (shouldAvoidVirtualKeyboard()) return;
     requestAnimationFrame(() => {
       window.setTimeout(() => {
-        if (!connectionClient.isCurrent() || composerOpenRef.current) return;
+        if (
+          !connectionClient.isCurrent() ||
+          !isActivePaneRef.current ||
+          composerOpenRef.current
+        )
+          return;
         const term = termRef.current;
         const active = document.activeElement;
         const activeElement = active instanceof HTMLElement ? active : null;
@@ -626,6 +651,19 @@ export function TerminalView({
       }, 0);
     });
   }, [connectionClient]);
+  const focusEndpoint = useCallback(() => {
+    focusTerminalEndpoint(connectionClient, paneTerminalIdRef.current);
+  }, [connectionClient]);
+  useEffect(() => {
+    if (isActivePane) focusEndpoint();
+  }, [focusEndpoint, isActivePane, pane?.terminal_id]);
+  useEffect(() => {
+    if (!container) return;
+    // Clicking the already-selected pane must also reclaim its cursor after
+    // another client has changed the shared same-tab focus.
+    container.addEventListener("pointerdown", focusEndpoint);
+    return () => container.removeEventListener("pointerdown", focusEndpoint);
+  }, [container, focusEndpoint]);
   // Fits the xterm to its container, unless the container is hidden or
   // unmounted (e.g. the diff/files view covers it with display:none). Fitting
   // a hidden container would collapse the terminal to a 2x1 minimum and leak a
@@ -791,7 +829,7 @@ export function TerminalView({
       cursorBlink: true,
       disableStdin: composerOpenRef.current,
       fontFamily: FONT_FAMILY,
-      ...terminalDensity(),
+      ...terminalDensity(uiScaleRef.current),
       theme: terminalThemeRef.current,
       allowProposedApi: true,
       linkHandler: {
@@ -875,6 +913,11 @@ export function TerminalView({
     term.onData((data) => {
       // Replaying a delayed local selection must never synthesize pane input.
       if (composerOpenRef.current || replayingSelection) return;
+      if (historySelection.active) {
+        historySelection.reset();
+        term.clearSelection();
+        endpointPresentation.cancelSelection();
+      }
       const unsuppressedData = imeTextareaFallback.recordXtermData(data);
       if (!unsuppressedData) return;
       const dataAt = performance.now();
@@ -890,15 +933,46 @@ export function TerminalView({
       sendBytes(connectionClient, bytes, terminalId).catch(() => {});
     });
 
-    const endpointPresentation = new TerminalEndpointPresentation(
-      () => term.hasSelection(),
-      (text, parsed) => term.write(colorHttpLinks(text), parsed),
-      () => ({ cols: term.cols, rows: term.rows }),
-    );
+    const endpointPresentation: TerminalEndpointPresentation =
+      new TerminalEndpointPresentation(
+        () => term.hasSelection() || historySelection.active,
+        (text, parsed) => term.write(colorHttpLinks(text), parsed),
+        () => ({ cols: term.cols, rows: term.rows }),
+        {
+          accepts: (frame) => historySelection.accepts(frame),
+          presented: (frame) => historySelection.presented(frame),
+          reset: () => historySelection.reset(),
+        },
+      );
+    const historySelection: TerminalHistorySelection =
+      new TerminalHistorySelection(term, {
+        frame: () => endpointPresentation.displayedFrame,
+        scroll: (direction, lines) =>
+          connectionClient.call("terminal.scroll", {
+            terminal_id: desiredTerminalRef.current,
+            direction,
+            lines,
+            source: "history",
+          }),
+        changed: (message) =>
+          store.notify({ kind: "info", message, autoDismissMs: 8000 }),
+      });
     endpointPresentationRef.current = endpointPresentation;
-    const selectionChange = term.onSelectionChange(() =>
-      endpointPresentation.flush(),
-    );
+    const selectionChange = term.onSelectionChange(() => {
+      if (
+        !endpointPresentation.selectionDrag &&
+        !endpointPresentation.writePending &&
+        !term.hasSelection()
+      )
+        historySelection.reset();
+      endpointPresentation.flush();
+    });
+    const selectionResize = term.onResize(() => {
+      historySelection.reset();
+      if (endpointPresentation.selectionDrag) onSelectionBlur();
+      term.clearSelection();
+      endpointPresentation.cancelSelection();
+    });
     const off = bridge.onTerminal((t) => {
       // A mount owns exactly one connection generation. Drop frames from an
       // inactive connection or a prior terminal attach before touching xterm.
@@ -920,10 +994,15 @@ export function TerminalView({
       setTerminalAttachError("");
       if (typeof t.mouse_reporting === "boolean") {
         term.options.macOptionClickForcesSelection = true;
-        endpointPresentation.update(text, t.mouse_reporting, {
-          cols: t.width,
-          rows: t.height,
-        });
+        endpointPresentation.update(
+          text,
+          t.mouse_reporting,
+          {
+            cols: t.width,
+            rows: t.height,
+          },
+          t.history,
+        );
       } else {
         term.write(colorHttpLinks(text));
       }
@@ -1023,7 +1102,7 @@ export function TerminalView({
 
     const densityQuery = window.matchMedia("(max-width: 768px)");
     const applyDensity = () => {
-      term.options = terminalDensity();
+      term.options = terminalDensity(uiScaleRef.current);
       const size = fitVisibleTerminal();
       if (size) resizeSync.sendNow(size);
     };
@@ -1580,8 +1659,12 @@ export function TerminalView({
     document.addEventListener("paste", onPaste, { capture: true });
 
     const onCopy = (e: ClipboardEvent) => {
-      if (!term.hasSelection() || !e.clipboardData) return;
-      const selectedText = term.getSelection();
+      if (
+        (!term.hasSelection() && !historySelection.active) ||
+        !e.clipboardData
+      )
+        return;
+      const selectedText = historySelection.text ?? term.getSelection();
       if (!selectedText) return;
       e.preventDefault();
       e.stopPropagation();
@@ -1674,6 +1757,7 @@ export function TerminalView({
         return;
       selectionDragGuard.mouseDown(e.button);
       if (e.button !== 0) return;
+      historySelection.reset();
       if (
         endpointPresentation.mouseReporting === undefined &&
         !endpointPresentation.writePending
@@ -1710,6 +1794,17 @@ export function TerminalView({
       }
     };
     const onDeferredMouseMove = (e: MouseEvent) => {
+      if (
+        !endpointPresentation.selectionPending &&
+        historySelection.move(
+          e,
+          endpointPresentation.selectionDrag && !(e.altKey && !applePlatform),
+        )
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
       if (!endpointPresentation.selectionPending || deferredUp) return;
       if (e.buttons === 0) {
         // A lost release finalizes at the last held-button move, not this hover.
@@ -1722,6 +1817,8 @@ export function TerminalView({
       e.stopImmediatePropagation();
     };
     const onDocumentMouseUp = (e: MouseEvent) => {
+      if (historySelection.releasingNative) return;
+      historySelection.finish();
       if (endpointPresentation.selectionPending) {
         if (deferredUp) return; // the first release froze this gesture
         deferredUp = e;
@@ -1740,12 +1837,19 @@ export function TerminalView({
       // A new physical gesture anywhere owns document listeners now. Cancel
       // this deferred replay before a sibling terminal can start an app drag.
       // Synthetic selection replay must not cancel another pane's intent.
-      if (!e.isTrusted || !endpointPresentation.selectionPending) return;
+      if (!e.isTrusted) return;
+      if (historySelection.active) {
+        historySelection.finish();
+        selectionDragGuard.reset();
+        endpointPresentation.selectionDrag = false;
+      }
+      if (!endpointPresentation.selectionPending) return;
       deferredMove = deferredUp = null;
       selectionDragGuard.reset();
       endpointPresentation.cancelSelection();
     };
     const onSelectionBlur = () => {
+      historySelection.finish();
       if (endpointPresentation.selectionPending) {
         deferredMove = deferredUp = null;
         selectionDragGuard.reset();
@@ -1799,6 +1903,19 @@ export function TerminalView({
     document.addEventListener("mousemove", onDocumentMouseMove);
 
     const onWheel = (e: WheelEvent) => {
+      const selectionScroll = terminalWheelScroll(
+        e.deltaY,
+        e.deltaMode,
+        term.rows,
+      );
+      if (
+        selectionScroll &&
+        historySelection.wheel(selectionScroll.direction, selectionScroll.lines)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (endpointPresentation.mouseReporting !== undefined) {
         if (
           term.hasSelection() ||
@@ -1964,6 +2081,7 @@ export function TerminalView({
       terminalEffectDisposed = true;
       off();
       selectionChange.dispose();
+      selectionResize.dispose();
       endpointPresentation.dispose();
       endpointPresentationRef.current = null;
       offClipboard();
@@ -2177,6 +2295,16 @@ export function TerminalView({
           if (attachingRef.current === terminalId) attachingRef.current = null;
           if (desiredTerminalRef.current === terminalId) {
             attachedRef.current = terminalId;
+            // Attaching a split focuses it in Herdr, even in the background.
+            // Restore the current selection after each completed attach; use
+            // current state so a late response cannot revive an old selection.
+            const current = store.get();
+            const selectedPaneId = activePaneIdForSnapshot(current);
+            focusTerminalEndpoint(
+              connectionClient,
+              current.panes.find((p) => p.pane_id === selectedPaneId)
+                ?.terminal_id,
+            );
             focusTerminalSoon();
             // Resizes observed while the attach was in flight are dropped by
             // the sync's send guard; push the settled size now (deduped).
@@ -2250,6 +2378,14 @@ export function TerminalView({
     connectionClient,
     termInstance,
   ]);
+
+  useEffect(() => {
+    uiScaleRef.current = uiScale;
+    if (!termInstance) return;
+    termInstance.options = terminalDensity(uiScale);
+    const size = fitVisibleTerminal();
+    if (size) resizeSyncRef.current?.sendNow(size);
+  }, [uiScale, termInstance, fitVisibleTerminal]);
 
   useEffect(() => {
     terminalThemeRef.current = terminalTheme;
