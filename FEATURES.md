@@ -1,6 +1,6 @@
-# Herdr Studio Features
+# Roamgate Features
 
-Herdr Studio is a browser and PWA client for a running
+Roamgate is a browser and PWA client for a running
 [Herdr](https://herdr.dev) server. It keeps Herdr's workspace, tab, pane, and
 agent model, while adding repository tools, session inspection, mobile controls,
 and operational features around it.
@@ -24,7 +24,7 @@ the [hands-on tutorial](./docs/TUTORIAL.md).
   same-tab pane focus remains shared, including the pane supplying `follow` cwd.
   Creating tabs/workspaces preserves Herdr's cwd policy and requires the source
   terminal tab to be open and connected; unavailable sources show an error.
-  An empty session can create its first workspace directly from Studio.
+  An empty session can create its first workspace directly from Roamgate.
 - Group linked Git worktrees under their parent repository workspace. Groups can
   be collapsed, while individual workspaces or worktrees can be pinned to the
   top. Pin and collapse preferences are stored in the current browser.
@@ -66,7 +66,11 @@ Closed panes are removed from the history automatically.
   apps using pane-local cells. To select browser text instead, use Option-drag
   on macOS or Shift-drag elsewhere; ordinary output needs no modifier. Selection
   pauses visible endpoint output until cleared, then catches up to the latest
-  repaint. Pixel mouse is not supported.
+  repaint. Drag beyond the top or bottom of a pane to scroll while selecting;
+  copying includes the rows that have scrolled offscreen. Releasing the mouse or
+  losing window focus stops scrolling. If terminal output changes during the
+  drag, finish the current selection before scrolling further. Pixel mouse is
+  not supported.
 - Paste multiline text through terminal paste handling.
 - Paste a clipboard image to upload it on the Herdr host and insert the resulting
   path into the terminal. This also works through `--ssh-host`.
@@ -107,7 +111,7 @@ for cache and routing boundaries.
 
 ## Agent Awareness and Session Inspection
 
-Herdr reports recognized agents and their state, and Herdr Studio projects that
+Herdr reports recognized agents and their state, and Roamgate projects that
 information across the workspace tree, pane switcher, command menu, and Agent
 panel.
 
@@ -120,7 +124,15 @@ panel.
   exports stay complete. See [History synchronization](docs/HISTORY.md).
 - Use the History minimap to jump between messages; inspect tool details on demand.
 - Keep agents nested under their workspace, or choose **Agents: Separate** at the
-  bottom of the Workspaces panel for a dedicated panel.
+  bottom of the Workspaces panel for a dedicated panel. The separate panel
+  defaults to **Attention first**: blocked, done, working, idle, then unknown.
+  Use the Sort and Group icons beside **Agents** to choose an order or grouping.
+  Choose workspace order or manual order; manual order with no grouping supports
+  drag-to-reorder. Group by status, workspace, or agent type and collapse groups.
+  Sorting and grouping are remembered in the browser; manual ordering is saved
+  per connection.
+- Agent rows show the tab name before the pane ID in both nested and separate
+  views. Blank labels and numbered defaults such as `2` or `Tab 2` are omitted.
 - Inspect turn count, token usage, update time, session ID, session file, and
   other session details.
 - Open Session Inspector in Timeline, ATIF, or raw transcript mode, with search
@@ -137,7 +149,7 @@ remote session unless its transcript is also locally accessible.
 
 ## Git Worktree Lifecycle
 
-Herdr Studio adds a repository-scoped lifecycle view around Herdr workspaces:
+Roamgate adds a repository-scoped lifecycle view around Herdr workspaces:
 
 - Create a linked worktree from the latest fetched `origin/main` without
   modifying the source workspace's current branch or dirty files.
@@ -153,7 +165,7 @@ Herdr Studio adds a repository-scoped lifecycle view around Herdr workspaces:
 
 ### Paseo Worktree Hooks
 
-Herdr Studio understands the repository-local
+Roamgate understands the repository-local
 [Paseo worktree hook](https://paseo.sh/docs/worktrees) format in `paseo.json`.
 Add commands under `worktree`:
 
@@ -168,14 +180,14 @@ Add commands under `worktree`:
 }
 ```
 
-| Paseo hook | When Herdr Studio runs it | Working directory |
+| Paseo hook | When Roamgate runs it | Working directory |
 | --- | --- | --- |
 | `setup` | After a new linked worktree has been created and opened | New worktree |
 | `opened` | After an existing linked worktree has been opened | Opened worktree |
 | `teardown` | Before a linked worktree is removed | Worktree being removed |
 | `removed` | After removal finishes | Source checkout |
 
-For `setup`, `opened`, and `teardown`, Herdr Studio first looks for `paseo.json` in
+For `setup`, `opened`, and `teardown`, Roamgate first looks for `paseo.json` in
 the target checkout and falls back to the source checkout only when the target
 has no `paseo.json`. The first existing file wins. After removal, the target no
 longer exists, so `removed` normally uses the source checkout's configuration.
@@ -212,10 +224,10 @@ Automatic branch updates periodically fetch `origin/main` and merge it into an
 enabled workspace's current branch. The default interval is 10 minutes, and the
 current interval and last result are visible in the UI.
 
-For safety, Herdr Studio skips a run when the checkout is dirty or on a detached
+For safety, Roamgate skips a run when the checkout is dirty or on a detached
 HEAD. It verifies that the branch, HEAD, and worktree did not change while the
 fetch was running. A conflicting merge is aborted automatically. Updates run
-only while the workspace is open in the current Herdr Studio connection.
+only while the workspace is open in the current Roamgate connection.
 
 Use **Menu → Automatic branch updates**, a workspace context menu, or Worktree
 Lifecycle to manage saved per-checkout settings.
@@ -232,6 +244,10 @@ Lifecycle to manage saved per-checkout settings.
   rendered as diagrams.
 - Render `.mmd`/`.mermaid` Mermaid sources as diagrams with a Raw/Rendered
   toggle.
+- Follow relative file links in Markdown previews within the current Inspector.
+  Links resolve from the document's directory; leading `/` resolves from the
+  workspace root. Heading fragments scroll within the destination document.
+  External links continue to open in a new browser tab.
 - Preview common images, PDFs, and workspace-local Markdown images; unsupported
   binary files remain download-only.
 - Drag files onto the workspace root or a directory to upload them.
@@ -319,7 +335,7 @@ before mutation, rejecting stale menus rather than destroying newer work.
 - A bundled glyph-only Nerd Font fallback for common terminal icons.
 - Installable as a standalone PWA from iOS/iPadOS Safari, macOS Safari, Chrome,
   or Edge. PWA mode removes browser chrome but still requires a reachable
-  `herdr-gui` server process; it does not provide offline access.
+  `roamgate` server process; it does not provide offline access.
 - Reload the current browser or standalone PWA from **Menu → Reload page**.
 
 Mobile shortcut layouts and appearance preferences are stored in the current
@@ -331,7 +347,7 @@ browser and do not change Herdr server configuration.
   selector, with shared profiles but independent browser selection. Disconnecting
   a profile does not stop Herdr or its workspaces. See
   [connection setup](docs/DEPLOYMENT.md#multiple-and-remote-herdr-connections).
-- Connect to a remote Herdr with `--ssh-host`; Herdr Studio automatically forwards
+- Connect to a remote Herdr with `--ssh-host`; Roamgate automatically forwards
   both the control and terminal-render Unix sockets over SSH on Linux/macOS.
   Windows supports native local profiles, not this SSH forwarding transport.
 - Apply file operations, image paste, Git operations, and Paseo hooks on the
@@ -352,7 +368,7 @@ browser and do not change Herdr server configuration.
 - Scale the interface from 80% to 150% via Menu → Appearance → Text size,
   useful on mobile where browser zoom shortcuts are unavailable.
 - Install and manage a systemd or launchd user service from the CLI.
-- Check for Herdr Studio releases and perform a checksum-verified, one-click binary
+- Check for Roamgate releases and perform a checksum-verified, one-click binary
   update when running a standalone binary under a supported supervisor.
 - Use `/health` or `/healthz` for service probes.
 

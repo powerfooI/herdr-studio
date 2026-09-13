@@ -38,8 +38,8 @@ export function assertSupportedHerdrProtocol(
           .slice(0, 20)
       : "unknown";
   throw new HerdrCompatibilityError(
-    `Herdr protocol ${actual} is not supported by this Studio build ` +
-      "(supports protocols 14-20 and 22). Use a Studio release explicitly " +
+    `Herdr protocol ${actual} is not supported by this Roamgate build ` +
+      "(supports protocols 14-20 and 22). Use a Roamgate release explicitly " +
       "supporting this server, or a separate compatible server. Do not downgrade a live server.",
   );
 }

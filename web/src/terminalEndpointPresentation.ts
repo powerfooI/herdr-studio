@@ -1,3 +1,11 @@
+import type { TerminalHistoryViewport } from "./terminalHistorySelection";
+
+export interface TerminalPresentationFrame {
+  text: string;
+  size?: { cols: number; rows: number };
+  history?: TerminalHistoryViewport;
+}
+
 /** xterm's native selection escape: Shift on non-Mac, Option on Mac. */
 export function terminalMouseUsesSelection(
   mouseReporting: boolean | undefined,
@@ -18,18 +26,22 @@ export class TerminalEndpointPresentation {
   mouseReporting: boolean | undefined;
   selectionDrag = false;
   private appliedMouseReporting: boolean | undefined;
-  private pendingFrame: {
-    text: string;
-    size?: { cols: number; rows: number };
-  } | null = null;
+  private pendingFrame: TerminalPresentationFrame | null = null;
+  displayedFrame: TerminalPresentationFrame | null = null;
   private writing = false;
   private disposed = false;
+  private generation = 0;
   private deferredSelection: (() => void) | null = null;
 
   constructor(
     private hasSelection: () => boolean,
     private write: (text: string, parsed: () => void) => void,
     private viewportSize?: () => { cols: number; rows: number },
+    private selectionHistory?: {
+      accepts: (frame: TerminalPresentationFrame) => boolean;
+      presented: (frame: TerminalPresentationFrame) => void;
+      reset: () => void;
+    },
   ) {}
 
   get selectionPending(): boolean {
@@ -59,10 +71,11 @@ export class TerminalEndpointPresentation {
     text: string,
     mouseReporting: boolean,
     size?: { cols: number; rows: number },
+    history?: TerminalHistoryViewport,
   ): void {
     if (this.disposed) return;
     this.mouseReporting = mouseReporting;
-    this.pendingFrame = { text, size };
+    this.pendingFrame = { text, size, history };
     this.flush();
   }
 
@@ -70,8 +83,10 @@ export class TerminalEndpointPresentation {
     if (
       this.disposed ||
       this.writing ||
-      this.selectionDrag ||
-      this.hasSelection()
+      ((this.selectionDrag || this.hasSelection()) &&
+        !(
+          this.pendingFrame && this.selectionHistory?.accepts(this.pendingFrame)
+        ))
     )
       return;
     const frame = this.pendingFrame;
@@ -100,9 +115,14 @@ export class TerminalEndpointPresentation {
     }
     if (prefix || frame !== null) {
       this.writing = true;
+      const generation = this.generation;
       this.write(prefix + (frame?.text ?? ""), () => {
         // reset() cannot cancel the physical xterm write. Its completion must
         // still release the gate for current intent, never restore old state.
+        if (frame && !this.disposed && generation === this.generation) {
+          this.displayedFrame = frame;
+          this.selectionHistory?.presented(frame);
+        }
         this.writing = false;
         if (this.disposed) return;
         const replay = this.deferredSelection;
@@ -115,10 +135,13 @@ export class TerminalEndpointPresentation {
 
   reset(): void {
     // Invalidate presentation/replay, not the outstanding parser operation.
+    this.generation++;
     this.deferredSelection = null;
     this.mouseReporting = undefined;
     this.appliedMouseReporting = undefined;
     this.pendingFrame = null;
+    this.displayedFrame = null;
+    this.selectionHistory?.reset();
     this.selectionDrag = false;
   }
 

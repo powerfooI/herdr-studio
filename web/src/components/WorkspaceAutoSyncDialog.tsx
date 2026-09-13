@@ -131,7 +131,7 @@ export function WorkspaceAutoSyncDialog({
           <code>origin/main</code> and merge it into this workspace&apos;s
           current branch. A dirty workspace is skipped, and conflicting merges
           are aborted automatically. Updates run only while this workspace is
-          open in the current Herdr Studio connection.
+          open in the current Roamgate connection.
         </p>
 
         {loading ? (

@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes Herdr Studio's current system contracts. See
+This document describes Roamgate's current system contracts. See
 [FEATURES.md](../FEATURES.md) for behavior and shortcuts and
 [DEPLOYMENT.md](./DEPLOYMENT.md) for supported configurations.
 
@@ -28,6 +28,12 @@ server-rendered output rather than reconstructing a PTY in the bridge.
 
 ## Terminal endpoints
 
+Interface text size uses root CSS zoom. Terminal surfaces cancel that zoom and
+scale xterm's font size directly, so cell measurements, selection, mouse input,
+and IME positioning stay in viewport CSS pixels. Radix popovers also cancel zoom
+around their positioning wrapper and reapply it to the content; their viewport
+limits convert back to content units.
+
 Backend selection uses the verified protocol allowlist, not browser version
 inference. See [Herdr compatibility](./DEPLOYMENT.md#herdr-compatibility) for
 versions, fallback configuration, and clipboard limitations.
@@ -38,6 +44,11 @@ Herdr 0.9.0 endpoints require generation 1 and the exact codecs
 capabilities. Attachment waits for the initial snapshot. Each terminal crops its
 pane from the server-rendered tab surface and sends semantic input to that pane;
 panes retain their shared layout dimensions.
+
+Incremental surface patches update only the named panes; other pane metadata
+remains available for cropping and cursor delivery. Each patch replaces the
+complete cursor state, including `null` to clear it. Pane topology changes
+require a full surface; patches naming unknown panes are discarded.
 
 `terminal.attach` carries pane content dimensions in `cols`/`rows`. When layout
 is available, the browser also supplies `surface_cols`/`surface_rows` for the
@@ -68,9 +79,22 @@ Mouse input uses zero-based pane-local cells, bounded to the crop. Only a press
 inside the pane acquires drag/release ownership; later positions clamp to its
 edge. Reporting changes and session closure cancel ownership. Mouse-aware apps
 receive semantic mouse events; ordinary wheels and explicit history shortcuts
-use history scrolling. During browser selection, presentation retains only the
-latest full repaint and resumes when selection clears. Pane/session changes
+use history scrolling. History requests coalesce wheel intent while one dispatch
+awaits both its RPC reply and viewport feedback; other terminal commands remain
+usable. A confirmed no-op reply needs no repaint. Completed movement is not
+rebased by later history growth. Surfaces have no request identity: a changed
+viewport can also be an external replacement, which becomes authoritative when
+no newer wheel intent is queued. Input, missing panes or scroll metrics, and
+session closure cancel queued history movement. During browser selection,
+presentation retains only the latest full repaint and resumes when selection clears. Pane/session changes
 retire pending presentation; selection replay cannot send application input.
+Endpoint frames include content revision and absolute viewport rows when the
+viewer receives the complete pane crop. Edge-drag selection requests overlapping
+history viewports one at a time, admitting only matching-revision repaints while
+retaining immutable copies of visited cells. Copy uses the complete absolute
+range, not just its visible highlight. Release, lost mouse-up, blur, resize, and
+attachment reset stop drag scrolling. Changed content or geometry stops further
+history requests and preserves the already captured selection.
 
 Input waits for attachment readiness and revalidates the attachment, session,
 and routing lease. It is never replayed into a detached or replaced terminal.
@@ -85,8 +109,16 @@ cannot replace newer browser selections. This is independent workspace/tab
 navigation, not independent native same-tab pane focus. Legacy navigation,
 topology mutations, and terminal dimensions remain shared.
 
+Active terminal selection and terminal clicks send `terminal.focus` through the
+attached shell's `pane.focus` endpoint so the tab surface supplies that pane's
+cursor. The browser restores its selection after split attachments become ready,
+but does not refocus on streaming frames or routine snapshots. Focus requests are
+serialized per browser across endpoint lanes, superseded queued selections are
+discarded, and attachment ownership and connection leases are rechecked before
+dispatch. Same-tab cursor ownership remains shared with other Herdr clients.
+
 Creation uses explicit context and `focus: false`, adopting returned IDs only
-while the initiating selection and connection lease remain current. Studio-only
+while the initiating selection and connection lease remain current. Roamgate-only
 `browser_source` identifies the source terminal, pane, tab, and workspace. The
 bridge validates attachment ownership and live topology, strips that field, and
 calls the advertised create method on the existing endpoint's serialized
@@ -144,11 +176,23 @@ groups do not represent a combined working tree. Changes describe checkout edits
 not proof that one agent produced them. Last step uses recorded activity snapshots,
 not attribution of arbitrary working-tree edits.
 
-Git resource keys use `worktree.gui_settings_key`, falling back to repository key
-plus normalized checkout path. Non-Git resources use workspace identity. All are
-connection-scoped. Workspaces sharing a checkout may share caches, but requests
-retain workspace/runtime leases and resource revisions: refresh/removal retires
+Git resource keys encode the endpoint-qualified repository identity
+(`worktree.gui_settings_key`) and normalized checkout path as a pair. The path
+separates linked checkouts; the repository identity separates SSH destinations
+when a saved connection is repointed. Missing or blank settings keys fall back
+to the trimmed repository key, which cannot distinguish endpoints on its own.
+Newly enriched identities do not inherit this fallback's stored state. Runtime
+generations are not part of persistent keys. Non-Git resources use workspace
+identity. All are connection-scoped.
+Workspaces sharing a checkout may share caches, but requests retain
+workspace/runtime leases and resource revisions: refresh/removal retires
 older prefetches. Tab/pane IDs do not own resource caches.
+
+Older repository-wide Inspector storage is not automatically migrated: its file
+selections, layout preferences, and review drafts do not identify their original
+checkout. The original browser storage is retained, while checkout-specific
+state starts fresh. Switching checkouts restores that checkout's saved selection
+or shows its file list when nothing has been selected.
 
 Inspector actions capture the originating workspace instead of consulting global
 focus when results arrive. A vanished workspace can rebind only to the same
@@ -187,9 +231,17 @@ Production builds embed the frontend and Bun runtime into one platform executabl
 users need neither Bun nor Node.js. Source builds use Bun and Vite. See
 [standalone builds](./DEPLOYMENT.md#build-a-standalone-executable).
 
+Roamgate has a separate release namespace: executable and package members,
+archive/checksum filenames, and manifest identity all use `roamgate`. Every
+release provides a manifest; missing or legacy metadata fails closed without
+an archive-discovery fallback. Publication checks require exactly the six
+platforms' Roamgate assets and prohibit legacy update aliases. Historical
+clients cannot discover Roamgate from their old Latest URLs; see the
+[manual transition contract](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
+
 ## Trust boundary
 
-Studio is a trusted single-user administration tool, not a sandbox or multi-user
+Roamgate is a trusted single-user administration tool, not a sandbox or multi-user
 permission system. Authenticated browsers can control terminals, change files,
 manage shared profiles, and execute trusted repository hooks. It provides neither
 TLS termination nor rate limiting; see [SECURITY.md](../SECURITY.md).

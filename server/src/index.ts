@@ -693,7 +693,7 @@ async function handleRpc(ws: ServerWebSocket<unknown>, raw: string) {
           control: {
             type: "pause_connection",
             reason:
-              "Another Herdr Studio client paused this connection. Resume when you want this browser to sync again.",
+              "Another Roamgate client paused this connection. Resume when you want this browser to sync again.",
           },
         }),
         "pause-other-client",

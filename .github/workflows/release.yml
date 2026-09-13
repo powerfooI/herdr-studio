@@ -82,9 +82,9 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           platform="${{ matrix.platform }}"
-          package_dir="herdr-gui-$platform"
-          versioned_archive="herdr-gui-v$version-$platform.tar.xz"
-          latest_archive="herdr-gui-$platform.tar.xz"
+          package_dir="roamgate-$platform"
+          versioned_archive="roamgate-v$version-$platform.tar.xz"
+          latest_archive="roamgate-$platform.tar.xz"
 
           for archive in "$versioned_archive" "$latest_archive"; do
             test -f "dist/$archive"
@@ -96,28 +96,28 @@ jobs:
             fi
           done
 
-          manifest="dist/herdr-gui-$platform.update.json"
+          manifest="dist/roamgate-$platform.update.json"
           test -f "$manifest"
           if command -v sha256sum >/dev/null 2>&1; then
             archive_digest="$(sha256sum "dist/$latest_archive" | awk '{ print $1 }')"
           else
             archive_digest="$(shasum -a 256 "dist/$latest_archive" | awk '{ print $1 }')"
           fi
-          expected_manifest="{\"schema\":1,\"name\":\"herdr-gui\",\"version\":\"$version\",\"platform\":\"$platform\",\"archive\":\"$latest_archive\",\"sha256\":\"$archive_digest\"}"
+          expected_manifest="{\"schema\":1,\"name\":\"roamgate\",\"version\":\"$version\",\"platform\":\"$platform\",\"archive\":\"$latest_archive\",\"sha256\":\"$archive_digest\"}"
           grep -Fx "$expected_manifest" "$manifest"
 
-          extract_dir="$RUNNER_TEMP/herdr-gui-release"
+          extract_dir="$RUNNER_TEMP/roamgate-release"
           mkdir -p "$extract_dir"
           tar -xJf "dist/$versioned_archive" -C "$extract_dir"
-          grep -Fx "herdr-gui $version $platform" "$extract_dir/$package_dir/VERSION"
-          binary_name="herdr-gui"
+          grep -Fx "roamgate $version $platform" "$extract_dir/$package_dir/VERSION"
+          binary_name="roamgate"
           case "$platform" in
-            windows-*) binary_name="herdr-gui.exe" ;;
+            windows-*) binary_name="roamgate.exe" ;;
           esac
           binary="$extract_dir/$package_dir/$binary_name"
           case "$platform" in
             linux-x64)
-              test "$("$binary" --version)" = "herdr-gui $version"
+              test "$("$binary" --version)" = "roamgate $version"
               ;;
             linux-arm64)
               file "$binary" | grep -Eq 'ELF 64-bit.*ARM aarch64'
@@ -137,10 +137,10 @@ jobs:
           esac
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: herdr-gui-${{ matrix.platform }}
+          name: roamgate-${{ matrix.platform }}
           path: |
-            dist/*.tar.xz*
-            dist/*.update.json
+            dist/roamgate-*.tar.xz*
+            dist/roamgate-*.update.json
           if-no-files-found: error
           retention-days: 7
 
@@ -157,15 +157,20 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: dist
+          pattern: roamgate-*
           merge-multiple: true
+      - name: Reject missing assets and legacy update aliases
+        run: node scripts/check-release-assets.mjs "${GITHUB_REF_NAME#v}"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME"
-          dist/*
-          scripts/install-herdr-gui.sh
+          dist/roamgate-*.tar.xz
+          dist/roamgate-*.tar.xz.sha256
+          dist/roamgate-*.update.json
+          scripts/install-roamgate.sh
           --verify-tag
           --latest
           --generate-notes
-          --title "Herdr Studio $GITHUB_REF_NAME"
+          --title "Roamgate $GITHUB_REF_NAME"

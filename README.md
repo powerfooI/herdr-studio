@@ -1,12 +1,20 @@
-# Herdr Studio
+# Roamgate
 
-A minimal **web client** for [Herdr](https://herdr.dev). It connects to a
-running Herdr server through its local socket API and provides a browser and PWA
-dashboard for workspaces, tabs, panes, terminals, agents, files, and diffs.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./site/assets/roamgate-lockup-on-charcoal.png" />
+  <img src="./site/assets/roamgate-lockup-charcoal.png" alt="Roamgate logo" width="400" />
+</picture>
 
-> **Note:** Herdr Studio was formerly named `herdr-gui`. The command-line
-> binary, release archives, and on-disk configuration paths still use the
-> `herdr-gui` name; only the product branding has changed.
+An independent, community-built **web and PWA client** for
+[Herdr](https://herdr.dev). Access terminals, inspect agent sessions, and review
+files and diffs from desktop or mobile. A running Herdr server is required.
+Roamgate is not affiliated with or endorsed by the Herdr project.
+
+> **Breaking change from Herdr Studio / herdr-gui:** install Roamgate manually.
+> Old clients cannot upgrade to Roamgate through their default update channel.
+> Existing processes and historical releases are left intact. Read the
+> [transition guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
+> before switching an existing service.
 
 ## Documentation
 
@@ -24,30 +32,26 @@ dashboard for workspaces, tabs, panes, terminals, agents, files, and diffs.
 
 ### Desktop
 
-[![Desktop workspace with a live terminal and session history][desktop-session]][desktop-session]
+[![Desktop workspace with live terminals and image changes][desktop-changes]][desktop-changes]
 
-Workspace terminal with live agent session history.
+Workspace terminals with changed files and image previews.
 
 <!-- markdownlint-disable MD033 -->
 
 <table width="100%">
   <thead>
     <tr>
-      <th width="33.33%" align="center">File explorer</th>
-      <th width="33.33%" align="center">Diff viewer</th>
-      <th width="33.33%" align="center">Full terminal</th>
+      <th width="50%" align="center">File explorer</th>
+      <th width="50%" align="center">Diff annotations</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-desktop-file-explorer.png"><img src="./docs/images/herdr-studio-desktop-file-explorer.png" alt="Desktop file explorer" width="100%" /></a>
+      <td width="50%" align="center" valign="top">
+        <a href="./docs/images/roamgate-desktop-files.png"><img src="./docs/images/roamgate-desktop-files.png" alt="Desktop file explorer" width="100%" /></a>
       </td>
-      <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-desktop-diff-viewer.png"><img src="./docs/images/herdr-studio-desktop-diff-viewer.png" alt="Desktop diff viewer" width="100%" /></a>
-      </td>
-      <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-desktop-terminal.png"><img src="./docs/images/herdr-studio-desktop-terminal.png" alt="Desktop terminal" width="100%" /></a>
+      <td width="50%" align="center" valign="top">
+        <a href="./docs/images/roamgate-desktop-annotations.png"><img src="./docs/images/roamgate-desktop-annotations.png" alt="Desktop diff annotations" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -66,13 +70,13 @@ Workspace terminal with live agent session history.
   <tbody>
     <tr>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-mobile-changed-files.png"><img src="./docs/images/herdr-studio-mobile-changed-files.png" alt="Mobile changed files viewer" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-changes.png"><img src="./docs/images/roamgate-mobile-changes.png" alt="Mobile changed files viewer" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-mobile-terminal.png"><img src="./docs/images/herdr-studio-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-terminal.png"><img src="./docs/images/roamgate-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-mobile-file-viewer.png"><img src="./docs/images/herdr-studio-mobile-file-viewer.png" alt="Mobile file viewer" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-files.png"><img src="./docs/images/roamgate-mobile-files.png" alt="Mobile file viewer" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -82,24 +86,31 @@ Workspace terminal with live agent session history.
 
 Click any screenshot to open the full-resolution image.
 
-[desktop-session]: ./docs/images/herdr-studio-desktop-session-history.png
+[desktop-changes]: ./docs/images/roamgate-desktop-changes.png
 
 ## Quick start
 
-Herdr must already be installed and running. Install the latest standalone
-Herdr Studio binary with:
+Need the existing Herdr Studio release? The legacy installer remains available;
+follow [historical installation](./docs/DEPLOYMENT.md#install-historical-herdr-studio)
+to install `herdr-gui` 0.6.2 instead of Roamgate.
+
+Herdr must already be installed and running. Unreleased checkouts require a
+[source build](./docs/DEPLOYMENT.md#build-a-standalone-executable) or
+[local plugin build and link](./docs/DEPLOYMENT.md#herdr-plugin); historical
+0.6.2 releases have no Roamgate assets. Once a Roamgate release is published as
+GitHub Latest, install its standalone binary with:
 
 ```bash
-# Leave empty for latest; set HERDR_GUI_VERSION=X.Y.Z for a specific version (no v prefix).
+# Leave empty for latest; set ROAMGATE_VERSION=X.Y.Z for a Roamgate version (no v prefix).
 curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh \
-  | HERDR_GUI_VERSION= sh
+  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh \
+  | ROAMGATE_VERSION= sh
 ```
 
 Make sure `~/.local/bin` is in `PATH`, then start the application:
 
 ```bash
-herdr-gui
+roamgate
 ```
 
 Open the URL printed by the process. On Windows, download the matching x64 or
@@ -112,14 +123,14 @@ user-service setup.
 
 ## Install as a PWA
 
-For day-to-day use, install Herdr Studio as a standalone web app after starting
-and authenticating with `herdr-gui`:
+For day-to-day use, install Roamgate as a standalone web app after starting
+and authenticating with `roamgate`:
 
 - **iPhone or iPad (Safari):** **Share** -> **Add to Home Screen**.
 - **macOS (Safari 17+):** **File** -> **Add to Dock**.
 - **Chrome or Edge:** choose **Install app** from the browser menu.
 
-The installed app still requires the `herdr-gui` process to be running and
+The installed app still requires the `roamgate` process to be running and
 reachable; PWA mode does not provide offline access.
 
 ## Development
@@ -141,7 +152,7 @@ validation commands and pull request guidelines.
 
 ## Security
 
-Herdr Studio can control terminal sessions and modify workspace files. Keep the
+Roamgate can control terminal sessions and modify workspace files. Keep the
 default loopback binding unless you understand the trust boundary. Read
 [SECURITY.md](./SECURITY.md) before exposing the service to another device.
 

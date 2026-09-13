@@ -69,3 +69,111 @@ export function moveAgentPane(
   next.splice(targetIndex + (position === "after" ? 1 : 0), 0, draggedPaneId);
   return next;
 }
+
+export const AGENT_LIST_PREFERENCES_STORAGE_KEY = "agentListPreferences.v1";
+export type AgentSort = "attention" | "manual" | "workspace";
+export type AgentGrouping = "none" | "status" | "workspace" | "agent";
+export type AgentListPreferences = { sort: AgentSort; grouping: AgentGrouping };
+
+export function parseAgentListPreferences(
+  raw: string | null,
+): AgentListPreferences {
+  let value: Partial<AgentListPreferences> = {};
+  try {
+    const parsed: unknown = JSON.parse(raw ?? "null");
+    if (parsed && typeof parsed === "object") value = parsed;
+  } catch {
+    // Use attention-first defaults for missing or malformed preferences.
+  }
+  return {
+    sort:
+      value.sort === "manual" || value.sort === "workspace"
+        ? value.sort
+        : "attention",
+    grouping:
+      value.grouping === "status" ||
+      value.grouping === "workspace" ||
+      value.grouping === "agent"
+        ? value.grouping
+        : "none",
+  };
+}
+
+const ATTENTION_STATUSES = [
+  "blocked",
+  "done",
+  "working",
+  "idle",
+  "unknown",
+] as const;
+
+export function agentAttentionPriority(status: string): number {
+  const index = ATTENTION_STATUSES.indexOf(
+    status.toLowerCase() as (typeof ATTENTION_STATUSES)[number],
+  );
+  return index < 0 ? ATTENTION_STATUSES.length - 1 : index;
+}
+
+export function sortAgentPanes<
+  T extends { pane_id: string; agent_status: string },
+>(
+  panes: readonly T[],
+  preferredPaneIds: readonly string[],
+  sort: AgentSort,
+): T[] {
+  if (sort === "workspace") return [...panes];
+  const ordered = orderAgentPanes(panes, preferredPaneIds);
+  return sort === "attention"
+    ? ordered.sort(
+        (left, right) =>
+          agentAttentionPriority(left.agent_status) -
+          agentAttentionPriority(right.agent_status),
+      )
+    : ordered;
+}
+
+export function groupOrderedAgentPanes<
+  T extends { workspace_id: string; agent?: string; agent_status: string },
+>(
+  panes: readonly T[],
+  grouping: AgentGrouping,
+  workspaceLabels: ReadonlyMap<string, string>,
+): { key: string; label: string; panes: T[] }[] {
+  const groups = new Map<string, { key: string; label: string; panes: T[] }>();
+  for (const pane of panes) {
+    const status =
+      ATTENTION_STATUSES[agentAttentionPriority(pane.agent_status)];
+    const key =
+      grouping === "workspace"
+        ? pane.workspace_id
+        : grouping === "agent"
+          ? pane.agent?.trim().toLowerCase() || "unknown"
+          : grouping === "status"
+            ? status
+            : "all";
+    const label =
+      grouping === "workspace"
+        ? (workspaceLabels.get(key) ?? key)
+        : grouping === "agent"
+          ? pane.agent?.trim() || "Unknown agent"
+          : grouping === "status"
+            ? {
+                blocked: "Blocked",
+                done: "Done",
+                idle: "Idle",
+                working: "Working",
+                unknown: "Unknown",
+              }[status]
+            : "All agents";
+    const group = groups.get(key);
+    if (group) group.panes.push(pane);
+    else groups.set(key, { key, label, panes: [pane] });
+  }
+  const result = [...groups.values()];
+  if (grouping === "status")
+    result.sort(
+      (left, right) =>
+        agentAttentionPriority(left.key) - agentAttentionPriority(right.key),
+    );
+  return result;
+}

@@ -1,16 +1,6 @@
 name: Deploy Pages
 
 on:
-    push:
-        branches: [main]
-        paths:
-            - ".github/workflows/pages.yml"
-            - "docs/images/herdr-studio-*.png"
-            - "docs/TUTORIAL.md"
-            - "package.json"
-            - "scripts/build-pages.ts"
-            - "scripts/pages-content*.ts"
-            - "site/**"
     workflow_dispatch:
 
 permissions:
@@ -34,12 +24,22 @@ jobs:
               with:
                   bun-version: "1.4.1"
                   no-cache: true
+            - name: Verify live Roamgate installer
+              run: |
+                  set -eu
+                  status=$(curl --fail --silent --show-error --location \
+                    --proto '=https' --proto-redir '=https' \
+                    --connect-timeout 10 --max-time 60 --output /dev/null \
+                    --write-out '%{http_code}' \
+                    https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh) \
+                    && [ "$status" = 200 ] \
+                    || { echo 'Publish a Roamgate release as Latest before dispatching Pages.' >&2; exit 1; }
             - name: Configure Pages
               uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
               with:
                   enablement: true
             - name: Test tutorial rendering and site references
-              run: bun test scripts/pages-content.test.ts
+              run: bun test scripts/pages-content.test.ts scripts/pages-workflow.test.ts
             - name: Build landing page and tutorial
               run: bun run build:site
             - name: Upload Pages artifact

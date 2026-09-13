@@ -339,6 +339,7 @@ function renderTerminalSnapshot() {
     return renderToStaticMarkup(
       React.createElement(TerminalView, {
         terminalTheme: terminalThemeFor("dark"),
+        uiScale: 100,
       }),
     );
   } finally {

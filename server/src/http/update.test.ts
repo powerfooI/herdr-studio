@@ -4,9 +4,7 @@ import {
   createUpdateHandlers,
   isSupervisorManagedEnvironment,
   normalizeUpdateBaseUrl,
-  parseUpdateChecksumFile,
   parseUpdateManifest,
-  parseUpdateVersionFile,
   resolveUpdateTarget,
   UPDATE_HTTP_IDLE_TIMEOUT_SECONDS,
 } from "./update";
@@ -15,15 +13,15 @@ import { shQuote } from "../utils/process-utils";
 const darwinRuntime = {
   platform: "darwin",
   arch: "arm64",
-  execPath: "/Applications/herdr-gui",
-  argv: ["bun", "/$bunfs/root/herdr-gui-darwin-arm64", "--port", "8781"],
+  execPath: "/Applications/roamgate",
+  argv: ["bun", "/$bunfs/root/roamgate-darwin-arm64", "--port", "8781"],
 };
 
 const linuxRuntime = {
   platform: "linux",
   arch: "x64",
-  execPath: "/opt/herdr-gui/herdr-gui",
-  argv: ["bun", "/$bunfs/root/herdr-gui-linux-x64", "--port", "8781"],
+  execPath: "/opt/roamgate/roamgate",
+  argv: ["bun", "/$bunfs/root/roamgate-linux-x64", "--port", "8781"],
 };
 
 const launchdEnvironment = {
@@ -47,12 +45,12 @@ function credentialBearingUpdateBaseUrl(): string {
 function updateManifest(
   version: string,
   platform: string,
-  archive = `herdr-gui-${platform}.tar.xz`,
+  archive = `roamgate-${platform}.tar.xz`,
   sha256 = updateSha256,
 ): string {
   return JSON.stringify({
     schema: 1,
-    name: "herdr-gui",
+    name: "roamgate",
     version,
     platform,
     archive,
@@ -75,30 +73,17 @@ function updateInstallRequest(headers: Record<string, string> = {}) {
 
 describe("update helpers", () => {
   test("keeps HTTP requests alive for the full update budget", () => {
-    expect(UPDATE_HTTP_IDLE_TIMEOUT_SECONDS * 1000).toBeGreaterThan(165000);
+    expect(UPDATE_HTTP_IDLE_TIMEOUT_SECONDS * 1000).toBeGreaterThan(135000);
     expect(UPDATE_HTTP_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
   });
 
-  test("parses VERSION files", () => {
-    expect(parseUpdateVersionFile("herdr-gui 0.2.6 linux-x64\n")).toEqual({
-      version: "0.2.6",
-      platform: "linux-x64",
-    });
-    expect(() => parseUpdateVersionFile("bad 0.2.6 linux-x64")).toThrow(
-      "invalid update VERSION file",
-    );
-    expect(() =>
-      parseUpdateVersionFile("herdr-gui 0.2.6 linux-x64 extra"),
-    ).toThrow("invalid update VERSION file");
-  });
-
-  test("parses bounded update manifests and binds checksum filenames", () => {
+  test("parses bounded Roamgate manifests and rejects legacy identities", () => {
     expect(parseUpdateManifest(updateManifest("0.2.17", "linux-x64"))).toEqual({
       schema: 1,
-      name: "herdr-gui",
+      name: "roamgate",
       version: "0.2.17",
       platform: "linux-x64",
-      archive: "herdr-gui-linux-x64.tar.xz",
+      archive: "roamgate-linux-x64.tar.xz",
       sha256: updateSha256,
     });
     expect(() => parseUpdateManifest("{}")).toThrow("invalid update manifest");
@@ -109,18 +94,13 @@ describe("update helpers", () => {
       "invalid update manifest",
     );
 
-    expect(
-      parseUpdateChecksumFile(
-        `${updateSha256}  herdr-gui-linux-x64.tar.xz\n`,
-        "herdr-gui-linux-x64.tar.xz",
-      ),
-    ).toBe(updateSha256);
-    expect(() =>
-      parseUpdateChecksumFile(
-        `${updateSha256}  ../../unrelated-file\n`,
-        "herdr-gui-linux-x64.tar.xz",
-      ),
-    ).toThrow("invalid update checksum file");
+    for (const legacy of ["herdr-gui", "herdr-studio"]) {
+      expect(() =>
+        parseUpdateManifest(
+          updateManifest("9.8.7", "linux-x64").replaceAll("roamgate", legacy),
+        ),
+      ).toThrow("invalid update manifest");
+    }
   });
 
   test("normalizes safe update base URLs without exposing credentials", () => {
@@ -160,27 +140,27 @@ describe("update helpers", () => {
   test("maps only published runtime architectures to update packages", () => {
     expect(resolveUpdateTarget("linux", "x64")).toEqual({
       platform: "linux-x64",
-      packageDir: "herdr-gui-linux-x64",
-      archiveName: "herdr-gui-linux-x64.tar.xz",
-      manifestName: "herdr-gui-linux-x64.update.json",
+      packageDir: "roamgate-linux-x64",
+      archiveName: "roamgate-linux-x64.tar.xz",
+      manifestName: "roamgate-linux-x64.update.json",
     });
     expect(resolveUpdateTarget("darwin", "arm64")).toEqual({
       platform: "darwin-arm64",
-      packageDir: "herdr-gui-darwin-arm64",
-      archiveName: "herdr-gui-darwin-arm64.tar.xz",
-      manifestName: "herdr-gui-darwin-arm64.update.json",
+      packageDir: "roamgate-darwin-arm64",
+      archiveName: "roamgate-darwin-arm64.tar.xz",
+      manifestName: "roamgate-darwin-arm64.update.json",
     });
     expect(resolveUpdateTarget("darwin", "x64")).toEqual({
       platform: "darwin-x64",
-      packageDir: "herdr-gui-darwin-x64",
-      archiveName: "herdr-gui-darwin-x64.tar.xz",
-      manifestName: "herdr-gui-darwin-x64.update.json",
+      packageDir: "roamgate-darwin-x64",
+      archiveName: "roamgate-darwin-x64.tar.xz",
+      manifestName: "roamgate-darwin-x64.update.json",
     });
     expect(resolveUpdateTarget("linux", "arm64")).toEqual({
       platform: "linux-arm64",
-      packageDir: "herdr-gui-linux-arm64",
-      archiveName: "herdr-gui-linux-arm64.tar.xz",
-      manifestName: "herdr-gui-linux-arm64.update.json",
+      packageDir: "roamgate-linux-arm64",
+      archiveName: "roamgate-linux-arm64.tar.xz",
+      manifestName: "roamgate-linux-arm64.update.json",
     });
     expect(resolveUpdateTarget("win32", "x64")).toBeNull();
   });
@@ -236,13 +216,13 @@ describe("update helpers", () => {
       can_auto_update: true,
       platform: "darwin-arm64",
       source_url:
-        "https://github.com/powerfooI/herdr-studio/releases/latest/download/herdr-gui-darwin-arm64.tar.xz",
+        "https://github.com/powerfooI/herdr-studio/releases/latest/download/roamgate-darwin-arm64.tar.xz",
     });
     expect(commands).toHaveLength(1);
     expect(commands[0]).toContain("--max-filesize 4096");
-    expect(commands[0]).toContain("herdr-gui-darwin-arm64.update.json");
+    expect(commands[0]).toContain("roamgate-darwin-arm64.update.json");
     expect(commands[0]).not.toContain(".tar.xz");
-    expect(commands[0]).not.toContain("herdr-gui-linux-x64");
+    expect(commands[0]).not.toContain("roamgate-linux-x64");
   });
 
   test("keeps Linux x64 update checks on the Linux archive", async () => {
@@ -269,11 +249,11 @@ describe("update helpers", () => {
       can_auto_update: true,
       platform: "linux-x64",
       source_url:
-        "https://github.com/powerfooI/herdr-studio/releases/latest/download/herdr-gui-linux-x64.tar.xz",
+        "https://github.com/powerfooI/herdr-studio/releases/latest/download/roamgate-linux-x64.tar.xz",
     });
-    expect(commands[0]).toContain("herdr-gui-linux-x64.update.json");
+    expect(commands[0]).toContain("roamgate-linux-x64.update.json");
     expect(commands[0]).not.toContain(".tar.xz");
-    expect(commands[0]).not.toContain("herdr-gui-darwin-arm64");
+    expect(commands[0]).not.toContain("roamgate-darwin-arm64");
   });
 
   test("uses a configured release mirror", async () => {
@@ -300,10 +280,10 @@ describe("update helpers", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       source_url:
-        "https://downloads.example.com/herdr/herdr-gui-linux-x64.tar.xz",
+        "https://downloads.example.com/herdr/roamgate-linux-x64.tar.xz",
     });
     expect(commands[0]).toContain(
-      "https://downloads.example.com/herdr/herdr-gui-linux-x64.update.json",
+      "https://downloads.example.com/herdr/roamgate-linux-x64.update.json",
     );
   });
 
@@ -334,7 +314,7 @@ describe("update helpers", () => {
     expect(first.headers.get("cache-control")).toBe("no-store");
   });
 
-  test("falls back to bounded legacy release metadata", async () => {
+  test("missing metadata fails closed without any archive fallback", async () => {
     const commands: string[][] = [];
     const handlers = createUpdateHandlers({
       appVersion: "0.2.16",
@@ -346,13 +326,13 @@ describe("update helpers", () => {
         if (commands.length === 2) {
           return {
             code: 0,
-            stdout: "herdr-gui 0.2.17 linux-x64\n",
+            stdout: "roamgate 0.2.17 linux-x64\n",
             stderr: "",
           };
         }
         return {
           code: 0,
-          stdout: `${updateSha256}  herdr-gui-linux-x64.tar.xz\n`,
+          stdout: `${updateSha256}  roamgate-linux-x64.tar.xz\n`,
           stderr: "",
         };
       },
@@ -362,17 +342,13 @@ describe("update helpers", () => {
     });
 
     const response = await handlers.handleUpdateCheck(updateCheckRequest());
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({
-      latest_version: "0.2.17",
-      update_available: true,
-      platform: "linux-x64",
+      error: "manifest not found",
     });
-    expect(commands).toHaveLength(3);
-    expect(commands[0].join(" ")).toContain(".update.json");
-    expect(commands[1][2]).toContain("tar -xJOf");
-    expect(commands[2].join(" ")).toContain(".tar.xz.sha256");
-    expect(commands[2].join(" ")).toContain("--max-filesize 4096");
+    expect(commands).toHaveLength(1);
+    expect(commands[0].join(" ")).toContain("roamgate-linux-x64.update.json");
+    expect(commands[0].join(" ")).not.toContain(".tar.xz");
   });
 
   test("rejects malformed manifests instead of treating them as legacy", async () => {
@@ -608,24 +584,24 @@ describe("update helpers", () => {
       restart_required: true,
       restart_scheduled: true,
       restart_mode: "supervisor",
-      target_path: "/Applications/herdr-gui",
+      target_path: "/Applications/roamgate",
     });
     expect(commands).toHaveLength(2);
     const installCommand = commands[1][2];
-    expect(installCommand).toContain("herdr-gui-darwin-arm64.tar.xz");
+    expect(installCommand).toContain("roamgate-darwin-arm64.tar.xz");
     expect(installCommand).not.toContain(".sha256");
     expect(installCommand).toContain(`expected_sha256='${updateSha256}'`);
     expect(installCommand).toContain('shasum -a 256 "$archive"');
     expect(installCommand).toContain('sha256sum "$archive"');
     expect(installCommand).toContain('version_file="$package_dir/VERSION"');
-    expect(installCommand).toContain('binary="$package_dir/herdr-gui"');
+    expect(installCommand).toContain('binary="$package_dir/roamgate"');
     expect(installCommand).toContain('tar -xJf "$archive" -C "$tmp"');
-    expect(installCommand).toContain("'herdr-gui-darwin-arm64/VERSION'");
-    expect(installCommand).toContain("'herdr-gui-darwin-arm64/herdr-gui'");
-    expect(installCommand).toContain("target='/Applications/herdr-gui'");
+    expect(installCommand).toContain("'roamgate-darwin-arm64/VERSION'");
+    expect(installCommand).toContain("'roamgate-darwin-arm64/roamgate'");
+    expect(installCommand).toContain("target='/Applications/roamgate'");
     expect(installCommand).toContain('backup="$target.previous"');
     expect(installCommand).toContain('mktemp "$target_dir/.$target_base.new.');
-    expect(installCommand).not.toContain("herdr-gui-linux-x64");
+    expect(installCommand).not.toContain("roamgate-linux-x64");
     expect(
       Bun.spawnSync(["sh", "-n"], {
         stdin: Buffer.from(installCommand),
@@ -789,7 +765,10 @@ describe("update helpers", () => {
         throw new Error("should not run");
       },
       shQuote,
-      environment: { HERDR_GUI_DISABLE_UPDATE_CHECK: "1" },
+      environment: {
+        ROAMGATE_DISABLE_UPDATE_CHECK: "1",
+        HERDR_GUI_DISABLE_UPDATE_CHECK: "0",
+      },
     });
     const response = await handlers.handleUpdateCheck(updateCheckRequest());
     expect(response.status).toBe(200);
@@ -797,7 +776,8 @@ describe("update helpers", () => {
       current_version: "0.2.6",
       update_available: false,
       can_auto_update: false,
-      reason: "Update checks are disabled by HERDR_GUI_DISABLE_UPDATE_CHECK.",
+      reason:
+        "Update checks are disabled by ROAMGATE_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
     });
   });
 

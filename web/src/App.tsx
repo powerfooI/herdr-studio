@@ -168,6 +168,7 @@ const LazyTerminalView = lazyWithReload("terminal-view", () =>
 type TerminalViewProps = {
   paneId?: string;
   terminalTheme: ITheme;
+  uiScale: number;
   showMobileKeys?: boolean;
   mobileShortcuts?: MobileTerminalShortcutRows;
   mobileSideShortcuts?: MobileTerminalSideShortcuts;
@@ -237,6 +238,7 @@ type MobileView = "workspaces" | "session" | InspectorView;
 type OpenInspectorOptions = {
   entry?: FileExplorerEntry;
   path?: string;
+  fragment?: string;
   initialDirectory?: string;
   originPaneId?: string;
   focusInspector?: boolean;
@@ -779,6 +781,7 @@ function resizeTargetForSplit(
 // the old full terminal view.
 function TerminalPaneLayout({
   terminalTheme,
+  uiScale,
   mobileShortcuts,
   mobileSideShortcuts,
   composerOpen,
@@ -788,6 +791,7 @@ function TerminalPaneLayout({
   onOpenWorkspaceFile,
 }: {
   terminalTheme: ITheme;
+  uiScale: number;
   mobileShortcuts: MobileTerminalShortcutRows;
   mobileSideShortcuts: MobileTerminalSideShortcuts;
   composerOpen: boolean;
@@ -837,6 +841,7 @@ function TerminalPaneLayout({
       <TerminalView
         key={mountKeyForPane(activePaneId)}
         terminalTheme={terminalTheme}
+        uiScale={uiScale}
         mobileShortcuts={mobileShortcuts}
         mobileSideShortcuts={mobileSideShortcuts}
         composerOpen={composerOpen}
@@ -892,6 +897,7 @@ function TerminalPaneLayout({
           key={mountKeyForPane(activePaneId)}
           paneId={activePaneId}
           terminalTheme={terminalTheme}
+          uiScale={uiScale}
           mobileShortcuts={mobileShortcuts}
           mobileSideShortcuts={mobileSideShortcuts}
           composerOpen={composerOpen}
@@ -996,6 +1002,7 @@ function TerminalPaneLayout({
               key={mountKeyForPane(layoutPane.pane_id)}
               paneId={layoutPane.pane_id}
               terminalTheme={terminalTheme}
+              uiScale={uiScale}
               showMobileKeys={isActive}
               mobileShortcuts={mobileShortcuts}
               mobileSideShortcuts={mobileSideShortcuts}
@@ -1288,11 +1295,12 @@ export default function App() {
     });
   }, [mobile]);
   const loadInspectorFilePreview = useCallback(
-    (workspaceId: string, entry: FileExplorerEntry) => {
+    (workspaceId: string, entry: FileExplorerEntry, fragment?: string) => {
       const requestId = fileQuickOpenRequestRef.current + 1;
       fileQuickOpenRequestRef.current = requestId;
       setActiveFilePreview({
         entry,
+        fragment,
         preview: null,
         loading: true,
         error: null,
@@ -1310,6 +1318,7 @@ export default function App() {
           }
           setActiveFilePreview({
             entry,
+            fragment,
             preview,
             loading: false,
             error: null,
@@ -1324,6 +1333,7 @@ export default function App() {
           }
           setActiveFilePreview({
             entry,
+            fragment,
             preview: null,
             loading: false,
             error: error instanceof Error ? error.message : String(error),
@@ -1431,6 +1441,7 @@ export default function App() {
           ? readResourceFileSelection(localStorage, scope)
           : undefined);
       if (view === "files" && !selectedPath) {
+        fileQuickOpenRequestRef.current += 1;
         setActiveFilePreview(emptyActiveFilePreviewSelection());
       }
       if (view !== "files" || !selectedPath) return;
@@ -1446,7 +1457,7 @@ export default function App() {
             selectedPath.split("/").filter(Boolean).pop()?.startsWith(".") ??
             false,
         } satisfies FileExplorerEntry);
-      loadInspectorFilePreview(workspace.workspace_id, entry);
+      loadInspectorFilePreview(workspace.workspace_id, entry, options.fragment);
     },
     [
       commitInspectorState,
@@ -1462,11 +1473,17 @@ export default function App() {
     [openInspector],
   );
   const openFileExplorerFile = useCallback(
-    (workspaceId: string, entry: FileExplorerEntry, originPaneId?: string) =>
+    (
+      workspaceId: string,
+      entry: FileExplorerEntry,
+      originPaneId?: string,
+      fragment?: string,
+    ) =>
       openInspector("files", workspaceId, {
         entry,
         path: entry.path,
         originPaneId,
+        fragment,
       }),
     [openInspector],
   );
@@ -2465,6 +2482,7 @@ export default function App() {
   const clearInspectorDetail = () => {
     const current = inspectorStateRef.current;
     if (current?.view === "files") {
+      fileQuickOpenRequestRef.current += 1;
       setActiveFilePreview(emptyActiveFilePreviewSelection());
     } else {
       setActiveDiff(emptyActiveDiffSelection());
@@ -2576,8 +2594,15 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-start">
           <div className="brand">
-            <img className="logo" src="/herdr-icon.png" alt="Herdr" />
-            <span className="brand-title">Studio</span>
+            <img
+              className="logo"
+              src="/roamgate-mark-48.png"
+              srcSet="/roamgate-mark-48.png 2x, /roamgate-mark-72.png 3x"
+              width={24}
+              height={24}
+              alt=""
+            />
+            <span className="brand-title">Roamgate</span>
             <span className="brand-version">v{packageJson.version}</span>
           </div>
           <ConnectionSwitcher />
@@ -2798,7 +2823,7 @@ export default function App() {
               <ToastMark kind="info" loading={s.updateInstalling} />
               <div className="toast-content">
                 <strong>
-                  Herdr Studio {s.updateInfo.latest_version} is available
+                  Roamgate {s.updateInfo.latest_version} is available
                 </strong>
                 <p>
                   Current {s.updateInfo.current_version}
@@ -2929,6 +2954,7 @@ export default function App() {
             <div className="workspace-terminal-surface">
               <TerminalPaneLayout
                 terminalTheme={terminalTheme}
+                uiScale={uiScale}
                 mobileShortcuts={mobileTerminalShortcuts}
                 mobileSideShortcuts={mobileTerminalSideShortcuts}
                 composerOpen={terminalComposerOpen}
@@ -2975,6 +3001,7 @@ export default function App() {
                     workspace={inspectorWorkspace}
                     historyPane={inspectorHistoryPane}
                     fileSelection={activeFilePreview}
+                    previewRequestRef={fileQuickOpenRequestRef}
                     diffSelection={activeDiff}
                     connectionClient={connectionClient}
                     onFileSelectionChange={(selection) =>
@@ -2990,6 +3017,22 @@ export default function App() {
                       )
                     }
                     onOpenDiffFile={openDiffFileInExplorer}
+                    onOpenDocument={(path, fragment) => {
+                      if (inspectorWorkspace)
+                        openFileExplorerFile(
+                          inspectorWorkspace.workspace_id,
+                          {
+                            name: path.split("/").pop() ?? path,
+                            path,
+                            type: "file",
+                            size: 0,
+                            mtime_ms: 0,
+                            hidden: false,
+                          },
+                          undefined,
+                          fragment,
+                        );
+                    }}
                     onViewChange={setInspectorView}
                     onDockChange={setInspectorDock}
                     onExpandedChange={setInspectorExpanded}

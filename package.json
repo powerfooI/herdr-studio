@@ -1,8 +1,8 @@
 {
-  "name": "herdr-studio",
+  "name": "roamgate",
   "private": true,
   "version": "0.6.2",
-  "description": "Herdr Studio: a web client for Herdr (local socket bridge + React dashboard).",
+  "description": "Roamgate: an independent community web and PWA client for Herdr.",
   "license": "MIT",
   "author": "Arthur",
   "homepage": "https://powerfooI.github.io/herdr-studio/",
@@ -52,7 +52,7 @@
     "precommit": "bun run format:check && bun run lint && bun run typecheck && bun run test",
     "install-hooks": "git config core.hooksPath .githooks",
     "clean:bun-build": "find server -maxdepth 1 -name '*.bun-build' -exec rm -rf {} +",
-    "clean": "rm -rf web/dist server/public server/src/public-files.gen.ts server/herdr-gui server/herdr-gui-* && bun run clean:bun-build",
+    "clean": "rm -rf web/dist server/public server/src/public-files.gen.ts server/roamgate server/roamgate.exe server/roamgate-* server/herdr-gui server/herdr-gui-* && bun run clean:bun-build",
     "start:server": "cd server && bun run src/index.ts"
   },
   "devDependencies": {

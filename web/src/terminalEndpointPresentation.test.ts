@@ -347,3 +347,81 @@ describe("endpoint selection presentation", () => {
     }
   });
 });
+
+describe("endpoint history selection repaints", () => {
+  test("admits requested history frames, restores highlighting after parsing, and freezes output", () => {
+    let selecting = false;
+    let allow = false;
+    const writes: string[] = [];
+    const shown: number[] = [];
+    const presentation = new TerminalEndpointPresentation(
+      () => selecting,
+      (text, parsed) => {
+        writes.push(text);
+        parsed();
+      },
+      () => ({ cols: 10, rows: 3 }),
+      {
+        accepts: (frame) => allow && frame.history?.revision === 2,
+        presented: (frame) => {
+          if (selecting) shown.push(frame.history!.top);
+          allow = false;
+        },
+        reset: () => {},
+      },
+    );
+    const history = { revision: 2, top: 0, total: 30, cols: 10, rows: 3 };
+    presentation.update("initial", false, { cols: 10, rows: 3 }, history);
+    selecting = true;
+    presentation.selectionDrag = true;
+    presentation.update(
+      "unsolicited",
+      false,
+      { cols: 10, rows: 3 },
+      { ...history, top: 2 },
+    );
+    expect(writes).toHaveLength(1);
+    allow = true;
+    presentation.flush();
+    expect(shown).toEqual([2]);
+    expect(presentation.displayedFrame?.history?.top).toBe(2);
+    presentation.update(
+      "new output",
+      false,
+      { cols: 10, rows: 3 },
+      { ...history, revision: 4 },
+    );
+    expect(writes).toHaveLength(2);
+    selecting = false;
+    presentation.selectionDrag = false;
+    presentation.flush();
+    expect(writes[writes.length - 1]).toBe("new output");
+  });
+
+  test("reset during parsing cannot restore stale history coordinates", () => {
+    let parsed!: () => void;
+    const shown: unknown[] = [];
+    const presentation = new TerminalEndpointPresentation(
+      () => false,
+      (_text, done) => {
+        parsed = done;
+      },
+      undefined,
+      {
+        accepts: () => false,
+        presented: (frame) => shown.push(frame),
+        reset: () => {},
+      },
+    );
+    presentation.update(
+      "old terminal",
+      false,
+      { cols: 10, rows: 3 },
+      { revision: 2, top: 10, total: 30, cols: 10, rows: 3 },
+    );
+    presentation.reset();
+    parsed();
+    expect(presentation.displayedFrame).toBeNull();
+    expect(shown).toEqual([]);
+  });
+});

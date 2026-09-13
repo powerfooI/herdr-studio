@@ -230,7 +230,7 @@ export function ConfigMenu({
           >
             <div className="config-summary">
               <div>
-                <strong>Herdr Studio</strong>
+                <strong>Roamgate</strong>
                 <span>Version {APP_VERSION}</span>
               </div>
               <span
@@ -354,6 +354,7 @@ export function ConfigMenu({
               <ConfigMenuItem
                 icon={<SquareTerminal size={15} />}
                 label="Terminal theme"
+                className="config-menu-item-row"
                 description={`Dark: ${
                   resolveTerminalThemeDefinition(
                     "dark",

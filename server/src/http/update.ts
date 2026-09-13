@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { roamgateEnv } from "../config/environment";
 
 type RunProcessWithCodeTimeout = (
   argv: string[],
@@ -23,7 +24,7 @@ export interface UpdateTarget {
 
 export interface UpdateManifest {
   schema: 1;
-  name: "herdr-gui";
+  name: "roamgate";
   version: string;
   platform: string;
   archive: string;
@@ -42,15 +43,10 @@ const DEFAULT_UPDATE_BASE_URL =
 const UPDATE_METADATA_MAX_BYTES = 4096;
 const UPDATE_CHECK_CACHE_MS = 5 * 60 * 1000;
 const UPDATE_CHECK_TIMEOUT_MS = 15000;
-const UPDATE_LEGACY_CHECK_REQUESTS = 3;
 const UPDATE_INSTALL_TIMEOUT_MS = 120000;
 const UPDATE_CONFIRMATION_HEADER = "x-herdr-gui-update";
 export const UPDATE_HTTP_IDLE_TIMEOUT_SECONDS =
-  Math.ceil(
-    (UPDATE_CHECK_TIMEOUT_MS * UPDATE_LEGACY_CHECK_REQUESTS +
-      UPDATE_INSTALL_TIMEOUT_MS) /
-      1000,
-  ) + 15;
+  Math.ceil((UPDATE_CHECK_TIMEOUT_MS + UPDATE_INSTALL_TIMEOUT_MS) / 1000) + 15;
 
 export function resolveUpdateTarget(
   platform: string,
@@ -63,9 +59,9 @@ export function resolveUpdateTarget(
   if (updatePlatform === undefined) return null;
   return {
     platform: updatePlatform,
-    packageDir: `herdr-gui-${updatePlatform}`,
-    archiveName: `herdr-gui-${updatePlatform}.tar.xz`,
-    manifestName: `herdr-gui-${updatePlatform}.update.json`,
+    packageDir: `roamgate-${updatePlatform}`,
+    archiveName: `roamgate-${updatePlatform}.tar.xz`,
+    manifestName: `roamgate-${updatePlatform}.update.json`,
   };
 }
 
@@ -85,26 +81,6 @@ function parsedVersion(value: string): ParsedVersion | null {
   };
 }
 
-export function parseUpdateVersionFile(text: string): {
-  version: string;
-  platform: string;
-} {
-  const fields = text.trim().split(/\s+/);
-  const [name, version, platform] = fields;
-  if (
-    Buffer.byteLength(text) > 256 ||
-    fields.length !== 3 ||
-    name !== "herdr-gui" ||
-    !version ||
-    !parsedVersion(version) ||
-    !platform ||
-    !/^[a-z0-9]+-[a-z0-9]+$/.test(platform)
-  ) {
-    throw new Error("invalid update VERSION file");
-  }
-  return { version, platform };
-}
-
 export function parseUpdateManifest(text: string): UpdateManifest {
   if (Buffer.byteLength(text) > UPDATE_METADATA_MAX_BYTES) {
     throw new Error("invalid update manifest");
@@ -121,13 +97,13 @@ export function parseUpdateManifest(text: string): UpdateManifest {
   const manifest = value as Record<string, unknown>;
   if (
     manifest.schema !== 1 ||
-    manifest.name !== "herdr-gui" ||
+    manifest.name !== "roamgate" ||
     typeof manifest.version !== "string" ||
     !parsedVersion(manifest.version) ||
     typeof manifest.platform !== "string" ||
     !/^[a-z0-9]+-[a-z0-9]+$/.test(manifest.platform) ||
     typeof manifest.archive !== "string" ||
-    !/^herdr-gui-[a-z0-9-]+\.tar\.xz$/.test(manifest.archive) ||
+    !/^roamgate-[a-z0-9-]+\.tar\.xz$/.test(manifest.archive) ||
     typeof manifest.sha256 !== "string" ||
     !/^[0-9a-fA-F]{64}$/.test(manifest.sha256)
   ) {
@@ -135,30 +111,12 @@ export function parseUpdateManifest(text: string): UpdateManifest {
   }
   return {
     schema: 1,
-    name: "herdr-gui",
+    name: "roamgate",
     version: manifest.version,
     platform: manifest.platform,
     archive: manifest.archive,
     sha256: manifest.sha256.toLowerCase(),
   };
-}
-
-export function parseUpdateChecksumFile(
-  text: string,
-  archiveName: string,
-): string {
-  if (Buffer.byteLength(text) > UPDATE_METADATA_MAX_BYTES) {
-    throw new Error("invalid update checksum file");
-  }
-  const lines = text.trim().split(/\r?\n/);
-  const match =
-    lines.length === 1
-      ? lines[0].match(/^([0-9a-fA-F]{64})[ \t]+\*?(\S+)$/)
-      : null;
-  if (!match || match[2] !== archiveName) {
-    throw new Error("invalid update checksum file");
-  }
-  return match[1].toLowerCase();
 }
 
 export function normalizeUpdateBaseUrl(value?: string): string {
@@ -231,7 +189,7 @@ export function compareVersion(a: string, b: string): number {
 export function isSupervisorManagedEnvironment(
   environment: Record<string, string | undefined>,
 ): boolean {
-  const override = environment.HERDR_GUI_RESTART_SUPERVISOR;
+  const override = roamgateEnv("RESTART_SUPERVISOR", environment);
   if (override === "1") return true;
   if (override === "0") return false;
   if (environment.INVOCATION_ID) return true;
@@ -272,7 +230,7 @@ export function createUpdateHandlers({
   let updateBaseUrlError: Error | null = null;
   try {
     updateBaseUrlValue = normalizeUpdateBaseUrl(
-      environment.HERDR_GUI_UPDATE_BASE_URL,
+      roamgateEnv("UPDATE_BASE_URL", environment),
     );
   } catch (error) {
     updateBaseUrlError = error as Error;
@@ -412,53 +370,11 @@ export function createUpdateHandlers({
       ],
       UPDATE_CHECK_TIMEOUT_MS,
     );
-    if (manifestResult.code === 0) {
-      return validateUpdateManifest(parseUpdateManifest(manifestResult.stdout));
-    }
-    if (manifestResult.code !== 22) {
+    // Every Roamgate release has a manifest. Never probe legacy archives.
+    if (manifestResult.code !== 0) {
       throw processFailure(manifestResult, "update manifest download");
     }
-
-    // Releases predating the lightweight manifest remain updateable. This path
-    // is intentionally a compatibility fallback; new releases never need to
-    // download a complete archive merely to discover its version.
-    const versionPath = `${updateTarget.packageDir}/VERSION`;
-    const legacyCommand =
-      `curl ${curlTransportCommand()} -fsSL ${shQuote(updateArchiveUrl())} | ` +
-      `tar -xJOf - ${shQuote(versionPath)}`;
-    const versionResult = await runProcessWithCodeTimeout(
-      ["sh", "-c", legacyCommand],
-      UPDATE_CHECK_TIMEOUT_MS,
-    );
-    if (versionResult.code !== 0) {
-      throw processFailure(versionResult, "legacy update check");
-    }
-    const version = parseUpdateVersionFile(versionResult.stdout);
-    const checksumResult = await runProcessWithCodeTimeout(
-      [
-        "curl",
-        ...curlTransportArgs(),
-        "-fsSL",
-        "--max-filesize",
-        String(UPDATE_METADATA_MAX_BYTES),
-        `${updateArchiveUrl()}.sha256`,
-      ],
-      UPDATE_CHECK_TIMEOUT_MS,
-    );
-    if (checksumResult.code !== 0) {
-      throw processFailure(checksumResult, "legacy checksum download");
-    }
-    return validateUpdateManifest({
-      schema: 1,
-      name: "herdr-gui",
-      version: version.version,
-      platform: version.platform,
-      archive: updateTarget.archiveName,
-      sha256: parseUpdateChecksumFile(
-        checksumResult.stdout,
-        updateTarget.archiveName,
-      ),
-    });
+    return validateUpdateManifest(parseUpdateManifest(manifestResult.stdout));
   }
 
   async function readLatestUpdateManifest(
@@ -499,12 +415,13 @@ export function createUpdateHandlers({
         ...sourceDetails(),
       };
     }
-    if (environment.HERDR_GUI_DISABLE_UPDATE_CHECK === "1") {
+    if (roamgateEnv("DISABLE_UPDATE_CHECK", environment) === "1") {
       return {
         current_version: appVersion,
         update_available: false,
         can_auto_update: false,
-        reason: "Update checks are disabled by HERDR_GUI_DISABLE_UPDATE_CHECK.",
+        reason:
+          "Update checks are disabled by ROAMGATE_DISABLE_UPDATE_CHECK or HERDR_GUI_DISABLE_UPDATE_CHECK.",
         platform: updateTarget.platform,
         ...sourceDetails(),
       };
@@ -599,7 +516,7 @@ export function createUpdateHandlers({
 
       const command = `
 set -eu
-tmp="$(mktemp -d "\${TMPDIR:-/tmp}/herdr-gui-update.XXXXXX")"
+tmp="$(mktemp -d "\${TMPDIR:-/tmp}/roamgate-update.XXXXXX")"
 target=${shQuote(capability.targetPath)}
 target_tmp=""
 backup_tmp=""
@@ -635,10 +552,10 @@ if [ "$actual_sha256" != "$expected_sha256" ]; then
 fi
 tar -xJf "$archive" -C "$tmp" \
   ${shQuote(`${updateTarget.packageDir}/VERSION`)} \
-  ${shQuote(`${updateTarget.packageDir}/herdr-gui`)}
+  ${shQuote(`${updateTarget.packageDir}/roamgate`)}
 package_dir="$tmp/${updateTarget.packageDir}"
 version_file="$package_dir/VERSION"
-binary="$package_dir/herdr-gui"
+binary="$package_dir/roamgate"
 if [ ! -d "$package_dir" ] || [ -L "$package_dir" ] || \
    [ ! -f "$version_file" ] || [ -L "$version_file" ] || \
    [ ! -f "$binary" ] || [ -L "$binary" ] || [ ! -x "$binary" ]; then
@@ -651,7 +568,7 @@ actual_version=""
 actual_platform=""
 extra_version_field=""
 read -r package_name actual_version actual_platform extra_version_field < "$version_file"
-if [ "$package_name" != "herdr-gui" ] || \
+if [ "$package_name" != "roamgate" ] || \
    [ "$actual_version" != "$expected_version" ] || \
    [ "$actual_platform" != ${shQuote(updateTarget.platform)} ] || \
    [ -n "$extra_version_field" ]; then
@@ -659,7 +576,7 @@ if [ "$package_name" != "herdr-gui" ] || \
   exit 1
 fi
 binary_version="$("$binary" --version)"
-if [ "$binary_version" != "herdr-gui $expected_version" ]; then
+if [ "$binary_version" != "roamgate $expected_version" ]; then
   echo "downloaded binary version does not match update manifest" >&2
   exit 1
 fi
