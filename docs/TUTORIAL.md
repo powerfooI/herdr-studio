@@ -36,7 +36,7 @@ Your browser / installed PWA
           |
           | HTTP + WebSocket
           v
-Roamgate (the command is still herdr-gui)
+Roamgate (command: roamgate)
           |
           | Herdr control and terminal-render sockets
           v
@@ -51,6 +51,11 @@ for you.
 Closing the browser does not close Herdr's terminals. Work can continue while
 the host, Herdr, and task processes remain running. That does not protect a
 task from host sleep, shutdown, or a process exiting.
+
+The plugin/service names below describe the current source build. Published
+0.7.0 still uses legacy identities; follow the
+[migration guide](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
+before changing an existing service or plugin registration.
 
 ### Open your first workspace: about 5 minutes
 
@@ -376,7 +381,7 @@ combine them, but start with the hop you actually need.
    is effectively terminal and file access as the user running Roamgate.
 2. **The current implementation skips built-in authentication for listeners
    configured as `127.0.0.1`, `localhost`, or `::1`, even with
-   `HERDR_GUI_PASSWORD` set.** Forwarding one of these listeners makes the
+   `ROAMGATE_PASSWORD` set.** Forwarding one of these listeners makes the
    outer tunnel or proxy the access boundary. There is no extra Roamgate
    password gate.
 3. Prefer HTTPS or a trusted encrypted tunnel, and restrict listener addresses
@@ -449,8 +454,8 @@ the current PowerShell directory. Leave this terminal running Roamgate.
 > only if you understand and accept this boundary.
 
 **Already using a user service?** Edit
-`~/.config/herdr-gui/herdr-gui.env` on Unix or
-`%APPDATA%\herdr-gui\herdr-gui.env` on Windows. Preserve other necessary
+`~/.config/roamgate/roamgate.env` on Unix or
+`%APPDATA%\roamgate\roamgate.env` on Windows. Preserve other necessary
 settings, set `HOST` to `127.0.0.1`, and set `PORT` to `8787`. Changing from a
 non-loopback listener to loopback removes the existing token or password login
 gate; the Tailscale policy above must take over remote admission. The config
@@ -466,7 +471,7 @@ roamgate service restart
 **Plugin installation:**
 
 ```bash
-herdr plugin action invoke herdr.studio.restart
+herdr plugin action invoke roamgate.restart
 ```
 
 Plugin actions run asynchronously. Confirm the restart in the plugin panel

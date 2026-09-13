@@ -69,7 +69,7 @@ async function run() {
   const root = createRoot(rootElement);
   flushSync(() => root.render(<Harness />));
   await settle();
-  click("Duplicate Herdr Dark");
+  click("Duplicate Roamgate Dark");
   await settle();
   const input = document.querySelector<HTMLInputElement>(
     ".terminal-theme-name-field input",
@@ -214,7 +214,7 @@ async function run() {
     }),
   );
   flushSync(() => replaceThemes(full.slice(1)));
-  click("Duplicate Herdr Dark");
+  click("Duplicate Roamgate Dark");
   await settle();
   // Another browser tab can fill the final slot while this draft is open.
   flushSync(() => replaceThemes(full));
@@ -239,7 +239,7 @@ async function run() {
   if (document.querySelector(".terminal-theme-editor")) click("Cancel");
   await settle();
   check(
-    button("Duplicate Herdr Dark").disabled,
+    button("Duplicate Roamgate Dark").disabled,
     "Duplicate remained enabled at the theme limit",
   );
   check(
@@ -292,10 +292,10 @@ async function run() {
     "Deleting the selected theme did not restore the default",
   );
   check(
-    !button("Duplicate Herdr Dark").disabled,
+    !button("Duplicate Roamgate Dark").disabled,
     "Deleting a theme did not free a slot",
   );
-  click("Duplicate Herdr Dark");
+  click("Duplicate Roamgate Dark");
   await settle();
   click("Create theme");
   check(

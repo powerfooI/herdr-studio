@@ -209,7 +209,7 @@ function remoteTunnelLocalPath(
     .update(`${hostKey}\0${sessionKey}\0${kind}`)
     .digest("hex")
     .slice(0, 12);
-  return join(tmpdir(), `herdr-gui-${key}-${kind}.sock`);
+  return join(tmpdir(), `roamgate-${key}-${kind}.sock`);
 }
 
 export function herdrConfigDir(

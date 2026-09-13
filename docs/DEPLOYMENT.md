@@ -26,7 +26,7 @@ Published binaries retain the behavior documented for their release in the
 [Changelog](../CHANGELOG.md).
 
 Herdr 0.9.0 terminals use **stable endpoint generation 1** (distinct from
-terminal protocol 22). Set `HERDR_GUI_DISABLE_ENDPOINT=1` to use the legacy
+terminal protocol 22). Set `ROAMGATE_DISABLE_ENDPOINT=1` to use the legacy
 direct-terminal fallback:
 
 - Endpoint rendering crops the server-rendered tab to each pane. Unknown endpoint
@@ -56,7 +56,7 @@ direct-terminal fallback:
   terminal tab before creating; unavailable sources fail explicitly. See
   [creation contracts](./ARCHITECTURE.md#browser-navigation-and-creation) for
   bootstrap and timeout handling.
-- Legacy servers and `HERDR_GUI_DISABLE_ENDPOINT=1` retain **Shared navigation**:
+- Legacy servers and `ROAMGATE_DISABLE_ENDPOINT=1` retain **Shared navigation**:
   public JSON focus can move other clients. The connection menu shows the mode,
   using the bridge's actual backend selection, not browser version guesses.
   Enhanced Kitty keyboard / modifyOtherKeys parity and pixel mouse are not
@@ -81,33 +81,53 @@ Existing processes keep running. Historical tagged releases are not modified.
 Users remaining on old clients do not receive new fixes through that channel.
 Custom mirrors and manually pinned historical downloads are outside this cutoff.
 
+**Identity migration is implemented in source builds; published 0.7.0 still
+uses the old service names, `herdr.studio` plugin ID, and data paths.** Running
+today's Latest installer does not add this migration. Build this source checkout
+explicitly until a release containing these changes is published; do not reuse
+a previously downloaded `server/roamgate` binary.
+
 To switch an existing installation deliberately:
 
-1. Back up the old executable, service definition, and configuration before
-   switching. Preserve file permissions and authentication material. Include
-   `~/.config/herdr-gui/` and, on Windows, `%APPDATA%\\herdr-gui\\` if present.
-2. Install Roamgate using the instructions below. It installs a separate
-   `roamgate` executable; it does not overwrite `herdr-gui`, start a service,
-   create a legacy command alias, or move configuration.
-3. For an unmodified built-in managed service, run `roamgate service install`
-   explicitly to switch its executable. The service identity and environment
-   file are reused, preventing a second managed service; expect a brief
-   interruption. For custom definitions or supervisor wrappers, update the
-   executable path manually instead: reinstalling can replace custom launch
-   arguments. For an unmanaged process, stop the old process before starting
-   Roamgate on its port.
-4. Check `roamgate --version`, service status, login, and saved connections.
-   To roll back, stop Roamgate and restore the previous executable/service
-   definition. Keep the configuration backup: restoring it also discards
-   settings changed after the backup. Do not run both versions against the same
-   writable configuration concurrently.
+1. Back up the previous executable, service definition, and configuration with
+   permissions intact. Include `~/.config/herdr-gui/` and, on Windows,
+   `%APPDATA%\herdr-gui\` plus `~/.config/herdr-gui/` for old settings/profiles.
+2. Stop and uninstall the old managed service **using the previous executable**
+   before replacing it: `herdr-gui service uninstall` for Herdr Studio, or
+   `/path/to/previous/roamgate service uninstall` for published 0.7.0. Both
+   preserve configuration. For custom definitions/wrappers, explicitly stop,
+   disable, and archive the old definition using its native manager instead;
+   review custom arguments and environment before recreating it. Stop unmanaged
+   processes too. Do not keep old and new auto-start entries enabled together.
+3. Build the new executable using [source build instructions](#build-a-standalone-executable).
+   Run `./server/roamgate service install` explicitly. Install, restart and reload
+   refuse an installed/loaded legacy service, even with `--force`, before
+   changing configuration or definitions. A detection error also blocks install.
+4. Check service status, login and saved connections. For rollback, uninstall the
+   new service with the new binary, then restore the old binary/definition and
+   enable only that service. Legacy data remains intact; changes made in the new
+   data directory are not synchronized back automatically.
 
-Configuration paths, the `herdr.studio` plugin ID, service identities, and browser
-storage remain unchanged in this distribution cutover. Environment aliases
-remain supported. Updating the plugin checkout is an explicit switch, not a
-path provided to an already-running old binary by its updater. Release-only plugin
-installs download only Roamgate assets; unreleased checkouts require a source
-build. Historical versions keep their original asset contracts.
+New data lives in `~/.config/roamgate` on Unix and `%APPDATA%\roamgate` on
+Windows. Missing auth tokens, settings and connections are copied on first use;
+service installation also copies `herdr-gui.env` to `roamgate.env`. Existing new
+files win, even when empty or invalid. Copies preserve originals and restrict
+permissions to the owner's existing read/write bits; failed copies stop without
+replacing files or generating replacement credentials. Legacy symlinks are
+rejected. Explicit connection-path overrides are not migrated. On Windows, old
+settings/profiles are read from their historical `~/.config/herdr-gui` location.
+Stop the old writer first: this is a one-way copy, not ongoing synchronization.
+
+Browser preferences, selections and review drafts use `roamgate:` storage keys.
+A missing key reads/copies the legacy value without removing it; new values win,
+including empty values. Deletions are remembered so old drafts do not reappear.
+This works only on the same browser origin. A hostname or port change cannot
+transfer another origin's storage automatically. The website checklist also
+copies its legacy key when visited on the same origin, including at the new
+Pages path.
+
+For plugin registrations, follow [the explicit plugin migration](#herdr-plugin).
+Historical binaries, manifests and release assets retain their original contracts.
 
 ### Repository and website addresses
 
@@ -174,12 +194,12 @@ verify the checksum with `Get-FileHash`, and extract the archive with Windows
 11's built-in `tar.exe`. Releases predating native ARM64 support contain only
 the x64 archive; prefer the native ARM64 package when it is available.
 
-To install into a system directory, set `HERDR_GUI_INSTALL_DIR`:
+To install into a system directory, set `ROAMGATE_INSTALL_DIR`:
 
 ```bash
 curl -fsSL \
   https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh \
-  | sudo env HERDR_GUI_INSTALL_DIR=/usr/local/bin sh
+  | sudo env ROAMGATE_INSTALL_DIR=/usr/local/bin sh
 ```
 
 Set `ROAMGATE_VERSION` to a published Roamgate version instead of `latest`
@@ -191,7 +211,7 @@ curl -fsSL \
   | ROAMGATE_VERSION=X.Y.Z sh
 ```
 
-`HERDR_GUI_RELEASE_BASE_URL` selects a compatible flat release mirror. Mirrors
+`ROAMGATE_RELEASE_BASE_URL` selects a compatible flat release mirror. Mirrors
 must use HTTPS, except for loopback testing, and their URLs cannot contain
 credentials, query strings, or fragments. The installer and in-app updater
 preserve a replaced executable as `roamgate.previous` for manual recovery.
@@ -200,6 +220,29 @@ preserve a replaced executable as `roamgate.previous` for manual recovery.
 
 Herdr 0.7.2 or newer can install Roamgate as a plugin. The shim requires
 [Bun](https://bun.sh). Choose the installation path for your checkout:
+
+**Migrating an existing `herdr.studio` registration:** first stop/uninstall its
+service with its previous binary as described in the transition section. Close
+any old plugin popup/panes and finish pending actions. Then run:
+
+```bash
+herdr plugin disable herdr.studio
+herdr plugin unlink herdr.studio
+```
+
+`unlink` unregisters without deleting the checkout or data, including for a
+managed checkout. Herdr owns this registry; Roamgate never edits it or silently
+uninstalls another plugin. Build and link the new checkout only after unlinking
+the old ID to avoid duplicate entries. Keep the previous checkout for rollback;
+do not run its start action alongside the new service.
+
+The new manifest uses ID `roamgate` (plain ASCII IDs are supported by
+[Herdr's manifest contract](https://herdr.dev/docs/plugins/)). Published 0.7.0
+uses `herdr.studio`; the commands below apply to the new source-built plugin.
+This shim refuses prebuilt downloads through 0.7.0 and directs you to build from
+source. It does not validate an already-present binary: always rebuild before
+linking this checkout. Release installation of the new identity requires a
+published release containing these changes, not the existing 0.7.0 tag.
 
 **Unreleased checkout:** clone the repository to a directory you will keep,
 compile explicitly, then link that local directory:
@@ -233,19 +276,19 @@ Plugin actions manage the same user service described in
 [Run as a user service](#run-as-a-user-service):
 
 ```bash
-herdr plugin action invoke herdr.studio.start      # install and start the service
-herdr plugin action invoke herdr.studio.url        # print the login URL
-herdr plugin action invoke herdr.studio.status
-herdr plugin action invoke herdr.studio.restart
-herdr plugin action invoke herdr.studio.uninstall  # remove the service
+herdr plugin action invoke roamgate.start      # install and start the service
+herdr plugin action invoke roamgate.url        # print the login URL
+herdr plugin action invoke roamgate.status
+herdr plugin action invoke roamgate.restart
+herdr plugin action invoke roamgate.uninstall  # remove the service
 ```
 
 Plugin actions run asynchronously; their output is recorded in the plugin
-command log (`herdr plugin log list --plugin herdr.studio`). For an
+command log (`herdr plugin log list --plugin roamgate`). For an
 interactive view, open the plugin's popup pane in the Herdr TUI:
 
 ```bash
-herdr plugin pane open --plugin herdr.studio --entrypoint panel
+herdr plugin pane open --plugin roamgate --entrypoint panel
 ```
 
 The panel shows service status, the login URL, and the version, with
@@ -258,36 +301,36 @@ session-modal popup by default; pass `--placement split` (or `tab`, `zoomed`,
 Flags override environment variables, which override defaults. Run
 `roamgate --help` for the complete list.
 
-Every `HERDR_GUI_*` setting below also accepts the corresponding `ROAMGATE_*`
+Every `ROAMGATE_*` setting below also accepts its legacy `HERDR_GUI_*`
 name. The new name takes precedence when both are set, including an explicitly
 empty value. This applies to runtime settings, connection registry paths, and
 the installer's `VERSION`, `INSTALL_DIR`, and `RELEASE_BASE_URL` settings.
 An empty installer `VERSION` selects the latest release; an empty `INSTALL_DIR`
 is rejected. Herdr's own `HERDR_*` connection settings are unchanged.
-Existing configuration paths and service identities are retained;
-setting a new environment variable does not move or merge user data.
+Default data/service identities follow the migration contract above; an explicit
+connection registry path remains authoritative, including an empty value.
 
 | Flag | Environment variable | Default |
 | --- | --- | --- |
 | `--host <addr>` | `HOST` | `127.0.0.1` |
 | `--port <n>` | `PORT` | `8787` |
-| `--password <pw>` | `HERDR_GUI_PASSWORD` | Generated token for non-loopback binds |
+| `--password <pw>` | `ROAMGATE_PASSWORD` | Generated token for non-loopback binds |
 | `--socket-path <path>` | `HERDR_SOCKET_PATH` | Default Herdr control socket or named pipe |
 | `--client-socket-path <path>` | `HERDR_CLIENT_SOCKET_PATH` | Default Herdr render socket or named pipe |
 | `--ssh-host <user@host>` | `HERDR_SSH_HOST` | Disabled; supported on Linux and macOS |
 | `--session <name>` | `HERDR_SESSION` | Named Herdr session, if set |
 | `--public-dir <path>` | `PUBLIC_DIR` | Embedded assets |
-| `--log-level <level>` | `HERDR_GUI_LOG_LEVEL` | `info` |
+| `--log-level <level>` | `ROAMGATE_LOG_LEVEL` | `info` |
 | `--open` | `OPEN_BROWSER=1` | Disabled |
 
 Additional runtime settings:
 
 | Environment variable | Purpose |
 | --- | --- |
-| `HERDR_GUI_UPDATE_BASE_URL` | Override the latest-release asset directory |
-| `HERDR_GUI_DISABLE_UPDATE_CHECK=1` | Disable update checks |
-| `HERDR_GUI_RESTART_SUPERVISOR=0\|1` | Declare or override external supervisor detection |
-| `HERDR_GUI_DISABLE_ENDPOINT=1` | Use the legacy terminal fallback; see compatibility limits above |
+| `ROAMGATE_UPDATE_BASE_URL` | Override the latest-release asset directory |
+| `ROAMGATE_DISABLE_UPDATE_CHECK=1` | Disable update checks |
+| `ROAMGATE_RESTART_SUPERVISOR=0\|1` | Declare or override external supervisor detection |
+| `ROAMGATE_DISABLE_ENDPOINT=1` | Use the legacy terminal fallback; see compatibility limits above |
 
 A custom update mirror must use the same flat asset layout as GitHub Releases
 and provide each platform archive, its `.sha256` file, and the corresponding
@@ -323,11 +366,11 @@ Use `debug` temporarily when diagnosing request or lifecycle behavior:
 
 ```bash
 roamgate --log-level debug
-# or in herdr-gui.env
-HERDR_GUI_LOG_LEVEL=debug
+# or in roamgate.env
+ROAMGATE_LOG_LEVEL=debug
 ```
 
-For a managed service, restart after changing `herdr-gui.env`. Debug context can
+For a managed service, restart after changing `roamgate.env`. Debug context can
 include workspace paths and connection or terminal identifiers, so return to
 `info` after collecting the required diagnostics. Runtime logs print browser
 and LAN URLs without authentication tokens; generated tokens remain in the
@@ -365,8 +408,8 @@ SSH profiles and `--ssh-host` currently require Roamgate to run on Linux or
 macOS because the stream-local transport cannot expose a forwarded Unix socket
 as a local Windows named pipe. Windows supports native local Herdr profiles.
 
-Profiles are stored atomically in `~/.config/herdr-gui/connections.json`
-(overridable with `HERDR_GUI_CONNECTIONS_PATH`), with directory mode `0700` and
+Profiles are stored atomically in `~/.config/roamgate/connections.json` on Unix
+or `%APPDATA%\roamgate\connections.json` on Windows (overridable with `ROAMGATE_CONNECTIONS_PATH`), with directory mode `0700` and
 file mode `0600` on Unix. Registry/direct-parent symlinks are rejected. Version-1
 local registries migrate to version 2 on the first successful mutation. Invalid
 registries are preserved with mutations disabled: repair the durable file before
@@ -416,7 +459,7 @@ roamgate service uninstall
 | `service install` | Create or update the service definition and start it |
 | `service install --force` | Replace a definition not generated by Roamgate |
 | `service status` | Show native service-manager status |
-| `service restart` | Restart after changing `herdr-gui.env` |
+| `service restart` | Restart after changing `roamgate.env` |
 | `service reload` | Reload the platform definition, then restart |
 | `service uninstall` | Stop and remove the service while preserving configuration and tokens |
 
@@ -426,21 +469,28 @@ Verify the running service with:
 curl -fsS http://127.0.0.1:8787/healthz
 ```
 
-Linux uses a systemd user service with `Restart=always`; macOS uses a launchd
-LaunchAgent with `KeepAlive`; Windows registers a current-user Task Scheduler
-job that starts at login, runs with normal privileges, and restarts on failure.
+Linux uses `~/.config/systemd/user/roamgate.service` with `Restart=always`.
+macOS uses `~/Library/LaunchAgents/dev.roamgate.plist`, Label `dev.roamgate`,
+with `KeepAlive`; logs are `~/Library/Logs/roamgate.stdout.log` and
+`roamgate.stderr.log`. Windows registers `dev.roamgate-<user-key>` (a hash of
+its per-user config directory), with `roamgate-task.ps1` under
+`%APPDATA%\roamgate`. The task starts at login with normal privileges
+and restarts on failure. Old `dev.herdr.herdr-gui` / `herdr-gui.service` / hashed
+Windows task identities must be stopped and removed first as described above.
 
 A new service listens on `0.0.0.0:8787`, creates a persistent login token, and
 prints tokenized localhost and LAN URLs during installation. Configuration is
-stored in `~/.config/herdr-gui/herdr-gui.env` on Unix or
-`%APPDATA%\herdr-gui\herdr-gui.env` on Windows and is preserved on reinstall or
+stored in `~/.config/roamgate/roamgate.env` on Unix or
+`%APPDATA%\roamgate\roamgate.env` on Windows and is preserved on reinstall or
 uninstall. Edit that file for `HOST`, `PORT`, an optional fixed password, and
 Herdr connection settings, then run `roamgate service restart`.
 
-The random token is stored in `~/.config/herdr-gui/auth-token` on Unix and
-`%APPDATA%\herdr-gui\auth-token` on Windows. Visiting a printed `?token=...` URL
+The random token is stored in `~/.config/roamgate/auth-token` on Unix and
+`%APPDATA%\roamgate\auth-token` on Windows. Visiting a printed `?token=...` URL
 sets an HttpOnly session cookie and removes the token from the address bar. To
-rotate the token, stop the service, delete the token file, and restart.
+rotate the token, stop the service, replace the new token file with a fresh
+64-character lowercase hexadecimal secret using mode `0600`, and restart.
+Deleting only the new file restores a readable legacy token on next startup.
 
 On Windows, approve the Task Scheduler or firewall prompt if one appears. Allow
 Private networks only, or set `HOST=127.0.0.1` before installation for

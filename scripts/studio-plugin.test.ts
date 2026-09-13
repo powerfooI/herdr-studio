@@ -16,6 +16,7 @@ import {
   parseSha256File,
   readServiceEnv,
   releaseAssetFor,
+  supportsIdentityMigrationPrebuilt,
 } from "./studio-plugin";
 
 describe("plugin build commands", () => {
@@ -38,9 +39,14 @@ describe("plugin build commands", () => {
       join(import.meta.dir, "studio-plugin.ts"),
       join(root, "scripts/studio-plugin.ts"),
     );
+    mkdirSync(join(root, "server/src/config"), { recursive: true });
+    copyFileSync(
+      join(import.meta.dir, "../server/src/config/data-paths.ts"),
+      join(root, "server/src/config/data-paths.ts"),
+    );
     writeFileSync(
       join(root, "package.json"),
-      JSON.stringify({ version: "0.6.2" }),
+      JSON.stringify({ version: "9.8.7" }),
     );
     writeFileSync(
       join(root, "bin/bun"),
@@ -62,6 +68,19 @@ globalThis.fetch = async (url) => {
     );
     return root;
   }
+
+  test("0.7.0 build refuses downloading legacy identities before mutation", () => {
+    const root = checkout();
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ version: "0.7.0" }),
+    );
+    const result = invoke(root, "build");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("requires a source build");
+    expect(existsSync(join(root, "fetch.log"))).toBeFalse();
+    expect(existsSync(join(root, "build.log"))).toBeFalse();
+  });
 
   function invoke(
     root: string,
@@ -133,12 +152,19 @@ globalThis.fetch = async (url) => {
         .split("\n");
       expect(requests).toHaveLength(2);
       for (const url of requests) {
-        expect(url).toContain("/releases/download/v0.6.2/roamgate-");
+        expect(url).toContain("/releases/download/v9.8.7/roamgate-");
       }
       expect(existsSync(join(root, "server/roamgate"))).toBe(false);
       expect(existsSync(join(root, "server/roamgate.exe"))).toBe(false);
     },
   );
+});
+
+test("prebuilt identity floor compares numeric versions", () => {
+  for (const version of ["0.6.2", "0.7.0", "0.7.0-beta.1", "unknown"])
+    expect(supportsIdentityMigrationPrebuilt(version)).toBeFalse();
+  for (const version of ["0.7.1", "0.8.0", "0.10.0", "1.0.0"])
+    expect(supportsIdentityMigrationPrebuilt(version)).toBeTrue();
 });
 
 describe("releaseAssetFor", () => {
@@ -223,7 +249,7 @@ describe("computeUrl", () => {
 
   test("includes the login token only for non-loopback binds", () => {
     const dir = fixture({
-      "herdr-gui.env": "HOST=0.0.0.0\nPORT=8791\n",
+      "roamgate.env": "HOST=0.0.0.0\nPORT=8791\n",
       "auth-token": "abc123\n",
     });
     expect(computeUrl(dir)).toBe("http://localhost:8791/?token=abc123");
@@ -231,15 +257,29 @@ describe("computeUrl", () => {
 
   test("ignores a stale token file on loopback binds", () => {
     const dir = fixture({
-      "herdr-gui.env": "HOST=127.0.0.1\nPORT=8787\n",
+      "roamgate.env": "HOST=127.0.0.1\nPORT=8787\n",
       "auth-token": "abc123\n",
     });
     expect(computeUrl(dir)).toBe("http://127.0.0.1:8787");
   });
 
+  test("new password values take precedence, including empty values", () => {
+    const dir = fixture({
+      "roamgate.env":
+        "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nROAMGATE_PASSWORD=new\n",
+      "auth-token": "saved-token\n",
+    });
+    expect(computeUrl(dir)).toBe("http://localhost:8787");
+    writeFileSync(
+      join(dir, "roamgate.env"),
+      "HOST=0.0.0.0\nHERDR_GUI_PASSWORD=old\nROAMGATE_PASSWORD=\n",
+    );
+    expect(computeUrl(dir)).toBe("http://localhost:8787/?token=saved-token");
+  });
+
   test("honors exported and quoted entries without a token file", () => {
     const dir = fixture({
-      "herdr-gui.env": 'export HOST="0.0.0.0"\nPORT = "8799"\n',
+      "roamgate.env": 'export HOST="0.0.0.0"\nPORT = "8799"\n',
     });
     expect(computeUrl(dir)).toBe("http://localhost:8799");
   });

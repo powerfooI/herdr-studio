@@ -1,3 +1,4 @@
+import { roamgateSessionStorage } from "./browserStorage";
 /**
  * Last-resort recovery for terminals that cannot restore themselves after a
  * mobile foreground resume (lock screen, app switch). The OS can freeze the
@@ -65,7 +66,7 @@ type RecoveryStorage = Pick<Storage, "getItem" | "setItem">;
 
 function defaultStorage(): RecoveryStorage | null {
   try {
-    return globalThis.sessionStorage ?? null;
+    return roamgateSessionStorage ?? null;
   } catch {
     return null;
   }

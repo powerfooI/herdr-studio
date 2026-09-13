@@ -390,7 +390,7 @@ describe("update helpers", () => {
     const body = await response.json();
     expect(response.status).toBe(502);
     expect(body).toEqual({
-      error: "HERDR_GUI_UPDATE_BASE_URL must not contain credentials",
+      error: "ROAMGATE_UPDATE_BASE_URL must not contain credentials",
     });
     expect(JSON.stringify(body)).not.toContain("example-password");
   });
@@ -796,4 +796,37 @@ describe("update helpers", () => {
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ error: "curl failed" });
   });
+});
+
+test("Roamgate and legacy confirmation headers share the same update boundary", async () => {
+  const handlers = createUpdateHandlers({
+    appVersion: "0.7.0",
+    runtime: linuxRuntime,
+    environment: systemdEnvironment,
+    shQuote,
+    runProcessWithCodeTimeout: async () => ({
+      code: 0,
+      stdout: updateManifest("0.7.0", "linux-x64"),
+      stderr: "",
+    }),
+  });
+  for (const header of ["x-roamgate-update", "x-herdr-gui-update"]) {
+    const response = await handlers.handleUpdateCheck(
+      new Request("http://localhost/api/update/check", {
+        headers: { [header]: "1" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const denied = await handlers.handleUpdateCheck(
+      new Request("http://localhost/api/update/check", {
+        headers: { [header]: "0" },
+      }),
+    );
+    expect(denied.status).toBe(403);
+  }
+  const denied = new Request("http://localhost/api/update/install", {
+    method: "POST",
+    headers: { "x-roamgate-update": "", "x-herdr-gui-update": "1" },
+  });
+  expect((await handlers.handleUpdateInstall(denied)).status).toBe(403);
 });

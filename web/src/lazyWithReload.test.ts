@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { importWithReload } from "./lazyWithReload";
 
 const COMPONENT_KEY = "diff-content-view";
-const RELOAD_ATTEMPTED_KEY = `herdr:lazy-chunk-reload:${COMPONENT_KEY}`;
+const RELOAD_ATTEMPTED_KEY = `roamgate:herdr:lazy-chunk-reload:${COMPONENT_KEY}`;
 
 let storage: Map<string, string>;
 let reloadCount = 0;

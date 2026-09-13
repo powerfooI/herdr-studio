@@ -51,7 +51,7 @@ import { MobileTerminalShortcutsDialog } from "./MobileTerminalShortcutsDialog";
 import { TerminalThemeDialog } from "./TerminalThemeDialog";
 
 const APP_VERSION = packageJson.version;
-export const CONFIG_MENU_ID = "herdr-config-menu";
+export const CONFIG_MENU_ID = "roamgate-config-menu";
 
 export function reloadApplicationPage(
   target: Pick<Location, "reload"> = window.location,

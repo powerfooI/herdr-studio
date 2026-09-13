@@ -1,3 +1,4 @@
+import { roamgateSessionStorage } from "./browserStorage";
 import { type ComponentType, lazy } from "react";
 
 // After an in-app update, the restarted server only embeds the new build's
@@ -11,11 +12,11 @@ export async function importWithReload<T>(
   const reloadKey = `herdr:lazy-chunk-reload:${componentKey}`;
   try {
     const module = await factory();
-    sessionStorage.removeItem(reloadKey);
+    roamgateSessionStorage.removeItem(reloadKey);
     return module;
   } catch (error) {
-    if (sessionStorage.getItem(reloadKey)) throw error;
-    sessionStorage.setItem(reloadKey, "1");
+    if (roamgateSessionStorage.getItem(reloadKey)) throw error;
+    roamgateSessionStorage.setItem(reloadKey, "1");
     window.location.reload();
     // Keep the lazy boundary suspended while the page unloads.
     return new Promise<T>(() => {});

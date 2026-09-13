@@ -15,7 +15,8 @@ files and diffs from desktop or mobile. A running Herdr server is required.
 > Old clients cannot upgrade to Roamgate through their default update channel.
 > Existing processes and historical releases are left intact. Read the
 > [transition guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
-> before switching an existing service.
+> before switching an existing service. Source builds migrate data and use new
+> service/plugin identities; published 0.7.0 still uses the legacy identities.
 
 ## Documentation
 

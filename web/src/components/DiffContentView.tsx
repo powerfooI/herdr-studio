@@ -1,3 +1,4 @@
+import { roamgateLocalStorage } from "../browserStorage";
 import { DEFAULT_THEMES, type SelectedLineRange } from "@pierre/diffs";
 import {
   PatchDiff,
@@ -249,17 +250,17 @@ function deepQuerySelector(
 }
 
 function loadDiffViewMode(): DiffViewMode {
-  return localStorage.getItem(DIFF_VIEW_MODE_KEY) === "unified"
+  return roamgateLocalStorage.getItem(DIFF_VIEW_MODE_KEY) === "unified"
     ? "unified"
     : "split";
 }
 
 function loadMobileDiffWrap() {
-  return localStorage.getItem(MOBILE_DIFF_WRAP_KEY) === "true";
+  return roamgateLocalStorage.getItem(MOBILE_DIFF_WRAP_KEY) === "true";
 }
 
 function loadDesktopDiffWrap() {
-  return localStorage.getItem(DESKTOP_DIFF_WRAP_KEY) !== "false";
+  return roamgateLocalStorage.getItem(DESKTOP_DIFF_WRAP_KEY) !== "false";
 }
 
 function currentDocumentTheme(): AppTheme {
@@ -1027,13 +1028,13 @@ export function DiffContentView({
     openFileRef.current = onOpenFile;
   }, [onOpenFile]);
   useEffect(() => {
-    localStorage.setItem(DIFF_VIEW_MODE_KEY, viewMode);
+    roamgateLocalStorage.setItem(DIFF_VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
   useEffect(() => {
-    localStorage.setItem(DESKTOP_DIFF_WRAP_KEY, String(desktopWrap));
+    roamgateLocalStorage.setItem(DESKTOP_DIFF_WRAP_KEY, String(desktopWrap));
   }, [desktopWrap]);
   useEffect(() => {
-    localStorage.setItem(MOBILE_DIFF_WRAP_KEY, String(mobileWrap));
+    roamgateLocalStorage.setItem(MOBILE_DIFF_WRAP_KEY, String(mobileWrap));
   }, [mobileWrap]);
   useEffect(() => {
     requestedImagePreviewsRef.current.clear();

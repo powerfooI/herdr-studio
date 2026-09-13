@@ -4,7 +4,7 @@ import { connectionStorageKey } from "./connectionStorage";
 export type InspectorView = "files" | "changes" | "history";
 export type WorkspaceSurface = "terminal" | InspectorView;
 export const WORKSPACE_INSPECTOR_REQUEST_EVENT =
-  "herdr:workspace-inspector-request";
+  "roamgate:workspace-inspector-request";
 
 export function isWorkspaceInspectorShortcut(
   event: Pick<

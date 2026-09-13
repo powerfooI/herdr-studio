@@ -25,9 +25,15 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  dataRoot,
+  legacyDataRoot,
+  assertSafeDataPath,
+} from "../server/src/config/data-paths";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BINARY_CANDIDATES =
@@ -98,7 +104,24 @@ export function parseSha256File(text: string): string | null {
   return match?.[1] ?? null;
 }
 
+export function supportsIdentityMigrationPrebuilt(version: string): boolean {
+  const match =
+    /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(
+      version,
+    );
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1, 4).map(Number);
+  return major > 0 || minor > 7 || (minor === 7 && patch > 0);
+}
+
 async function downloadPrebuilt(): Promise<number> {
+  const version = packageVersion();
+  if (!supportsIdentityMigrationPrebuilt(version)) {
+    console.error(
+      `studio-plugin: published versions through 0.7.0 use legacy service/data/plugin identities. This checkout requires a source build. ${SOURCE_INSTALL_HINT}`,
+    );
+    return 1;
+  }
   const target = releaseAssetFor(process.platform, process.arch);
   if (!target) {
     console.error(
@@ -106,7 +129,6 @@ async function downloadPrebuilt(): Promise<number> {
     );
     return 1;
   }
-  const version = packageVersion();
   const base = `https://github.com/${RELEASE_REPOSITORY}/releases/download/v${version}`;
   const archiveName = `${target.asset}.tar.xz`;
   console.error(`studio-plugin: downloading ${archiveName} (v${version})`);
@@ -205,13 +227,20 @@ function packageVersion(): string {
 }
 
 function configDir(): string {
-  if (process.platform === "win32") {
-    return join(
-      process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"),
-      "herdr-gui",
-    );
-  }
-  return join(homedir(), ".config", "herdr-gui");
+  return dataRoot();
+}
+
+// URL/status are read-only: prefer the new file, but do not migrate on inspection.
+function readableConfigFile(dir: string, name: string): string {
+  const path = join(dir, name);
+  assertSafeDataPath(path);
+  if (existsSync(path) || dir !== configDir()) return path;
+  const legacy = join(
+    legacyDataRoot(),
+    name === "roamgate.env" ? "herdr-gui.env" : name,
+  );
+  assertSafeDataPath(legacy);
+  return legacy;
 }
 
 // Mirrors the server's service env parser: leading whitespace, an optional
@@ -239,13 +268,20 @@ export function readServiceEnv(
 }
 
 export function computeUrl(dir = configDir()): string {
-  const envFile = join(dir, "herdr-gui.env");
+  const envFile = readableConfigFile(dir, "roamgate.env");
   let host = "127.0.0.1";
   let port = "8787";
+  let usesFixedPassword = false;
   if (existsSync(envFile)) {
     const contents = readFileSync(envFile, "utf8");
     host = readServiceEnv(contents, "HOST") ?? host;
     port = readServiceEnv(contents, "PORT") ?? port;
+    usesFixedPassword =
+      (
+        readServiceEnv(contents, "ROAMGATE_PASSWORD") ??
+        readServiceEnv(contents, "HERDR_GUI_PASSWORD") ??
+        ""
+      ).length > 0;
   }
   const anyHost = host === "0.0.0.0" || host === "::";
   const browserHost = anyHost ? "localhost" : host;
@@ -257,8 +293,8 @@ export function computeUrl(dir = configDir()): string {
   // skips auth on loopback); the token file can also be absent or stale.
   const loopback =
     host === "127.0.0.1" || host === "localhost" || host === "::1";
-  const tokenPath = join(dir, "auth-token");
-  if (!loopback && existsSync(tokenPath)) {
+  const tokenPath = readableConfigFile(dir, "auth-token");
+  if (!loopback && !usesFixedPassword && existsSync(tokenPath)) {
     const token = readFileSync(tokenPath, "utf8").trim();
     if (token) url = `${url}/?token=${encodeURIComponent(token)}`;
   }
@@ -266,7 +302,7 @@ export function computeUrl(dir = configDir()): string {
 }
 
 function printUrl(): number {
-  const envFile = join(configDir(), "herdr-gui.env");
+  const envFile = readableConfigFile(configDir(), "roamgate.env");
   if (!existsSync(envFile)) {
     console.error(
       `studio-plugin: no service environment at ${envFile}, showing defaults`,

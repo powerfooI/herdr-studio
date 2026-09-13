@@ -1,3 +1,4 @@
+import { roamgateLocalStorage } from "../browserStorage";
 import {
   CircleHelp,
   CornerDownLeft,
@@ -83,8 +84,9 @@ export function TerminalComposer({
   const [helpOpen, setHelpOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(
     () =>
-      localStorage.getItem(TERMINAL_COMPOSER_SHORTCUTS_OPEN_STORAGE_KEY) !==
-      "false",
+      roamgateLocalStorage.getItem(
+        TERMINAL_COMPOSER_SHORTCUTS_OPEN_STORAGE_KEY,
+      ) !== "false",
   );
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -369,7 +371,7 @@ export function TerminalComposer({
               onPointerDown={keepTextareaFocus}
               onClick={() => {
                 const open = !shortcutsOpen;
-                localStorage.setItem(
+                roamgateLocalStorage.setItem(
                   TERMINAL_COMPOSER_SHORTCUTS_OPEN_STORAGE_KEY,
                   String(open),
                 );

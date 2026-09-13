@@ -32,7 +32,8 @@
       // Apply the persisted theme before first paint to avoid a flash of the
       // default dark theme. "system" resolves via the OS color scheme.
       try {
-        const storedTheme = localStorage.getItem("theme");
+        const storedTheme =
+          localStorage.getItem("roamgate:theme") ?? localStorage.getItem("theme");
         const resolvedTheme =
           storedTheme === "light" || storedTheme === "dark"
             ? storedTheme
@@ -44,7 +45,8 @@
         document.documentElement.style.colorScheme = resolvedTheme;
         // Apply the persisted interface scale too so the first paint matches
         // the Text size preference.
-        const storedUiScale = localStorage.getItem("uiScale");
+        const storedUiScale =
+          localStorage.getItem("roamgate:uiScale") ?? localStorage.getItem("uiScale");
         const uiScale = storedUiScale === null ? 100 : Number(storedUiScale);
         if (Number.isFinite(uiScale) && uiScale !== 100) {
           // Keep in sync with clampUiScale in web/src/appearance.ts.

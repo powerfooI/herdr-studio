@@ -44,11 +44,22 @@ for (const [index, code] of [
 
 const checks = [...(article?.querySelectorAll('input[type="checkbox"]') ?? [])];
 // Bump this key if the meaning or order of the final checklist changes.
-const storageKey = "herdr-studio-tutorial-checklist-v1";
+const storageKey = "roamgate-tutorial-checklist-v1";
 let savedChecks = [];
 let storageAvailable = true;
 try {
-  const stored = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+  let raw = localStorage.getItem(storageKey);
+  if (raw === null) {
+    raw = localStorage.getItem("herdr-studio-tutorial-checklist-v1");
+    if (raw !== null) {
+      try {
+        localStorage.setItem(storageKey, raw);
+      } catch {
+        storageAvailable = false;
+      }
+    }
+  }
+  const stored = JSON.parse(raw ?? "[]");
   if (Array.isArray(stored)) savedChecks = stored;
 } catch {
   storageAvailable = false;
