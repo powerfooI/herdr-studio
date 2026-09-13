@@ -3413,7 +3413,7 @@ textarea:focus {
   width: min(760px, 100%);
 }
 .shortcut-modal {
-  width: min(680px, 100%);
+  width: min(860px, 100%);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -10046,6 +10046,57 @@ textarea:focus {
   color: var(--muted);
   font-size: 12px;
 }
+/* The shortcut editor shares the modal and appearance tokens. */
+.shortcut-modal {
+  max-height: calc(100dvh - 36px);
+  gap: 12px;
+}
+.shortcut-modal .modal-head {
+  flex-shrink: 0;
+}
+.shortcut-modal .modal-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.layout-preferences select,
+.layout-preferences input {
+  min-width: 0;
+  max-width: 160px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+.keybinding-settings {
+  display: grid;
+  gap: 8px;
+}
+.keybinding-settings p,
+.keybinding-editor p {
+  margin: 0;
+  font-size: 12px;
+}
+.keybinding-preset {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.keybinding-settings input,
+.keybinding-settings select,
+.keybinding-editor input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
 .mobile-layout-modal .modal-actions {
   flex-wrap: wrap;
   align-items: center;
@@ -10073,17 +10124,6 @@ textarea:focus {
   margin: 0;
   font-size: 12px;
 }
-.layout-preferences select,
-.layout-preferences input {
-  min-width: 0;
-  max-width: 160px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 6px;
-  background: var(--input-bg);
-  color: var(--text);
-  font: inherit;
-}
 .layout-preferences input {
   width: 90px;
 }
@@ -10096,5 +10136,85 @@ textarea:focus {
   }
   .layout-preferences select {
     max-width: 190px;
+  }
+}
+.keybinding-preset-actions,
+.keybinding-editor-actions,
+.keybinding-delete {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.keybinding-preset-actions input {
+  flex: 1;
+  min-width: 120px;
+  width: auto;
+}
+.shortcut-modal .shortcut-row {
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 1fr);
+  font-size: 13px;
+}
+.keybinding-edit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+.keybinding-edit span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.keybinding-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.keybinding-editor label {
+  display: grid;
+  gap: 6px;
+}
+.keybinding-error {
+  color: var(--danger, #e87979);
+}
+.keybinding-reference p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.shortcut-modal .modal-actions {
+  flex-shrink: 0;
+  margin-top: 0;
+}
+.shortcut-modal .modal-actions > span {
+  flex: 1;
+  font-size: 11px;
+}
+@media (max-width: 768px) {
+  .shortcut-modal {
+    padding: 14px;
+    gap: 10px;
+  }
+  .shortcut-modal .shortcut-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+  .keybinding-preset {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .keybinding-preset-actions input {
+    flex-basis: 100%;
+  }
+
+  .keybinding-settings input,
+  .keybinding-settings select,
+  .keybinding-editor input {
+    font-size: 16px;
   }
 }

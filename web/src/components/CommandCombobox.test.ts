@@ -55,13 +55,13 @@ describe("command combobox search helpers", () => {
     expect(
       commandNumberShortcutIndex({ ...event, code: "Digit1", key: "¡" }),
     ).toBe(0);
-    // Ctrl (macOS) and Meta (embedded webviews) work as aliases.
+    // Unconfigured modifiers must not trigger hidden aliases.
     expect(
       commandNumberShortcutIndex({ ...event, altKey: false, ctrlKey: true }),
-    ).toBe(3);
+    ).toBeNull();
     expect(
       commandNumberShortcutIndex({ ...event, altKey: false, metaKey: true }),
-    ).toBe(3);
+    ).toBeNull();
     expect(commandNumberShortcutIndex({ ...event, altKey: false })).toBeNull();
     expect(
       commandNumberShortcutIndex({ ...event, ctrlKey: true, shiftKey: false }),
@@ -94,11 +94,11 @@ describe("command combobox search helpers", () => {
 
   test("selects the matching displayed action without wrapping", () => {
     const event = {
-      altKey: false,
+      altKey: true,
       code: "Digit2",
       ctrlKey: false,
       key: "2",
-      metaKey: true,
+      metaKey: false,
       shiftKey: false,
     };
     expect(commandNumberShortcutTarget(event, ["first", "second"])).toBe(
@@ -117,11 +117,11 @@ describe("command combobox search helpers", () => {
     let stopPropagationCalls = 0;
     const runs: string[] = [];
     const event = {
-      altKey: false,
+      altKey: true,
       code: "Digit2",
       ctrlKey: false,
       key: "é",
-      metaKey: true,
+      metaKey: false,
       preventDefault: () => {
         preventDefaultCalls += 1;
       },

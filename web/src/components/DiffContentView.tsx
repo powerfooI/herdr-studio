@@ -1,3 +1,4 @@
+import { shortcutMatches } from "../shortcutPreferences";
 import { DEFAULT_THEMES, type SelectedLineRange } from "@pierre/diffs";
 import {
   PatchDiff,
@@ -1161,8 +1162,9 @@ export function DiffContentView({
   useEffect(() => {
     if (embedded) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      if (e.key.toLowerCase() !== "f") return;
+      if (e.defaultPrevented || document.querySelector(".shortcut-modal"))
+        return;
+      if (!shortcutMatches(e, "preview.search")) return;
       const section = sectionRef.current;
       if (!section || section.offsetParent === null) return;
       if (isEditableSearchTarget(e.target)) return;
@@ -1219,11 +1221,7 @@ export function DiffContentView({
       aria-label={embedded ? "File changes" : "Diff Viewer content"}
       tabIndex={-1}
       onKeyDownCapture={(e) => {
-        if (
-          !embedded &&
-          (e.metaKey || e.ctrlKey) &&
-          e.key.toLowerCase() === "f"
-        ) {
+        if (!embedded && shortcutMatches(e.nativeEvent, "preview.search")) {
           if (isEditableSearchTarget(e.target)) return;
           e.preventDefault();
           e.stopPropagation();

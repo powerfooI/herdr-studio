@@ -1,5 +1,11 @@
 import { isMobileLayout, LAYOUT_CHANGE_EVENT } from "../layoutPreferences";
 import { terminalFontOptions } from "../appearance";
+import { detectShortcutPlatform } from "../shortcutBindings";
+import {
+  getShortcutSnapshot,
+  shortcutMatches,
+  terminalLinkModifierMatches,
+} from "../shortcutPreferences";
 import {
   ClipboardAddon,
   type ClipboardSelectionType,
@@ -37,6 +43,7 @@ import {
   useStoreSelector,
 } from "../store";
 import {
+  copyTextFromUserGesture,
   createTerminalClipboardProvider,
   decodeTerminalClipboard,
 } from "../terminalClipboard";
@@ -80,10 +87,7 @@ import {
   terminalImeFallbackText,
   terminalImeTextareaDelta,
 } from "../terminalIme";
-import {
-  macCommandEditingSequence,
-  modifiedEnterSequence,
-} from "../terminalKeys";
+import { terminalShortcutSequence } from "../terminalKeys";
 import { TerminalHistorySelection } from "../terminalHistorySelection";
 import {
   findTerminalHttpLinks,
@@ -182,8 +186,7 @@ function terminalDensity(uiScale: number) {
 }
 
 function isApplePlatform() {
-  const platform = navigator.platform || "";
-  return /Mac|iPhone|iPad|iPod/.test(platform);
+  return detectShortcutPlatform() === "mac";
 }
 
 function shouldAvoidVirtualKeyboard() {
@@ -309,7 +312,7 @@ function registerTerminalLinkProvider(
           text: url,
           activate(event, text) {
             event.preventDefault();
-            if (!event.metaKey && !event.ctrlKey) return;
+            if (!terminalLinkModifierMatches(event)) return;
             const url = sanitizeTerminalHttpUrl(text);
             if (url) window.open(url, "_blank", "noopener,noreferrer");
           },
@@ -333,7 +336,7 @@ function registerTerminalLinkProvider(
           text: candidate.path,
           activate(event) {
             event.preventDefault();
-            if (!event.metaKey && !event.ctrlKey) return;
+            if (!terminalLinkModifierMatches(event)) return;
             onPreviewPath?.(resolvedPath);
           },
         });
@@ -710,11 +713,12 @@ export function TerminalView({
   useEffect(() => {
     if (!isActivePane || !canShowAgentHistory) return;
     const onKey = (e: KeyboardEvent) => {
-      const isHistoryShortcut =
-        e.key.toLowerCase() === "h" &&
-        e.shiftKey &&
-        !e.altKey &&
-        (e.metaKey || e.ctrlKey);
+      if (
+        e.defaultPrevented ||
+        document.querySelector(".modal-backdrop, .command-popover")
+      )
+        return;
+      const isHistoryShortcut = shortcutMatches(e, "terminal.history");
       if (!isHistoryShortcut) return;
       if (
         isEditableElement(e.target) &&
@@ -756,7 +760,10 @@ export function TerminalView({
       if (shouldAvoidVirtualKeyboard()) blurTerminalInput();
       const targetTerminalId =
         desiredTerminalRef.current ?? paneTerminalIdRef.current;
-      if (!targetTerminalId || store.terminalScrollReason(targetTerminalId))
+      if (
+        !targetTerminalId ||
+        (amount === "half" && store.terminalScrollReason(targetTerminalId))
+      )
         return;
       connectionClient
         .call("terminal.scroll", {
@@ -831,7 +838,7 @@ export function TerminalView({
       linkHandler: {
         activate(event, text) {
           event.preventDefault();
-          if (!event.metaKey && !event.ctrlKey) return;
+          if (!terminalLinkModifierMatches(event)) return;
           const url = sanitizeTerminalHttpUrl(text);
           if (url) window.open(url, "_blank", "noopener,noreferrer");
         },
@@ -1244,7 +1251,6 @@ export function TerminalView({
     };
     const applePlatform = isApplePlatform();
     const appleTouchPlatform = applePlatform && navigator.maxTouchPoints > 0;
-    const shouldHandleCtrlVPaste = !applePlatform;
     const shouldRecoverCommittedImeInput = (input: InputEvent) =>
       applePlatform &&
       !terminalCompositionActive &&
@@ -1265,63 +1271,56 @@ export function TerminalView({
       if (e.type === "keydown" && e.keyCode !== 229) {
         imeTextareaFallback.cancelPending();
       }
-      const modifiedEnter = modifiedEnterSequence(e);
-      if (modifiedEnter) {
+      const sequence = terminalShortcutSequence(
+        e,
+        getShortcutSnapshot().preset.bindings,
+      );
+      if (sequence) {
         e.preventDefault();
         e.stopPropagation();
-        sendText(modifiedEnter);
+        sendText(sequence);
         return false;
       }
-
-      // Shell/readline equivalents for common macOS text editing shortcuts.
-      const commandSequence = macCommandEditingSequence(e, applePlatform);
-      if (commandSequence) {
+      if (e.type === "keydown" && shortcutMatches(e, "terminal.copy")) {
         e.preventDefault();
         e.stopPropagation();
-        sendText(commandSequence);
-        return false;
-      }
-
-      const isCtrlV =
-        e.type === "keydown" &&
-        e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey &&
-        !e.shiftKey &&
-        (e.key.toLowerCase() === "v" || e.code === "KeyV");
-      if (isCtrlV) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!shouldHandleCtrlVPaste) {
-          store.notify({
-            kind: "info",
-            message: "Use Cmd+V to paste in the terminal",
+        const text = trimCopiedLinePadding(term.getSelection());
+        if (text) {
+          void copyTextFromUserGesture(text).catch((error) => {
+            setUploadError(`Copy failed: ${(error as Error).message}`);
           });
-          return false;
         }
+        return false;
+      }
+      if (e.type === "keydown" && shortcutMatches(e, "terminal.paste")) {
+        // Native paste events carry clipboard payloads even on insecure LAN URLs.
+        // Keep the platform's native gesture; custom combinations use the API.
+        const nativePaste =
+          !e.altKey &&
+          !e.shiftKey &&
+          (e.key.toLowerCase() === "v" || e.code === "KeyV") &&
+          (applePlatform ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
+        if (nativePaste) return false;
+        e.preventDefault();
+        e.stopPropagation();
         pasteFromBrowserClipboard().catch((err) => {
           setUploadError(`Paste failed: ${(err as Error).message}`);
         });
         return false;
       }
-
-      const isPageKey =
-        e.type === "keydown" &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.shiftKey &&
-        (e.key === "PageUp" ||
-          e.key === "PageDown" ||
-          e.code === "PageUp" ||
-          e.code === "PageDown");
-      if (isPageKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        scrollPage(
-          e.key === "PageUp" || e.code === "PageUp" ? "up" : "down",
-          e.altKey ? "half" : "full",
-        );
-        return false;
+      if (e.type === "keydown") {
+        for (const [id, direction, amount] of [
+          ["terminal.pageUp", "up", "full"],
+          ["terminal.pageDown", "down", "full"],
+          ["terminal.halfPageUp", "up", "half"],
+          ["terminal.halfPageDown", "down", "half"],
+        ] as const) {
+          if (!shortcutMatches(e, id)) continue;
+          e.preventDefault();
+          e.stopPropagation();
+          scrollPage(direction, amount);
+          return false;
+        }
       }
 
       return true;

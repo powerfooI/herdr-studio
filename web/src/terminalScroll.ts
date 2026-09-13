@@ -34,7 +34,7 @@ export function terminalWheelScroll(
   };
 }
 
-/** Treats physical Page Up/Down as viewport scrollback rather than TUI input. */
+/** Full pages let Herdr route the key; half pages explicitly scroll history. */
 export function terminalPageScroll(
   direction: "up" | "down",
   rows: number,

@@ -1,5 +1,11 @@
 import { useLayoutPreferences } from "./layoutPreferences";
 import {
+  shortcutMatches,
+  shortcutTitle,
+  useShortcutPreferences,
+} from "./shortcutPreferences";
+import { SHORTCUT_NUMBERS } from "./shortcutBindings";
+import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -529,10 +535,8 @@ function blurActiveInput(event: React.PointerEvent<HTMLButtonElement>) {
 }
 
 function tabShortcutIndex(e: KeyboardEvent) {
-  if (!e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return null;
-  if (/^[1-9]$/.test(e.key)) return Number(e.key) - 1;
-  const match = /^Digit([1-9])$/.exec(e.code);
-  return match ? Number(match[1]) - 1 : null;
+  const number = SHORTCUT_NUMBERS.find((n) => shortcutMatches(e, `tab.${n}`));
+  return number === undefined ? null : number - 1;
 }
 
 // Herdr reports pane rectangles in terminal-cell coordinates. The GUI maps
@@ -581,7 +585,7 @@ function PaneJumpOverlay({
       >
         <div className="pane-jump-head">
           <strong>Switch Pane</strong>
-          <span>Hold Ctrl, use Tab / Up / Down, release Ctrl</span>
+          <span>Use Up / Down and Enter, or release the opening modifier</span>
         </div>
         <div className="pane-jump-list">
           {entries.map((entry, index) => (
@@ -1046,6 +1050,7 @@ function TerminalPaneLayout({
 }
 
 export default function App() {
+  useShortcutPreferences();
   const s = useStoreSelector(
     (state) => ({
       activeConnectionId: state.activeConnectionId,
@@ -1116,7 +1121,9 @@ export default function App() {
     useState(false);
   const [paneJumpOpen, setPaneJumpOpen] = useState(false);
   const [paneJumpIndex, setPaneJumpIndex] = useState(0);
-  const paneJumpCtrlDownRef = useRef(false);
+  const paneJumpModifierRef = useRef<"ctrlKey" | "altKey" | "metaKey" | null>(
+    null,
+  );
   const paneJumpIndexRef = useRef(0);
   const [inspectorState, setInspectorState] =
     useState<WorkspaceInspectorState | null>(null);
@@ -1903,7 +1910,7 @@ export default function App() {
       window.removeEventListener(WORKTREE_REMOVED_EVENT, handleWorktreeRemoved);
   }, [commitInspectorState, connectionClient]);
   const closePaneJump = useCallback(() => {
-    paneJumpCtrlDownRef.current = false;
+    paneJumpModifierRef.current = null;
     setPaneJumpOpen(false);
   }, []);
   const selectPaneJumpIndex = useCallback(
@@ -2096,6 +2103,14 @@ export default function App() {
   }, [connectionClient, focusedWorkspace, inspectorState]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+      if (
+        document.querySelector(
+          ".modal-backdrop, .command-popover, .context-menu",
+        ) ||
+        document.getElementById(CONFIG_MENU_ID)
+      )
+        return;
       if (paneJumpOpen) {
         const paneJumpNavigationKey =
           e.key === "Tab" ||
@@ -2119,21 +2134,31 @@ export default function App() {
           }
           return;
         }
-        if (e.key !== "Control" && e.key !== "Shift") {
+        if (
+          !["Control", "Shift", "Alt", "Meta"].includes(e.key) &&
+          !shortcutMatches(e, "panes.recent")
+        ) {
           closePaneJump();
         }
       }
-      const paneJumpShortcut =
-        e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Tab";
+      const paneJumpShortcut = shortcutMatches(e, "panes.recent");
       if (paneJumpShortcut) {
         if (isEditableElement(e.target)) return;
         if (paneJumpOptions.length === 0) return;
         e.preventDefault();
         e.stopPropagation();
-        if (!paneJumpCtrlDownRef.current) {
-          paneJumpCtrlDownRef.current = true;
+        if (!paneJumpOpen && !e.repeat) {
+          paneJumpModifierRef.current = e.ctrlKey
+            ? "ctrlKey"
+            : e.altKey
+              ? "altKey"
+              : e.metaKey
+                ? "metaKey"
+                : null;
           selectPaneJumpIndex(defaultPaneJumpIndex());
           setPaneJumpOpen(true);
+        } else if (paneJumpOpen) {
+          movePaneJumpSelection(e.shiftKey ? -1 : 1);
         }
         return;
       }
@@ -2160,8 +2185,6 @@ export default function App() {
       }
       const tabAction = tabShortcutAction(e);
       if (tabAction) {
-        // Browser-level Cmd+T/Cmd+W may still be reserved by the host browser,
-        // but standalone/webview clients can route them through this handler.
         e.preventDefault();
         e.stopPropagation();
         if (
@@ -2213,8 +2236,6 @@ export default function App() {
       }
       const paneAction = paneShortcutAction(e);
       if (paneAction) {
-        // Browser-level Cmd+D may still be reserved by the host browser, but
-        // standalone/webview clients can route it through this handler.
         e.preventDefault();
         e.stopPropagation();
         if (
@@ -2273,11 +2294,7 @@ export default function App() {
         toggleWorkspaceInspector();
         return;
       }
-      const fileExplorerShortcut =
-        e.key.toLowerCase() === "e" &&
-        e.shiftKey &&
-        !e.altKey &&
-        (e.metaKey || e.ctrlKey);
+      const fileExplorerShortcut = shortcutMatches(e, "files.toggle");
       if (fileExplorerShortcut) {
         if (isEditableElement(e.target)) return;
         e.preventDefault();
@@ -2285,12 +2302,7 @@ export default function App() {
         toggleFileExplorer();
         return;
       }
-      const workspacesShortcut =
-        e.key.toLowerCase() === "w" &&
-        e.ctrlKey &&
-        !e.metaKey &&
-        e.shiftKey &&
-        !e.altKey;
+      const workspacesShortcut = shortcutMatches(e, "workspaces.open");
       if (workspacesShortcut) {
         if (isEditableElement(e.target)) return;
         e.preventDefault();
@@ -2298,12 +2310,7 @@ export default function App() {
         openWorkspaces();
         return;
       }
-      const diffViewerShortcut =
-        e.key.toLowerCase() === "g" &&
-        e.shiftKey &&
-        e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey;
+      const diffViewerShortcut = shortcutMatches(e, "diff.toggle");
       if (diffViewerShortcut) {
         if (isEditableElement(e.target)) return;
         e.preventDefault();
@@ -2311,17 +2318,14 @@ export default function App() {
         toggleDiffViewer();
         return;
       }
-      if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (e.key.toLowerCase() !== "b" || isEditableElement(e.target)) return;
+      if (!shortcutMatches(e, "sidebar.toggle") || isEditableElement(e.target))
+        return;
       e.preventDefault();
       toggleSidebar();
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!paneJumpOpen) {
-        if (!e.ctrlKey) paneJumpCtrlDownRef.current = false;
-        return;
-      }
-      if (e.key === "Control" || !e.ctrlKey) {
+      const modifier = paneJumpModifierRef.current;
+      if (paneJumpOpen && modifier && !e[modifier]) {
         e.preventDefault();
         e.stopPropagation();
         commitPaneJump();
@@ -2659,7 +2663,7 @@ export default function App() {
         <button
           type="button"
           className={mobileView === "files" ? "active" : ""}
-          title="Files"
+          title={shortcutTitle("Files", "files.toggle")}
           aria-label="Show workspace files"
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           onClick={() => openFileExplorer()}
@@ -2670,7 +2674,7 @@ export default function App() {
         <button
           type="button"
           className={mobileView === "changes" ? "active" : ""}
-          title="Changes"
+          title={shortcutTitle("Changes", "diff.toggle")}
           aria-label="Show workspace changes"
           tabIndex={mobileControlsCollapsed ? -1 : 0}
           onClick={() => openDiffViewer()}
@@ -2706,7 +2710,7 @@ export default function App() {
         className={`mobile-workspace-shortcut ${
           mobileView === "workspaces" ? "is-active" : ""
         }`}
-        title="Workspaces"
+        title={shortcutTitle("Workspaces", "workspaces.open")}
         aria-label={
           mobileView === "workspaces" ? "Hide workspaces" : "Show workspaces"
         }

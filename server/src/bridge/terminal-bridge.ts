@@ -1092,6 +1092,28 @@ export function createTerminalBridge(args: {
         const column =
           typeof params.column === "number" ? Number(params.column) : null;
         const row = typeof params.row === "number" ? Number(params.row) : null;
+        if (
+          params.source === "page-key" &&
+          thin instanceof EndpointTerminalSession
+        ) {
+          // Version gate: EndpointTerminalSession requires the endpoint to
+          // speak shell.input.semantic.v1 at handshake (Herdr >= 0.9.0),
+          // which routes PageUp/PageDown by PTY modes. Older endpoints never
+          // reach this branch; they keep the legacy scroll routing below.
+          if (!shared || !requestedTerminalId)
+            return fail(NO_TERMINAL_ATTACHED_MESSAGE);
+          const validateAttachment = await waitForOwnedTerminal(
+            ws,
+            requestedTerminalId,
+            shared,
+            requestIsCurrent,
+          );
+          validateAttachment();
+          // Herdr chooses application input versus shell scrollback from the
+          // actual PTY modes. pane.scroll always means history and bypasses nano.
+          thin.input(Buffer.from(direction === "up" ? "\x1b[5~" : "\x1b[6~"));
+          return reply({ ok: true });
+        }
         // Explicit half-page shortcuts use pane.scroll on endpoints, while
         // legacy AttachScroll keeps its original Wheel source and line count.
         const source =

@@ -1,5 +1,9 @@
+import { defaultShortcutBindings } from "./shortcutBindings";
 import { describe, expect, test } from "bun:test";
-import { paneShortcutAction } from "./paneShortcuts";
+import { paneShortcutAction as resolveShortcut } from "./paneShortcuts";
+
+const paneShortcutAction = (event: Parameters<typeof resolveShortcut>[0]) =>
+  resolveShortcut(event, defaultShortcutBindings("mac"));
 
 function keyEvent(
   overrides: Partial<Parameters<typeof paneShortcutAction>[0]> = {},

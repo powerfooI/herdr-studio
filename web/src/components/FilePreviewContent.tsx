@@ -1,3 +1,4 @@
+import { shortcutMatches } from "../shortcutPreferences";
 import {
   useCallback,
   useEffect,
@@ -94,6 +95,12 @@ async function importCodeMirrorPreviewDeps() {
 
   return {
     basicSetup: codemirror.basicSetup,
+    configuredShortcutGuard: state.Prec.highest(
+      view.keymap.of([
+        { key: "Mod-f", run: () => true },
+        { key: "Mod-a", run: () => true },
+      ]),
+    ),
     Compartment: state.Compartment,
     Decoration: view.Decoration,
     RangeSet: state.RangeSet,
@@ -301,13 +308,14 @@ export function FilePreviewContent({
   useEffect(() => {
     if (showingChanges || !hasPreviewText) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      const key = e.key.toLowerCase();
-      if (key !== "f" && key !== "a") return;
+      if (e.defaultPrevented || document.querySelector(".shortcut-modal"))
+        return;
+      const find = shortcutMatches(e, "preview.search");
+      if (!find && !shortcutMatches(e, "preview.selectAll")) return;
       const section = previewSectionRef.current;
       if (!section || section.offsetParent === null) return;
       if (isEditablePreviewTarget(e.target)) return;
-      if (key === "f") {
+      if (find) {
         if (renderRichPreview) return;
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -401,7 +409,7 @@ export function FilePreviewContent({
       aria-label="File preview"
       tabIndex={-1}
       onKeyDownCapture={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        if (shortcutMatches(e.nativeEvent, "preview.search")) {
           if (showingChanges || renderRichPreview) return;
           e.preventDefault();
           e.stopPropagation();
@@ -799,6 +807,7 @@ function CodeMirrorPreview({
           doc: text,
           extensions: [
             deps.basicSetup,
+            deps.configuredShortcutGuard,
             deps.search({ top: true }),
             deps.keymap.of(deps.searchKeymap),
             deps.EditorState.readOnly.of(true),

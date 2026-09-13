@@ -1,9 +1,13 @@
+import { defaultShortcutBindings } from "./shortcutBindings";
 import { describe, expect, test } from "bun:test";
 import {
   adjacentTabId,
   closeShortcutTarget,
-  tabShortcutAction,
+  tabShortcutAction as resolveShortcut,
 } from "./tabShortcuts";
+
+const tabShortcutAction = (event: Parameters<typeof resolveShortcut>[0]) =>
+  resolveShortcut(event, defaultShortcutBindings("mac"));
 
 function keyEvent(
   overrides: Partial<Parameters<typeof tabShortcutAction>[0]> = {},

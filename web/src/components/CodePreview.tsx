@@ -1,3 +1,4 @@
+import { shortcutMatches } from "../shortcutPreferences";
 import { useEffect, useRef } from "react";
 import {
   handlePreviewEditorCopy,
@@ -44,6 +45,12 @@ async function importCodePreviewDeps() {
   ]);
   return {
     basicSetup: codemirror.basicSetup,
+    configuredShortcutGuard: state.Prec.highest(
+      view.keymap.of([
+        { key: "Mod-f", run: () => true },
+        { key: "Mod-a", run: () => true },
+      ]),
+    ),
     EditorState: state.EditorState,
     EditorView: view.EditorView,
     keymap: view.keymap,
@@ -88,6 +95,7 @@ export function CodePreview({
           doc: text,
           extensions: [
             deps.basicSetup,
+            deps.configuredShortcutGuard,
             ...(searchable
               ? [deps.search({ top: true }), deps.keymap.of(deps.searchKeymap)]
               : []),
@@ -231,16 +239,17 @@ export function CodePreview({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((!e.metaKey && !e.ctrlKey) || e.altKey || e.shiftKey) return;
-      const key = e.key.toLowerCase();
-      if (key !== "f" && key !== "a") return;
+      if (e.defaultPrevented || document.querySelector(".shortcut-modal"))
+        return;
+      const find = shortcutMatches(e, "preview.search");
+      if (!find && !shortcutMatches(e, "preview.selectAll")) return;
       const parent = containerRef.current;
       if (!parent) return;
       const target = e.target as Node | null;
       if (isEditablePreviewTarget(e.target)) return;
       const editor = editorRef.current;
       if (!editor) return;
-      if (key === "f") {
+      if (find) {
         if (!searchable || !target || !parent.contains(target)) return;
         e.preventDefault();
         e.stopImmediatePropagation();
