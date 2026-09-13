@@ -32,30 +32,26 @@ Roamgate is not affiliated with or endorsed by the Herdr project.
 
 ### Desktop
 
-[![Desktop workspace with a live terminal and session history][desktop-session]][desktop-session]
+[![Desktop workspace with live terminals and image changes][desktop-changes]][desktop-changes]
 
-Workspace terminal with live agent session history.
+Workspace terminals with changed files and image previews.
 
 <!-- markdownlint-disable MD033 -->
 
 <table width="100%">
   <thead>
     <tr>
-      <th width="33.33%" align="center">File explorer</th>
-      <th width="33.33%" align="center">Diff viewer</th>
-      <th width="33.33%" align="center">Full terminal</th>
+      <th width="50%" align="center">File explorer</th>
+      <th width="50%" align="center">Diff annotations</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-desktop-file-explorer.png"><img src="./docs/images/herdr-studio-desktop-file-explorer.png" alt="Desktop file explorer" width="100%" /></a>
+      <td width="50%" align="center" valign="top">
+        <a href="./docs/images/roamgate-desktop-files.png"><img src="./docs/images/roamgate-desktop-files.png" alt="Desktop file explorer" width="100%" /></a>
       </td>
-      <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-desktop-diff-viewer.png"><img src="./docs/images/herdr-studio-desktop-diff-viewer.png" alt="Desktop diff viewer" width="100%" /></a>
-      </td>
-      <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-desktop-terminal.png"><img src="./docs/images/herdr-studio-desktop-terminal.png" alt="Desktop terminal" width="100%" /></a>
+      <td width="50%" align="center" valign="top">
+        <a href="./docs/images/roamgate-desktop-annotations.png"><img src="./docs/images/roamgate-desktop-annotations.png" alt="Desktop diff annotations" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -74,13 +70,13 @@ Workspace terminal with live agent session history.
   <tbody>
     <tr>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-mobile-changed-files.png"><img src="./docs/images/herdr-studio-mobile-changed-files.png" alt="Mobile changed files viewer" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-changes.png"><img src="./docs/images/roamgate-mobile-changes.png" alt="Mobile changed files viewer" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-mobile-terminal.png"><img src="./docs/images/herdr-studio-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-terminal.png"><img src="./docs/images/roamgate-mobile-terminal.png" alt="Mobile terminal" width="100%" /></a>
       </td>
       <td width="33.33%" align="center" valign="top">
-        <a href="./docs/images/herdr-studio-mobile-file-viewer.png"><img src="./docs/images/herdr-studio-mobile-file-viewer.png" alt="Mobile file viewer" width="100%" /></a>
+        <a href="./docs/images/roamgate-mobile-files.png"><img src="./docs/images/roamgate-mobile-files.png" alt="Mobile file viewer" width="100%" /></a>
       </td>
     </tr>
   </tbody>
@@ -90,7 +86,7 @@ Workspace terminal with live agent session history.
 
 Click any screenshot to open the full-resolution image.
 
-[desktop-session]: ./docs/images/herdr-studio-desktop-session-history.png
+[desktop-changes]: ./docs/images/roamgate-desktop-changes.png
 
 ## Quick start
 
