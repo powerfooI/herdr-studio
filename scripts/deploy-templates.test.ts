@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
 
+test("renamed systemd template runs Roamgate and retains the existing environment file", async () => {
+  const unit = await Bun.file(
+    new URL("../deploy/systemd/roamgate.service", import.meta.url),
+  ).text();
+  expect(unit).toContain("Description=Roamgate");
+  expect(unit).toContain("ExecStart=%h/.local/bin/roamgate");
+  expect(unit).toContain("EnvironmentFile=-%h/.config/herdr-gui/herdr-gui.env");
+});
+
 test("launchd template executes the installed Roamgate binary and retains service state paths", async () => {
   const plist = await Bun.file(
     new URL("../deploy/launchd/dev.herdr.herdr-gui.plist", import.meta.url),
