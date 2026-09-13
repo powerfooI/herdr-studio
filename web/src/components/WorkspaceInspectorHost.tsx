@@ -1,3 +1,4 @@
+import { roamgateLocalStorage } from "../browserStorage";
 import {
   ChevronLeft,
   FileDiff,
@@ -255,7 +256,7 @@ export function WorkspaceInspectorHost({
   const allPanes = useStoreSelector((snapshot) => snapshot.panes);
   const annotationStorageKey = annotationDraftStorageKey(state.scope);
   const [annotations, setAnnotations] = useState<ReviewAnnotation[]>(() =>
-    readReviewAnnotations(localStorage, annotationStorageKey),
+    readReviewAnnotations(roamgateLocalStorage, annotationStorageKey),
   );
   const [annotationsOpen, setAnnotationsOpen] = useState(false);
   const [focusedAnnotationId, setFocusedAnnotationId] = useState<string | null>(
@@ -300,7 +301,7 @@ export function WorkspaceInspectorHost({
           return current;
         }
         const persisted = writeReviewAnnotations(
-          localStorage,
+          roamgateLocalStorage,
           annotationStorageKey,
           next,
         );
@@ -436,7 +437,10 @@ export function WorkspaceInspectorHost({
     [contentResourceKey],
   );
   const [navigationRatios, setNavigationRatios] = useState(() => {
-    const preferences = readInspectorPreferences(localStorage, state.scope);
+    const preferences = readInspectorPreferences(
+      roamgateLocalStorage,
+      state.scope,
+    );
     return {
       files: preferences.filesNavigationRatio,
       changes: preferences.changesNavigationRatio,
@@ -459,7 +463,12 @@ export function WorkspaceInspectorHost({
     setNavigationRatios((current) => ({ ...current, [view]: ratio }));
   };
   const commitNavigationRatio = (view: InspectorSplitView, ratio: number) => {
-    writeInspectorNavigationRatio(localStorage, state.scope, view, ratio);
+    writeInspectorNavigationRatio(
+      roamgateLocalStorage,
+      state.scope,
+      view,
+      ratio,
+    );
   };
   const splitStyle = (view: InspectorSplitView) =>
     ({
@@ -491,7 +500,9 @@ export function WorkspaceInspectorHost({
     .join("|");
 
   useEffect(() => {
-    setAnnotations(readReviewAnnotations(localStorage, annotationStorageKey));
+    setAnnotations(
+      readReviewAnnotations(roamgateLocalStorage, annotationStorageKey),
+    );
     setAnnotationsOpen(false);
     setFocusedAnnotationId(null);
   }, [annotationStorageKey]);
@@ -539,7 +550,10 @@ export function WorkspaceInspectorHost({
   };
 
   useEffect(() => {
-    const preferences = readInspectorPreferences(localStorage, state.scope);
+    const preferences = readInspectorPreferences(
+      roamgateLocalStorage,
+      state.scope,
+    );
     setNavigationRatios({
       files: preferences.filesNavigationRatio,
       changes: preferences.changesNavigationRatio,

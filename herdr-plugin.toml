@@ -1,8 +1,8 @@
-id = "herdr.studio"
+id = "roamgate"
 name = "Roamgate"
 version = "0.7.0"
 min_herdr_version = "0.7.2"
-description = "Browser and PWA client for Herdr: workspaces, tabs, panes, agent status, session inspection, diffs, and review annotations"
+description = "Web and PWA client for Herdr: workspaces, tabs, panes, agent status, session inspection, diffs, and review annotations"
 platforms = ["linux", "macos", "windows"]
 
 # Thin launcher: every action delegates to scripts/studio-plugin.ts, which

@@ -39,12 +39,17 @@ interface UpdateRuntime {
 }
 
 const DEFAULT_UPDATE_BASE_URL =
-  "https://github.com/powerfooI/herdr-studio/releases/latest/download";
+  "https://github.com/powerfooI/roamgate/releases/latest/download";
 const UPDATE_METADATA_MAX_BYTES = 4096;
 const UPDATE_CHECK_CACHE_MS = 5 * 60 * 1000;
 const UPDATE_CHECK_TIMEOUT_MS = 15000;
 const UPDATE_INSTALL_TIMEOUT_MS = 120000;
-const UPDATE_CONFIRMATION_HEADER = "x-herdr-gui-update";
+function hasUpdateConfirmation(req: Request): boolean {
+  return (
+    (req.headers.get("x-roamgate-update") ??
+      req.headers.get("x-herdr-gui-update")) === "1"
+  );
+}
 export const UPDATE_HTTP_IDLE_TIMEOUT_SECONDS =
   Math.ceil((UPDATE_CHECK_TIMEOUT_MS + UPDATE_INSTALL_TIMEOUT_MS) / 1000) + 15;
 
@@ -125,10 +130,10 @@ export function normalizeUpdateBaseUrl(value?: string): string {
   try {
     url = new URL(candidate);
   } catch {
-    throw new Error("HERDR_GUI_UPDATE_BASE_URL must be an HTTP(S) URL");
+    throw new Error("ROAMGATE_UPDATE_BASE_URL must be an HTTP(S) URL");
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("HERDR_GUI_UPDATE_BASE_URL must be an HTTP(S) URL");
+    throw new Error("ROAMGATE_UPDATE_BASE_URL must be an HTTP(S) URL");
   }
   const loopbackHttp =
     url.protocol === "http:" &&
@@ -137,15 +142,15 @@ export function normalizeUpdateBaseUrl(value?: string): string {
       /^127(?:\.\d{1,3}){3}$/.test(url.hostname));
   if (url.protocol !== "https:" && !loopbackHttp) {
     throw new Error(
-      "HERDR_GUI_UPDATE_BASE_URL must use HTTPS unless the mirror is loopback",
+      "ROAMGATE_UPDATE_BASE_URL must use HTTPS unless the mirror is loopback",
     );
   }
   if (url.username || url.password) {
-    throw new Error("HERDR_GUI_UPDATE_BASE_URL must not contain credentials");
+    throw new Error("ROAMGATE_UPDATE_BASE_URL must not contain credentials");
   }
   if (url.search || url.hash) {
     throw new Error(
-      "HERDR_GUI_UPDATE_BASE_URL must not contain a query or fragment",
+      "ROAMGATE_UPDATE_BASE_URL must not contain a query or fragment",
     );
   }
   url.pathname = url.pathname.replace(/\/+$/, "");
@@ -439,7 +444,7 @@ export function createUpdateHandlers({
   }
 
   async function handleUpdateCheck(req: Request): Promise<Response> {
-    if (req.headers.get(UPDATE_CONFIRMATION_HEADER) !== "1") {
+    if (!hasUpdateConfirmation(req)) {
       return updateJson(
         { error: "Update confirmation header is required." },
         { status: 403 },
@@ -456,7 +461,7 @@ export function createUpdateHandlers({
   }
 
   async function handleUpdateInstall(req: Request): Promise<Response> {
-    if (req.headers.get(UPDATE_CONFIRMATION_HEADER) !== "1") {
+    if (!hasUpdateConfirmation(req)) {
       return updateJson(
         { error: "Update confirmation header is required." },
         { status: 403 },

@@ -1,3 +1,4 @@
+import { roamgateLocalStorage } from "./browserStorage";
 import { useLayoutPreferences } from "./layoutPreferences";
 import {
   shortcutMatches,
@@ -257,11 +258,13 @@ function normalizeSidebarWidth(value: number): number {
 }
 
 function loadSidebarWidth(): number {
-  return normalizeSidebarWidth(Number(localStorage.getItem("sidebarWidth")));
+  return normalizeSidebarWidth(
+    Number(roamgateLocalStorage.getItem("sidebarWidth")),
+  );
 }
 
 function loadTheme(): Theme {
-  return normalizeThemePreference(localStorage.getItem(THEME_KEY));
+  return normalizeThemePreference(roamgateLocalStorage.getItem(THEME_KEY));
 }
 
 function loadSystemTheme(): ResolvedTheme {
@@ -269,34 +272,36 @@ function loadSystemTheme(): ResolvedTheme {
 }
 
 function loadAccentColor(): AccentColor {
-  return normalizeAccentColor(localStorage.getItem(ACCENT_COLOR_KEY));
+  return normalizeAccentColor(roamgateLocalStorage.getItem(ACCENT_COLOR_KEY));
 }
 
 function loadUiScale(): number {
-  return normalizeUiScale(localStorage.getItem(UI_SCALE_KEY));
+  return normalizeUiScale(roamgateLocalStorage.getItem(UI_SCALE_KEY));
 }
 
 function loadTerminalThemeSelection(): TerminalThemeSelection {
   return parseTerminalThemeSelection(
-    localStorage.getItem(TERMINAL_THEME_SELECTION_STORAGE_KEY),
+    roamgateLocalStorage.getItem(TERMINAL_THEME_SELECTION_STORAGE_KEY),
   );
 }
 
 function loadCustomTerminalThemes(): CustomTerminalTheme[] {
   return parseCustomTerminalThemes(
-    localStorage.getItem(CUSTOM_TERMINAL_THEMES_STORAGE_KEY),
+    roamgateLocalStorage.getItem(CUSTOM_TERMINAL_THEMES_STORAGE_KEY),
   );
 }
 
 function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
-  const current = localStorage.getItem(MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY);
+  const current = roamgateLocalStorage.getItem(
+    MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
+  );
   if (current !== null) return parseMobileTerminalShortcutRows(current);
-  const legacy = localStorage.getItem(
+  const legacy = roamgateLocalStorage.getItem(
     LEGACY_MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
   );
   const migrated = parseMobileTerminalShortcutRows(legacy);
   if (legacy !== null) {
-    localStorage.setItem(
+    roamgateLocalStorage.setItem(
       MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
       serializeMobileTerminalShortcutRows(migrated),
     );
@@ -306,7 +311,7 @@ function loadMobileTerminalShortcuts(): MobileTerminalShortcutRows {
 
 function loadMobileTerminalSideShortcuts(): MobileTerminalSideShortcuts {
   return parseMobileTerminalSideShortcuts(
-    localStorage.getItem(MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY),
+    roamgateLocalStorage.getItem(MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY),
   );
 }
 
@@ -1388,9 +1393,13 @@ export default function App() {
       const current = inspectorStateRef.current;
       const sameOwner = !!current && sameResourceOwner(current.scope, scope);
       const stageWidth = inspectorStageRef.current?.clientWidth ?? 0;
-      const preferences = readInspectorPreferences(localStorage, scope, {
-        rightSize: stageWidth > 0 ? stageWidth * 0.42 : undefined,
-      });
+      const preferences = readInspectorPreferences(
+        roamgateLocalStorage,
+        scope,
+        {
+          rightSize: stageWidth > 0 ? stageWidth * 0.42 : undefined,
+        },
+      );
       const dock = sameOwner ? current.dock : preferences.dock;
       const preferredSize = sameOwner
         ? current.size
@@ -1437,7 +1446,7 @@ export default function App() {
         ? { state: nextState, source: document.activeElement }
         : null;
       commitInspectorState(nextState);
-      writeInspectorPreferences(localStorage, nextState);
+      writeInspectorPreferences(roamgateLocalStorage, nextState);
       setSidebarHidden(false);
       if (mobile) setMobileView(view);
       if (focusInspector) requestAnimationFrame(finishInspectorFocus);
@@ -1445,7 +1454,7 @@ export default function App() {
       const selectedPath =
         options.path ??
         (view === "files" && options.initialDirectory === undefined
-          ? readResourceFileSelection(localStorage, scope)
+          ? readResourceFileSelection(roamgateLocalStorage, scope)
           : undefined);
       if (view === "files" && !selectedPath) {
         fileQuickOpenRequestRef.current += 1;
@@ -1574,7 +1583,7 @@ export default function App() {
     const sameOwner = !!current && sameResourceOwner(current.scope, scope);
     const view = sameOwner
       ? current.view
-      : readInspectorPreferences(localStorage, scope).view;
+      : readInspectorPreferences(roamgateLocalStorage, scope).view;
     const historyPaneId =
       sameOwner && current.originPaneId
         ? current.originPaneId
@@ -1891,11 +1900,15 @@ export default function App() {
       clearFileExplorerResourceCache(
         connectionClient,
         resourceKey,
-        localStorage,
+        roamgateLocalStorage,
       );
       clearDiffContentResourceState(resourceStateKey(scope));
-      clearDiffViewerResourceCache(connectionClient, resourceKey, localStorage);
-      writeResourceFileSelection(localStorage, scope, null);
+      clearDiffViewerResourceCache(
+        connectionClient,
+        resourceKey,
+        roamgateLocalStorage,
+      );
+      writeResourceFileSelection(roamgateLocalStorage, scope, null);
       const current = inspectorStateRef.current;
       if (!current || !sameResourceOwner(current.scope, scope)) return;
       fileQuickOpenRequestRef.current += 1;
@@ -2068,7 +2081,7 @@ export default function App() {
     const current = inspectorStateRef.current;
     if (!current || !activeFilePreview.entry?.path) return;
     writeResourceFileSelection(
-      localStorage,
+      roamgateLocalStorage,
       current.scope,
       activeFilePreview.entry.path,
     );
@@ -2366,9 +2379,9 @@ export default function App() {
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
-    localStorage.setItem(THEME_KEY, theme);
+    roamgateLocalStorage.setItem(THEME_KEY, theme);
     document.documentElement.dataset.accent = accentColor;
-    localStorage.setItem(ACCENT_COLOR_KEY, accentColor);
+    roamgateLocalStorage.setItem(ACCENT_COLOR_KEY, accentColor);
     document.documentElement.style.zoom =
       uiScale === UI_SCALE_DEFAULT ? "" : String(uiScale / 100);
     if (uiScale === UI_SCALE_DEFAULT) {
@@ -2379,28 +2392,28 @@ export default function App() {
         String(uiScale / 100),
       );
     }
-    localStorage.setItem(UI_SCALE_KEY, String(uiScale));
+    roamgateLocalStorage.setItem(UI_SCALE_KEY, String(uiScale));
   }, [accentColor, resolvedTheme, theme, uiScale]);
   useEffect(() => {
-    localStorage.setItem(
+    roamgateLocalStorage.setItem(
       MOBILE_TERMINAL_SHORTCUTS_STORAGE_KEY,
       serializeMobileTerminalShortcutRows(mobileTerminalShortcuts),
     );
   }, [mobileTerminalShortcuts]);
   useEffect(() => {
-    localStorage.setItem(
+    roamgateLocalStorage.setItem(
       MOBILE_TERMINAL_SIDE_SHORTCUTS_STORAGE_KEY,
       serializeMobileTerminalSideShortcuts(mobileTerminalSideShortcuts),
     );
   }, [mobileTerminalSideShortcuts]);
   useEffect(() => {
-    localStorage.setItem(
+    roamgateLocalStorage.setItem(
       TERMINAL_THEME_SELECTION_STORAGE_KEY,
       serializeTerminalThemeSelection(terminalThemeSelection),
     );
   }, [terminalThemeSelection]);
   useEffect(() => {
-    localStorage.setItem(
+    roamgateLocalStorage.setItem(
       CUSTOM_TERMINAL_THEMES_STORAGE_KEY,
       serializeCustomTerminalThemes(customTerminalThemes),
     );
@@ -2441,7 +2454,7 @@ export default function App() {
       setSidebarWidth(normalizedWidth);
       return;
     }
-    localStorage.setItem("sidebarWidth", String(normalizedWidth));
+    roamgateLocalStorage.setItem("sidebarWidth", String(normalizedWidth));
   }, [sidebarWidth]);
 
   const setInspectorView = (view: InspectorView) => {
@@ -2460,13 +2473,16 @@ export default function App() {
           : current.originPaneId,
     };
     commitInspectorState(next);
-    writeInspectorPreferences(localStorage, next);
+    writeInspectorPreferences(roamgateLocalStorage, next);
     if (mobile) setMobileView(view);
   };
   const setInspectorDock = (dock: InspectorDock) => {
     const current = inspectorStateRef.current;
     if (!current || current.dock === dock) return;
-    const preferences = readInspectorPreferences(localStorage, current.scope);
+    const preferences = readInspectorPreferences(
+      roamgateLocalStorage,
+      current.scope,
+    );
     const next = {
       ...current,
       dock,
@@ -2474,14 +2490,14 @@ export default function App() {
       expanded: false,
     };
     commitInspectorState(next);
-    writeInspectorPreferences(localStorage, next);
+    writeInspectorPreferences(roamgateLocalStorage, next);
   };
   const setInspectorExpanded = (expanded: boolean) => {
     const current = inspectorStateRef.current;
     if (!current) return;
     const next = { ...current, expanded };
     commitInspectorState(next);
-    writeInspectorPreferences(localStorage, next);
+    writeInspectorPreferences(roamgateLocalStorage, next);
   };
   const clearInspectorDetail = () => {
     const current = inspectorStateRef.current;
@@ -2518,7 +2534,7 @@ export default function App() {
       ),
     };
     commitInspectorState(next);
-    writeInspectorPreferences(localStorage, next);
+    writeInspectorPreferences(roamgateLocalStorage, next);
   };
   const startInspectorResize = (e: React.PointerEvent) => {
     const current = inspectorStateRef.current;
@@ -2564,7 +2580,7 @@ export default function App() {
       if (!latest) return;
       const next = { ...latest, size: finalSize };
       commitInspectorState(next);
-      writeInspectorPreferences(localStorage, next);
+      writeInspectorPreferences(roamgateLocalStorage, next);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", finish);

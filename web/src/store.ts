@@ -1,3 +1,4 @@
+import { roamgateLocalStorage, roamgateSessionStorage } from "./browserStorage";
 import {
   type EndpointAvailability,
   parseEndpointAdvertisement,
@@ -179,8 +180,8 @@ export function emptyServerSessionState(
 }
 
 export const TASK_NOTIFICATION_ACTIVATE_EVENT =
-  "herdr:task-notification-activate";
-export const WORKTREE_REMOVED_EVENT = "herdr:worktree-removed";
+  "roamgate:task-notification-activate";
+export const WORKTREE_REMOVED_EVENT = "roamgate:worktree-removed";
 
 export interface WorktreeRemovedTarget {
   connectionId: string;
@@ -261,7 +262,7 @@ function notificationPermission(): NotificationPermission | "unsupported" {
 function storedTaskNotificationsEnabled() {
   return (
     typeof localStorage !== "undefined" &&
-    localStorage.getItem(TASK_NOTIFICATIONS_KEY) === "true"
+    roamgateLocalStorage.getItem(TASK_NOTIFICATIONS_KEY) === "true"
   );
 }
 
@@ -277,14 +278,14 @@ export function automaticUpdateChecksEnabledFromStorage(
 
 function storedAutomaticUpdateChecksEnabled(): boolean {
   return automaticUpdateChecksEnabledFromStorage(
-    typeof localStorage === "undefined" ? undefined : localStorage,
+    typeof localStorage === "undefined" ? undefined : roamgateLocalStorage,
   );
 }
 
 function storedPendingRestartVersion(): string | null {
   if (typeof sessionStorage === "undefined") return null;
   try {
-    return sessionStorage.getItem(PENDING_UPDATE_RELOAD_KEY);
+    return roamgateSessionStorage.getItem(PENDING_UPDATE_RELOAD_KEY);
   } catch {
     return null;
   }
@@ -294,9 +295,9 @@ function storePendingRestartVersion(version: string | null) {
   if (typeof sessionStorage === "undefined") return;
   try {
     if (version) {
-      sessionStorage.setItem(PENDING_UPDATE_RELOAD_KEY, version);
+      roamgateSessionStorage.setItem(PENDING_UPDATE_RELOAD_KEY, version);
     } else {
-      sessionStorage.removeItem(PENDING_UPDATE_RELOAD_KEY);
+      roamgateSessionStorage.removeItem(PENDING_UPDATE_RELOAD_KEY);
     }
   } catch {
     // Storage may be unavailable in private or restricted browser contexts.
@@ -320,7 +321,7 @@ const initial: State = {
   status: "disconnected",
   connectionPaused:
     typeof localStorage !== "undefined" &&
-    localStorage.getItem("connectionPaused") === "true",
+    roamgateLocalStorage.getItem("connectionPaused") === "true",
   bridgeStatus: null,
   connections: [],
   defaultConnectionId: LEGACY_DEFAULT_CONNECTION_ID,
@@ -878,7 +879,7 @@ export function taskNotificationTargetIsCurrent(
 
 export function taskNotificationTag(target: TaskNotificationTarget): string {
   return JSON.stringify([
-    "herdr-task",
+    "roamgate-task",
     target.connectionId,
     target.runtimeGeneration,
     target.paneId,
@@ -908,7 +909,7 @@ function notifyTaskCompleted(pane: Pane, workspaces: Workspace[], tabs: Tab[]) {
   const runtimeGeneration = state.serverRuntimeGeneration;
   if (runtimeGeneration === null) return;
   const body = taskNotificationBody(pane, workspaces, tabs);
-  const title = "Herdr task completed";
+  const title = "Roamgate task completed";
   const target = taskNotificationTarget(
     state.activeConnectionId,
     runtimeGeneration,
@@ -1350,7 +1351,7 @@ async function checkForUpdate(showErrors = false) {
   try {
     const r = await fetch("/api/update/check", {
       credentials: "same-origin",
-      headers: { "x-herdr-gui-update": "1" },
+      headers: { "x-roamgate-update": "1" },
     });
     if (!r.ok) {
       if (showErrors) {
@@ -1447,7 +1448,7 @@ function selectConnectionNow(connectionId: string, refresh = true): boolean {
     state.activeConnectionId === LEGACY_DEFAULT_CONNECTION_ID &&
     typeof localStorage !== "undefined"
   ) {
-    migrateLegacyConnectionStorage(localStorage, connectionId);
+    migrateLegacyConnectionStorage(roamgateLocalStorage, connectionId);
   }
   stopPolling();
   disposeTerminalConnection(
@@ -2182,7 +2183,7 @@ export const store = {
     detail = "This browser will stop syncing until you resume it.",
   ) {
     connectionRecoveryIntent = null;
-    localStorage.setItem("connectionPaused", "true");
+    roamgateLocalStorage.setItem("connectionPaused", "true");
     stopPolling();
     disposeTerminalConnection(
       {
@@ -2227,7 +2228,7 @@ export const store = {
 
   resumeConnection() {
     connectionRecoveryIntent = state.connectionPaused ? "resume" : "reconnect";
-    localStorage.setItem("connectionPaused", "false");
+    roamgateLocalStorage.setItem("connectionPaused", "false");
     set({
       connectionPaused: false,
       error: null,
@@ -2931,7 +2932,7 @@ export const store = {
 
   async setTaskNotificationsEnabled(enabled: boolean) {
     if (!enabled) {
-      localStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
+      roamgateLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
       set({
         taskNotificationsEnabled: false,
         taskNotificationPermission: notificationPermission(),
@@ -2945,7 +2946,7 @@ export const store = {
     }
 
     if (notificationPermission() === "unsupported") {
-      localStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
+      roamgateLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
       set({
         taskNotificationsEnabled: false,
         taskNotificationPermission: "unsupported",
@@ -2965,7 +2966,7 @@ export const store = {
         permission = await Notification.requestPermission();
       }
     } catch (e) {
-      localStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
+      roamgateLocalStorage.setItem(TASK_NOTIFICATIONS_KEY, "false");
       set({
         taskNotificationsEnabled: false,
         taskNotificationPermission: notificationPermission(),
@@ -2979,7 +2980,10 @@ export const store = {
     }
 
     const granted = permission === "granted";
-    localStorage.setItem(TASK_NOTIFICATIONS_KEY, granted ? "true" : "false");
+    roamgateLocalStorage.setItem(
+      TASK_NOTIFICATIONS_KEY,
+      granted ? "true" : "false",
+    );
     set({
       taskNotificationsEnabled: granted,
       taskNotificationPermission: permission,
@@ -3005,7 +3009,10 @@ export const store = {
 
   setAutomaticUpdateChecksEnabled(enabled: boolean) {
     try {
-      localStorage.setItem(AUTOMATIC_UPDATE_CHECKS_KEY, String(enabled));
+      roamgateLocalStorage.setItem(
+        AUTOMATIC_UPDATE_CHECKS_KEY,
+        String(enabled),
+      );
     } catch {
       // The in-memory preference still applies when storage is unavailable.
     }
@@ -3055,7 +3062,7 @@ export const store = {
       const r = await fetch("/api/update/install", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "x-herdr-gui-update": "1" },
+        headers: { "x-roamgate-update": "1" },
       });
       const body = await r.json().catch(() => null);
       if (!r.ok) {
@@ -3072,7 +3079,7 @@ export const store = {
             dismissedUpdateVersion: latestVersion,
             notice: {
               kind: "info",
-              message: "Restarting the herdr-gui process",
+              message: "Restarting the Roamgate process",
               detail:
                 "The binary was updated. Waiting for the external process supervisor to start the new version.",
               loading: true,
@@ -3088,7 +3095,7 @@ export const store = {
           notice: {
             kind: "success",
             message: `Roamgate ${installedVersion} installed`,
-            detail: "Restart the herdr-gui process to use the new version.",
+            detail: "Restart the Roamgate process to use the new version.",
           },
         });
         return;

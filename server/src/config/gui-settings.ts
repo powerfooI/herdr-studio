@@ -1,7 +1,7 @@
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { defaultDataFile } from "./data-paths";
+import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
+import { rename, rm, writeFile } from "node:fs/promises";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "../connections/types";
 import { serverLogger } from "../utils/logger";
 import { sourceCheckoutPath as workspaceSourceCheckoutPath } from "../workspace/utils";
@@ -42,7 +42,7 @@ let settingsMutationQueue: Promise<void> = Promise.resolve();
 let temporaryFileSequence = 0;
 
 export function guiSettingsPath(): string {
-  return join(homedir(), ".config", "herdr-gui", "settings.json");
+  return defaultDataFile("settings.json");
 }
 
 function defaultGuiSettings(): GuiSettings {
@@ -150,11 +150,14 @@ async function persistGuiSettings(
 ): Promise<GuiSettings> {
   const path = guiSettingsPath();
   const temporaryPath = `${path}.${process.pid}.${++temporaryFileSequence}.tmp`;
-  mkdirSync(dirname(path), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const normalized = normalizeGuiSettings(settings);
   try {
     if (!shouldCommit()) throw new Error("settings update cancelled");
-    await Bun.write(temporaryPath, `${JSON.stringify(normalized, null, 2)}\n`);
+    await writeFile(temporaryPath, `${JSON.stringify(normalized, null, 2)}\n`, {
+      mode: 0o600,
+      flag: "wx",
+    });
     if (!shouldCommit()) throw new Error("settings update cancelled");
     await rename(temporaryPath, path);
   } catch (error) {

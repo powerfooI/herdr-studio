@@ -39,7 +39,7 @@ describe("generated authentication token", () => {
     const home = join("C:", "Users", "tester");
     const appData = join(home, "AppData", "Roaming");
     expect(defaultAuthTokenPath(home, "win32", appData)).toBe(
-      join(appData, "herdr-gui", "auth-token"),
+      join(appData, "roamgate", "auth-token"),
     );
   });
 
@@ -88,7 +88,7 @@ describe("generated authentication token", () => {
     symlinkSync(target, path);
 
     expect(() => loadOrCreateAuthToken(path)).toThrow(
-      "generated auth token path is not a regular file",
+      "data path contains a symlink",
     );
   });
 });

@@ -4,20 +4,14 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>dev.herdr.herdr-gui</string>
+  <string>dev.roamgate</string>
 
   <key>ProgramArguments</key>
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>set -a; if [ -f "$HOME/.config/herdr-gui/herdr-gui.env" ]; then . "$HOME/.config/herdr-gui/herdr-gui.env"; fi; set +a; exec "$HOME/.local/bin/roamgate"</string>
+    <string>set -a; if [ -f "$HOME/.config/roamgate/roamgate.env" ]; then . "$HOME/.config/roamgate/roamgate.env"; fi; set +a; exec "$HOME/.local/bin/roamgate"</string>
   </array>
-
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HERDR_GUI_RESTART_SUPERVISOR</key>
-    <string>1</string>
-  </dict>
 
   <key>RunAtLoad</key>
   <true/>
@@ -29,8 +23,8 @@
   <string>Background</string>
 
   <key>StandardOutPath</key>
-  <string>__HOME__/Library/Logs/herdr-gui.stdout.log</string>
+  <string>__HOME__/Library/Logs/roamgate.stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>__HOME__/Library/Logs/herdr-gui.stderr.log</string>
+  <string>__HOME__/Library/Logs/roamgate.stderr.log</string>
 </dict>
 </plist>

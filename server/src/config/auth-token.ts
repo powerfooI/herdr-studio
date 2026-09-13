@@ -1,12 +1,17 @@
 import {
-  chmodSync,
-  lstatSync,
-  mkdirSync,
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  openSync,
   readFileSync,
-  writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import {
+  defaultDataFile,
+  publishDataFile,
+  assertSafeDataPath,
+} from "./data-paths";
 import { randomBytes } from "node:crypto";
 
 const AUTH_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
@@ -16,39 +21,37 @@ export function defaultAuthTokenPath(
   platform = process.platform,
   appDataDir = process.env.APPDATA,
 ): string {
-  const base =
-    platform === "win32"
-      ? (appDataDir ?? join(homeDir, "AppData", "Roaming"))
-      : join(homeDir, ".config");
-  return join(base, "herdr-gui", "auth-token");
+  return defaultDataFile("auth-token", homeDir, platform, appDataDir);
 }
 
 function readAuthToken(path: string): string {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink()) {
-    throw new Error(`generated auth token path is not a regular file: ${path}`);
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    if (!fstatSync(fd).isFile()) {
+      throw new Error(
+        `generated auth token path is not a regular file: ${path}`,
+      );
+    }
+    const token = readFileSync(fd, "utf8").trim();
+    if (!AUTH_TOKEN_PATTERN.test(token)) {
+      throw new Error(
+        `invalid generated auth token in ${path}; restore a valid token or replace it with a fresh 64-character lowercase hexadecimal secret`,
+      );
+    }
+    fchmodSync(fd, 0o600);
+    return token;
+  } finally {
+    closeSync(fd);
   }
-  const token = readFileSync(path, "utf8").trim();
-  if (!AUTH_TOKEN_PATTERN.test(token)) {
-    throw new Error(
-      `invalid generated auth token in ${path}; remove the file to regenerate it`,
-    );
-  }
-  chmodSync(path, 0o600);
-  return token;
 }
 
 export function loadOrCreateAuthToken(path = defaultAuthTokenPath()): string {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const token = randomBytes(32).toString("hex");
+  assertSafeDataPath(path);
   try {
-    writeFileSync(path, `${token}\n`, {
-      flag: "wx",
-      mode: 0o600,
-    });
-    return token;
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
     return readAuthToken(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  publishDataFile(path, `${randomBytes(32).toString("hex")}\n`);
+  return readAuthToken(path);
 }

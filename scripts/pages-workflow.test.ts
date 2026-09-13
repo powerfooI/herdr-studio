@@ -43,9 +43,12 @@ test("Pages is manual-only and installer availability gates artifact upload and 
     ),
   ).toBe(true);
   const url = gate.match(/https:\/\/\S+\/install-roamgate\.sh/)?.[0];
-  expect(url).toBeDefined();
+  expect(url).toBe(
+    "https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh",
+  );
   for (const path of [
     "../site/index.html",
+    "../site/main.js",
     "../README.md",
     "../docs/DEPLOYMENT.md",
   ]) {

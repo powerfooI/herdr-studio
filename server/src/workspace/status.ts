@@ -189,7 +189,7 @@ export function createStatusEnricher(args: {
     }
     if (missing.length === 0) return summaries;
 
-    const marker = `__HERDR_GUI_GIT_STATUS_${randomBytes(4).toString("hex")}__`;
+    const marker = `__ROAMGATE_GIT_STATUS_${randomBytes(4).toString("hex")}__`;
     const command = missing
       .map(
         (path, index) => `

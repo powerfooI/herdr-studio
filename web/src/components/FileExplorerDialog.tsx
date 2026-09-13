@@ -1,3 +1,4 @@
+import { roamgateLocalStorage } from "../browserStorage";
 import {
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -170,7 +171,7 @@ function retireExplorerCache(key: string) {
 export function clearFileExplorerResourceCache(
   client: Pick<ConnectionClient, "connectionId" | "generation">,
   resourceKey: string,
-  storage: Pick<Storage, "removeItem"> = localStorage,
+  storage: Pick<Storage, "removeItem"> = roamgateLocalStorage,
 ) {
   for (const showHidden of [false, true]) {
     const key = explorerCacheKey(client, undefined, showHidden, resourceKey);
@@ -1013,7 +1014,7 @@ function FileExplorerContent({
     `${FILE_SHOW_HIDDEN_PREFIX}${cacheResourceKey ?? "focused"}`,
   );
   const [showHidden, setShowHidden] = useState(
-    () => localStorage.getItem(showHiddenStorageKey) === "true",
+    () => roamgateLocalStorage.getItem(showHiddenStorageKey) === "true",
   );
   const [cache, setCache] = useState<FileExplorerCache>(() =>
     readExplorerCache(
@@ -1093,7 +1094,7 @@ function FileExplorerContent({
     connectionClient.isCurrent() && runtimeContextRef.current === context;
 
   useEffect(() => {
-    localStorage.setItem(showHiddenStorageKey, String(showHidden));
+    roamgateLocalStorage.setItem(showHiddenStorageKey, String(showHidden));
   }, [showHidden, showHiddenStorageKey]);
 
   useEffect(() => {

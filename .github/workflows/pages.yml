@@ -31,7 +31,7 @@ jobs:
                     --proto '=https' --proto-redir '=https' \
                     --connect-timeout 10 --max-time 60 --output /dev/null \
                     --write-out '%{http_code}' \
-                    https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh) \
+                    https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh) \
                     && [ "$status" = 200 ] \
                     || { echo 'Publish a Roamgate release as Latest before dispatching Pages.' >&2; exit 1; }
             - name: Configure Pages

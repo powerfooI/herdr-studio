@@ -7,21 +7,21 @@
   </picture>
 </p>
 
-An independent, community-built **web and PWA client** for
+An independent, community-built **Web and PWA client** for
 [Herdr](https://herdr.dev). Access terminals, inspect agent sessions, and review
 files and diffs from desktop or mobile. A running Herdr server is required.
-Roamgate is not affiliated with or endorsed by the Herdr project.
 
 > **Breaking change from Herdr Studio / herdr-gui:** install Roamgate manually.
 > Old clients cannot upgrade to Roamgate through their default update channel.
 > Existing processes and historical releases are left intact. Read the
 > [transition guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui)
-> before switching an existing service.
+> before switching an existing service. Source builds migrate data and use new
+> service/plugin identities; published 0.7.0 still uses the legacy identities.
 
 ## Documentation
 
-- [Project website](https://powerfooI.github.io/herdr-studio/)
-- [Hands-on tutorial](https://powerfooI.github.io/herdr-studio/tutorial/)
+- [Project website](https://powerfooI.github.io/roamgate/)
+- [Hands-on tutorial](https://powerfooI.github.io/roamgate/tutorial/)
   ([Markdown](./docs/TUTORIAL.md)): first steps, review workflows, mobile, and
   private remote access with Tailscale, SSH, or Tailcat.
 - [Feature tour and keyboard shortcuts](./FEATURES.md)
@@ -96,16 +96,13 @@ Need the existing Herdr Studio release? The legacy installer remains available;
 follow [historical installation](./docs/DEPLOYMENT.md#install-historical-herdr-studio)
 to install `herdr-gui` 0.6.2 instead of Roamgate.
 
-Herdr must already be installed and running. Unreleased checkouts require a
-[source build](./docs/DEPLOYMENT.md#build-a-standalone-executable) or
-[local plugin build and link](./docs/DEPLOYMENT.md#herdr-plugin); historical
-0.6.2 releases have no Roamgate assets. Once a Roamgate release is published as
-GitHub Latest, install its standalone binary with:
+Herdr must already be installed and running. Install the latest Roamgate
+standalone binary with:
 
 ```bash
 # Leave empty for latest; set ROAMGATE_VERSION=X.Y.Z for a Roamgate version (no v prefix).
 curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh \
+  https://github.com/powerfooI/roamgate/releases/latest/download/install-roamgate.sh \
   | ROAMGATE_VERSION= sh
 ```
 
@@ -117,7 +114,7 @@ roamgate
 
 Open the URL printed by the process. On Windows, download the matching x64 or
 ARM64 archive from the
-[latest release](https://github.com/powerfooI/herdr-studio/releases/latest)
+[latest release](https://github.com/powerfooI/roamgate/releases/latest)
 instead of running the script. See the
 [deployment guide](./docs/DEPLOYMENT.md) for checksum verification,
 fixed-version installation, authentication, remote connections, updates, and

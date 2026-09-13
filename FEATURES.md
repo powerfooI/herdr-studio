@@ -1,6 +1,6 @@
 # Roamgate Features
 
-Roamgate is a browser and PWA client for a running
+Roamgate is a Web and PWA client for a running
 [Herdr](https://herdr.dev) server. It keeps Herdr's workspace, tab, pane, and
 agent model, while adding repository tools, session inspection, mobile controls,
 and operational features around it.
@@ -201,9 +201,11 @@ Commands run through `sh -c`. The following variables are available:
 | `PASEO_HOOK` | `setup`, `opened`, `teardown`, or `removed` |
 | `PASEO_CHECKOUT_PATH` | Target worktree path, including the former path for `removed` |
 | `PASEO_SOURCE_CHECKOUT_PATH` | Parent/source checkout path when known |
-| `HERDR_GUI_HOOK_EVENT` | `worktree.created`, `worktree.opened`, `worktree.before_remove`, or `worktree.removed` |
-| `HERDR_GUI_HOOK_CHECKOUT_PATH` | Same target path exposed under a `HERDR_GUI_`-prefixed alias |
-| `HERDR_GUI_HOOK_SOURCE_CHECKOUT_PATH` | Same source path exposed under a `HERDR_GUI_`-prefixed alias |
+| `ROAMGATE_HOOK_EVENT` | `worktree.created`, `worktree.opened`, `worktree.before_remove`, or `worktree.removed` |
+| `ROAMGATE_HOOK_CHECKOUT_PATH` | Same target path exposed under a `ROAMGATE_`-prefixed alias |
+| `ROAMGATE_HOOK_SOURCE_CHECKOUT_PATH` | Same source path exposed under a `ROAMGATE_`-prefixed alias |
+
+Legacy `HERDR_GUI_HOOK_*` aliases remain available with the same values.
 
 Operation notices show the hook outcome and bounded diagnostic output; failures
 can include the exit code, stderr, or an error. A failed `teardown` hook stops

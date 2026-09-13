@@ -2,10 +2,18 @@
 
 ## Unreleased
 
-- Remember separate mobile and desktop sidebar order preferences, with agents on
-  top by default on mobile.
-- Add a Mobile Layout dialog under Appearance with a configurable breakpoint and
-  saved or URL-forced display modes for foldable phones and other compact screens.
+- Use Roamgate service, plugin and data names. Stop/uninstall the previous
+  service and unlink `herdr.studio` before switching; missing data and browser
+  preferences are copied without overwriting new values or deleting originals.
+  Published 0.7.0 retains the old identities; see the
+  [migration guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
+
+- Move project links to `powerfooI/roamgate` and the website to `/roamgate/`.
+  Old website links do not redirect; update bookmarks. Existing releases and
+  local configuration are preserved.
+- Add Mobile Layout settings with a configurable breakpoint, saved or URL-forced
+  display modes, and separate mobile/desktop sidebar orders; agents appear first
+  on mobile by default.
 - Restore Page Up/Down in terminal applications such as nano and add configurable
   terminal copy shortcuts while preserving Ctrl+C as terminal input.
 - Add platform-aware keyboard presets and a searchable shortcut editor under

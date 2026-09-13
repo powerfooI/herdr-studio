@@ -21,7 +21,7 @@ export function createSshProfileRuntimeConfig(
   const platform = dependencies.platform ?? process.platform;
   assertSshTunnelPlatformSupported(platform);
   const directory =
-    dependencies.createDirectory?.() ?? mkdtempSync("/tmp/herdr-gui-ssh-");
+    dependencies.createDirectory?.() ?? mkdtempSync("/tmp/roamgate-ssh-");
   const chmod = dependencies.chmod ?? chmodSync;
   const stat = dependencies.stat ?? statSync;
   const removeDirectory =

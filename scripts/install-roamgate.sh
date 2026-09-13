@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-github_repository="powerfooI/herdr-studio"
+github_repository="powerfooI/roamgate"
 # New names take precedence even when explicitly empty (VERSION= means latest).
 custom_release_base="${ROAMGATE_RELEASE_BASE_URL-${HERDR_GUI_RELEASE_BASE_URL:-}}"
 install_dir="${ROAMGATE_INSTALL_DIR-${HERDR_GUI_INSTALL_DIR:-$HOME/.local/bin}}"
@@ -27,28 +27,28 @@ else
 fi
 
 case "$(uname -s):$(uname -m)" in
-  Darwin:arm64 | Darwin:aarch64)
-    platform="darwin-arm64"
-    ;;
-  Darwin:x86_64 | Darwin:amd64)
-    platform="darwin-x64"
-    ;;
-  Linux:x86_64 | Linux:amd64)
-    platform="linux-x64"
-    ;;
-  Linux:arm64 | Linux:aarch64)
-    platform="linux-arm64"
-    ;;
-  *)
-    fail "unsupported platform: $(uname -s) $(uname -m)"
-    ;;
+Darwin:arm64 | Darwin:aarch64)
+  platform="darwin-arm64"
+  ;;
+Darwin:x86_64 | Darwin:amd64)
+  platform="darwin-x64"
+  ;;
+Linux:x86_64 | Linux:amd64)
+  platform="linux-x64"
+  ;;
+Linux:arm64 | Linux:aarch64)
+  platform="linux-arm64"
+  ;;
+*)
+  fail "unsupported platform: $(uname -s) $(uname -m)"
+  ;;
 esac
 
 if [ -n "$requested_version" ]; then
   case "$requested_version" in
-    *[!0-9A-Za-z._-]*)
-      fail "invalid HERDR_GUI_VERSION: $requested_version"
-      ;;
+  *[!0-9A-Za-z._-]*)
+    fail "invalid ROAMGATE_VERSION: $requested_version"
+    ;;
   esac
   archive_name="roamgate-v${requested_version}-${platform}.tar.xz"
 else
@@ -68,34 +68,34 @@ while [ "${release_base%/}" != "$release_base" ]; do
   release_base="${release_base%/}"
 done
 case "$release_base" in
-  *\?* | *\#*)
-    fail "release base URL must not contain a query or fragment"
-    ;;
+*\?* | *\#*)
+  fail "release base URL must not contain a query or fragment"
+  ;;
 esac
 release_authority="${release_base#*://}"
 release_authority="${release_authority%%/*}"
 [ -n "$release_authority" ] || fail "invalid release base URL"
 case "$release_authority" in
-  *@*) fail "release base URL must not contain credentials" ;;
+*@*) fail "release base URL must not contain credentials" ;;
 esac
 case "$release_base" in
-  https://*)
-    curl_protocol="=https"
-    ;;
-  http://*)
-    case "$release_authority" in
-      localhost | localhost:* | 127.0.0.1 | 127.0.0.1:* | "[::1]" | "[::1]":*) ;;
-      *) fail "release base URL must use HTTPS unless the mirror is loopback" ;;
-    esac
-    curl_protocol="=http"
-    ;;
-  *) fail "release base URL must be an HTTP(S) URL" ;;
+https://*)
+  curl_protocol="=https"
+  ;;
+http://*)
+  case "$release_authority" in
+  localhost | localhost:* | 127.0.0.1 | 127.0.0.1:* | "[::1]" | "[::1]":*) ;;
+  *) fail "release base URL must use HTTPS unless the mirror is loopback" ;;
+  esac
+  curl_protocol="=http"
+  ;;
+*) fail "release base URL must be an HTTP(S) URL" ;;
 esac
 package_dir="roamgate-${platform}"
 mkdir -p "$install_dir"
 target="$install_dir/roamgate"
-if { [ -e "$target" ] || [ -L "$target" ]; } && \
-   { [ ! -f "$target" ] || [ -L "$target" ]; }; then
+if { [ -e "$target" ] || [ -L "$target" ]; } &&
+  { [ ! -f "$target" ] || [ -L "$target" ]; }; then
   fail "install target exists but is not a regular file"
 fi
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/roamgate-install.XXXXXX")"
@@ -131,7 +131,7 @@ expected_checksum="$1"
 checksum_name="$2"
 [ "${#expected_checksum}" -eq 64 ] || fail "invalid package checksum file"
 case "$expected_checksum" in
-  *[!0-9A-Fa-f]*) fail "invalid package checksum file" ;;
+*[!0-9A-Fa-f]*) fail "invalid package checksum file" ;;
 esac
 expected_checksum="$(printf '%s\n' "$expected_checksum" | awk '{ print tolower($0) }')"
 [ "$checksum_name" = "$archive_name" ] || fail "invalid package checksum file"
@@ -161,7 +161,7 @@ package_version=""
 package_platform=""
 extra_version_field=""
 read -r package_name package_version package_platform extra_version_field \
-  < "$version_file" || fail "invalid package VERSION file"
+  <"$version_file" || fail "invalid package VERSION file"
 [ "$package_name" = "roamgate" ] || fail "invalid package VERSION file"
 [ -z "$extra_version_field" ] || fail "invalid package VERSION file"
 [ -n "$package_version" ] || fail "package version is missing"
@@ -174,8 +174,8 @@ binary_version="$("$binary" --version)"
 [ "$binary_version" = "roamgate $package_version" ] ||
   fail "binary version does not match package VERSION"
 
-if { [ -e "$target" ] || [ -L "$target" ]; } && \
-   { [ ! -f "$target" ] || [ -L "$target" ]; }; then
+if { [ -e "$target" ] || [ -L "$target" ]; } &&
+  { [ ! -f "$target" ] || [ -L "$target" ]; }; then
   fail "install target changed during installation"
 fi
 target_tmp="$(mktemp "$install_dir/.roamgate.new.XXXXXX")"
@@ -196,8 +196,8 @@ if [ -n "$backup" ]; then
   printf 'Previous binary saved to %s\n' "$backup"
 fi
 case ":${PATH:-}:" in
-  *":$install_dir:"*) ;;
-  *)
-    printf 'Add %s to PATH to run roamgate directly.\n' "$install_dir"
-    ;;
+*":$install_dir:"*) ;;
+*)
+  printf 'Add %s to PATH to run roamgate directly.\n' "$install_dir"
+  ;;
 esac

@@ -1,3 +1,4 @@
+import { roamgateLocalStorage } from "../browserStorage";
 import {
   forwardRef,
   useCallback,
@@ -124,13 +125,13 @@ function loadDiffScope(
   connectionId = "legacy-default",
   resourceKey?: string,
 ): DiffScope {
-  const scoped = localStorage.getItem(
+  const scoped = roamgateLocalStorage.getItem(
     diffScopeStorageKey(connectionId, resourceKey),
   );
   const value =
     scoped ??
     (resourceKey
-      ? localStorage.getItem(diffScopeStorageKey(connectionId))
+      ? roamgateLocalStorage.getItem(diffScopeStorageKey(connectionId))
       : null);
   if (value === "branch-main") return "branch-main";
   if (value === "last-step") return "last-step";
@@ -366,7 +367,7 @@ function readStoredSelection(
 ): GitDiffEntry | null {
   if (!workspaceId) return null;
   try {
-    const raw = localStorage.getItem(
+    const raw = roamgateLocalStorage.getItem(
       diffSelectionStorageKey(connectionId, workspaceId, scope),
     );
     if (!raw) return null;
@@ -398,7 +399,7 @@ function writeStoredSelection(
   entry: GitDiffEntry,
 ) {
   if (!workspaceId) return;
-  localStorage.setItem(
+  roamgateLocalStorage.setItem(
     diffSelectionStorageKey(connectionId, workspaceId, scope),
     JSON.stringify(entry),
   );
@@ -407,7 +408,7 @@ function writeStoredSelection(
 export function clearDiffViewerResourceCache(
   client: Pick<ConnectionClient, "connectionId" | "generation">,
   resourceKey: string,
-  storage: Pick<Storage, "removeItem"> = localStorage,
+  storage: Pick<Storage, "removeItem"> = roamgateLocalStorage,
 ) {
   for (const scope of ["working", "branch-main", "last-step"] as const) {
     retireDiffCache(diffCacheKey(client, undefined, scope, resourceKey));
@@ -1294,7 +1295,7 @@ export const DiffViewerPanel = forwardRef<
     : undefined;
 
   useEffect(() => {
-    localStorage.setItem(
+    roamgateLocalStorage.setItem(
       diffScopeStorageKey(connectionClient.connectionId, cacheResourceKey),
       diffScope,
     );

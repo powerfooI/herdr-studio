@@ -15,7 +15,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { defaultDataFile, publishDataFile } from "../config/data-paths";
 import { dirname, isAbsolute, join, win32 } from "node:path";
 import { validateSshDestination } from "../bridge/ssh-command";
 import { nativeSocketPath } from "../config/server-config";
@@ -62,10 +62,7 @@ export type PublicConnectionProfile = ConnectionProfile & {
 };
 
 export function defaultConnectionProfilesPath(): string {
-  return (
-    roamgateEnv("CONNECTIONS_PATH") ??
-    join(homedir(), ".config", "herdr-gui", "connections.json")
-  );
+  return roamgateEnv("CONNECTIONS_PATH") ?? defaultDataFile("connections.json");
 }
 
 function assertPlainObject(
@@ -429,6 +426,13 @@ export class ConnectionProfileStore {
       }
       assertNotSymlink(this.path);
       if (!existsSync(this.path)) return;
+      if (
+        this.options.path === undefined &&
+        roamgateEnv("CONNECTIONS_PATH") === undefined
+      ) {
+        // Clearing saved profiles must not restore the old registry next launch.
+        publishDataFile(`${this.path}.legacy-cleared`, "1\n");
+      }
       unlinkSync(this.path);
       try {
         const parentFd = openSync(

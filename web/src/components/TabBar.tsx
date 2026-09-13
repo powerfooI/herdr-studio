@@ -20,8 +20,8 @@ import { summarizeTabAgents } from "./agentSession";
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_MOVE_PX = 10;
-const REQUEST_CLOSE_TAB_EVENT = "herdr-gui:request-close-tab";
-const REQUEST_CLOSE_PANE_EVENT = "herdr-gui:request-close-pane";
+const REQUEST_CLOSE_TAB_EVENT = "roamgate:request-close-tab";
+const REQUEST_CLOSE_PANE_EVENT = "roamgate:request-close-pane";
 
 interface TabMenuState {
   tab: Tab;

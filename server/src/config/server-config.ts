@@ -81,7 +81,7 @@ export function loadServerConfig(appVersion: string): ServerConfig {
   }
 
   if (args.help) {
-    console.log(`Roamgate — web client for Herdr
+    console.log(`Roamgate — Web and PWA client for Herdr
 
 Usage: roamgate [options]
        roamgate service <action>
@@ -209,7 +209,7 @@ function remoteTunnelLocalPath(
     .update(`${hostKey}\0${sessionKey}\0${kind}`)
     .digest("hex")
     .slice(0, 12);
-  return join(tmpdir(), `herdr-gui-${key}-${kind}.sock`);
+  return join(tmpdir(), `roamgate-${key}-${kind}.sock`);
 }
 
 export function herdrConfigDir(
