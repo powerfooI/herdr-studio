@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.1 - 2026-09-13
+
 - Use Roamgate service, plugin and data names while keeping existing managed
   services controllable after a 0.7.0 update. Stop/uninstall the previous service
   and unlink `herdr.studio` before switching identities; missing data and browser
