@@ -84,7 +84,7 @@ describe("tutorial Markdown", () => {
       'href="https://github.com/powerfooI/herdr-studio/blob/main/SECURITY.md"',
     );
     expect(content).toContain('src="../assets/roamgate-desktop-changes.png"');
-    expect(content).toContain('width="5000"');
+    expect(content).toContain('width="4998"');
     expect(content).toContain('height="2714"');
     expect(content).toContain('loading="lazy"');
     expect(content).toContain("&lt;safe&gt;");
