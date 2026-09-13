@@ -147,15 +147,27 @@ describe("shortcut matching and validation", () => {
       ),
     ).toBeNull();
     expect(shortcutFromEvent(event({ keyCode: 229 }))).toBeNull();
+    // AltGraph producing an alternate character stays text input.
     expect(
       shortcutFromEvent(
         event({
+          key: "@",
+          code: "Digit2",
           ctrlKey: true,
           altKey: true,
           getModifierState: (key) => key === "AltGraph",
         }),
       ),
     ).toBeNull();
+    // Plain Ctrl+Alt on Windows AltGr layouts also reports AltGraph; bindings
+    // must still match when the key agrees with the physical code.
+    const altGrCtrlAlt = event({
+      ctrlKey: true,
+      altKey: true,
+      getModifierState: (key) => key === "AltGraph",
+    });
+    expect(shortcutFromEvent(altGrCtrlAlt)).toBe("Ctrl+Alt+K");
+    expect(matchesShortcut(altGrCtrlAlt, "command.menu", linux())).toBe(true);
   });
   test("rejects malformed, unmodified printable, pointer-only, and dismissal bindings", () => {
     for (const key of [

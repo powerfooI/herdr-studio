@@ -193,13 +193,23 @@ export type ShortcutEvent = Pick<
     >
   >;
 export function shortcutFromEvent(event: ShortcutEvent): string | null {
-  if (
-    event.isComposing ||
-    event.keyCode === 229 ||
-    event.getModifierState?.("AltGraph")
-  )
-    return null;
+  if (event.isComposing || event.keyCode === 229) return null;
   if (event.type && !["keydown", "keyup"].includes(event.type)) return null;
+  // Chromium on Windows AltGr layouts reports AltGraph for plain Ctrl+Alt, so
+  // only treat AltGraph as text input when it yields an alternate character
+  // (AltGr+2 → "@"), not for named keys or code-matching letters (Ctrl+Alt+K).
+  if (event.getModifierState?.("AltGraph")) {
+    const codeKey =
+      event.code && /^(Key[A-Z]|Digit[0-9])$/.test(event.code)
+        ? event.code.replace(/^(Key|Digit)/, "")
+        : null;
+    if (
+      event.key.length === 1 &&
+      codeKey !== null &&
+      event.key.toUpperCase() !== codeKey
+    )
+      return null;
+  }
   let key = event.key;
   // Modifier-produced characters (Option+1, Shift+2) still address the same key.
   if (event.code && /^(Key[A-Z]|Digit[0-9])$/.test(event.code))

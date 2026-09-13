@@ -1096,6 +1096,10 @@ export function createTerminalBridge(args: {
           params.source === "page-key" &&
           thin instanceof EndpointTerminalSession
         ) {
+          // Version gate: EndpointTerminalSession requires the endpoint to
+          // speak shell.input.semantic.v1 at handshake (Herdr >= 0.9.0),
+          // which routes PageUp/PageDown by PTY modes. Older endpoints never
+          // reach this branch; they keep the legacy scroll routing below.
           if (!shared || !requestedTerminalId)
             return fail(NO_TERMINAL_ATTACHED_MESSAGE);
           const validateAttachment = await waitForOwnedTerminal(
