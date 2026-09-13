@@ -3761,6 +3761,7 @@ textarea:focus {
   overflow-x: hidden;
 }
 .terminal-themes-modal .modal-head {
+  flex-shrink: 0;
   align-items: flex-start;
   margin: 0;
 }
@@ -8698,6 +8699,32 @@ textarea:focus {
   }
   .config-menu-item:hover:not(:disabled) {
     border-color: var(--border-soft);
+  }
+  /* Row-style menu actions (e.g. Terminal theme) sit inside preference
+     sections, so they keep the desktop row layout instead of the tile grid. */
+  .config-menu-item.config-menu-item-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 38px;
+    padding: 4px 6px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+  }
+  .config-menu-item.config-menu-item-row > svg {
+    display: block;
+  }
+  .config-menu-item.config-menu-item-row .config-item-icon {
+    width: 24px;
+    height: 24px;
+  }
+  .config-menu-item.config-menu-item-row .config-item-copy {
+    text-align: left;
+  }
+  .config-menu-item.config-menu-item-row .config-item-copy strong {
+    font-size: 12px;
   }
   .config-menu-item .config-item-icon {
     width: 28px;

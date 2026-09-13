@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the Terminal theme menu action as a full-width row on mobile and stop the
+  Terminal Themes dialog subtitle from overlapping section titles.
 - Keep the cursor on the selected terminal pane when switching splits, and preserve
   cursor updates and hide/show transitions across incremental repaints.
 - Keep the Actions menu on screen and terminal selection aligned with the mouse
