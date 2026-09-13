@@ -110,6 +110,26 @@ installs download only Roamgate assets; unreleased checkouts require a source
 build. Historical versions keep their original asset contracts. The repository
 URL also remains unchanged.
 
+### Install historical Herdr Studio
+
+The original [install-herdr-gui.sh](../scripts/install-herdr-gui.sh) remains
+in the repository and installs only `herdr-gui`, never Roamgate. Its default
+Latest download works while Latest still contains legacy assets. After the
+Roamgate cutover, select a historical version explicitly; the retained source
+script is not included in new Roamgate releases and does not restore the old
+update channel.
+
+For example, install the historical 0.6.2 release with its pinned installer:
+
+```bash
+curl -fsSL \
+  https://github.com/powerfooI/herdr-studio/releases/download/v0.6.2/install-herdr-gui.sh \
+  | HERDR_GUI_VERSION=0.6.2 sh
+```
+
+This installs the old `herdr-gui` command, not `roamgate`. Historical versions
+do not receive future fixes through the retired update channel.
+
 ## Install a release
 
 These commands require a published Roamgate release marked GitHub Latest.

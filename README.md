@@ -90,6 +90,10 @@ Click any screenshot to open the full-resolution image.
 
 ## Quick start
 
+Need the existing Herdr Studio release? The legacy installer remains available;
+follow [historical installation](./docs/DEPLOYMENT.md#install-historical-herdr-studio)
+to install `herdr-gui` 0.6.2 instead of Roamgate.
+
 Herdr must already be installed and running. Unreleased checkouts require a
 [source build](./docs/DEPLOYMENT.md#build-a-standalone-executable) or
 [local plugin build and link](./docs/DEPLOYMENT.md#herdr-plugin); historical
