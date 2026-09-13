@@ -1,3 +1,4 @@
+import { resolveWorkspaceMarkdownLink } from "../workspaceFileUrl";
 import { useEffect, useMemo, useRef } from "react";
 import { marked } from "marked";
 import { loadMermaidModule, renderMermaidDiagram } from "../mermaidRender";
@@ -61,6 +62,8 @@ export function isSafeMarkdownUrl(value: string) {
 type MarkdownRenderOptions = {
   breaks?: boolean;
   imageUrlResolver?: (source: string) => string | null;
+  documentPath?: string;
+  linkUrlResolver?: (path: string) => string;
 };
 
 export type MarkdownSelectionTarget = {
@@ -129,7 +132,7 @@ export function markdownSelectionTarget(
 
 export function sanitizeMarkdownHtml(
   html: string,
-  options: Pick<MarkdownRenderOptions, "imageUrlResolver"> = {},
+  options: MarkdownRenderOptions = {},
 ) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
@@ -192,11 +195,39 @@ export function sanitizeMarkdownHtml(
     }
 
     if (tag === "a" && element.hasAttribute("href")) {
-      element.setAttribute("target", "_blank");
-      element.setAttribute("rel", "noreferrer noopener");
+      const href = element.getAttribute("href")!;
+      const destination = options.documentPath
+        ? resolveWorkspaceMarkdownLink(href, options.documentPath)
+        : undefined;
+      if (destination === null) {
+        element.removeAttribute("href");
+      } else if (destination) {
+        element.setAttribute("data-document-path", destination.path);
+        element.setAttribute("data-document-fragment", destination.fragment);
+        element.setAttribute(
+          "href",
+          options.linkUrlResolver?.(destination.path) ?? "#",
+        );
+      } else if (!href.startsWith("#")) {
+        element.setAttribute("target", "_blank");
+        element.setAttribute("rel", "noreferrer noopener");
+      }
     }
   }
 
+  const headingIds = new Set<string>();
+  for (const heading of doc.body.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    const base = (heading.textContent ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\p{M}_\-\s]/gu, "")
+      .replace(/\s/g, "-");
+    let id = base;
+    let suffix = 0;
+    while (headingIds.has(id)) id = `${base}-${++suffix}`;
+    headingIds.add(id);
+    heading.setAttribute("id", id);
+  }
   return doc.body.innerHTML;
 }
 
@@ -220,19 +251,61 @@ export function MarkdownPreview({
   className = "",
   breaks = false,
   imageUrlResolver,
+  documentPath,
+  linkUrlResolver,
+  onOpenDocument,
+  fragment,
   onSelectionChange,
 }: {
   text: string;
   className?: string;
   breaks?: boolean;
   imageUrlResolver?: (source: string) => string | null;
+  documentPath?: string;
+  linkUrlResolver?: (path: string) => string;
+  onOpenDocument?: (path: string, fragment: string) => void;
+  fragment?: string;
   onSelectionChange?: (target: MarkdownSelectionTarget | null) => void;
 }) {
   const html = useMemo(
-    () => renderMarkdown(text, { breaks, imageUrlResolver }),
-    [text, breaks, imageUrlResolver],
+    () =>
+      renderMarkdown(text, {
+        breaks,
+        imageUrlResolver,
+        documentPath,
+        linkUrlResolver,
+      }),
+    [text, breaks, imageUrlResolver, documentPath, linkUrlResolver],
   );
   const articleRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (fragment) scrollToMarkdownHeading(articleRef.current, fragment);
+  }, [html, fragment]);
+
+  const openLink = (event: React.MouseEvent<HTMLElement>) => {
+    const target =
+      event.target instanceof Element ? event.target.closest("a") : null;
+    if (!target || !event.currentTarget.contains(target)) return;
+    const path = target.getAttribute("data-document-path");
+    if (path && onOpenDocument) {
+      event.preventDefault();
+      const anchor = target.getAttribute("data-document-fragment") ?? "";
+      if (path === documentPath) {
+        if (anchor) scrollToMarkdownHeading(articleRef.current, anchor);
+        else articleRef.current?.scrollIntoView({ block: "start" });
+      } else onOpenDocument(path, anchor);
+    } else if (target.getAttribute("href")?.startsWith("#")) {
+      event.preventDefault();
+      const hash = target.getAttribute("href")!.slice(1);
+      let anchor = hash;
+      try {
+        anchor = decodeURIComponent(hash);
+      } catch {
+        /* Keep malformed fragments literal. */
+      }
+      scrollToMarkdownHeading(articleRef.current, anchor);
+    }
+  };
 
   useEffect(() => {
     const root = articleRef.current;
@@ -298,6 +371,10 @@ export function MarkdownPreview({
   return (
     <article
       ref={articleRef}
+      onClick={openLink}
+      onAuxClick={(event) => {
+        if (event.button === 1) openLink(event);
+      }}
       className={`file-preview-markdown ${className}`.trim()}
       onPointerDown={() => onSelectionChange?.(null)}
       onPointerUp={() => {
@@ -313,4 +390,11 @@ export function MarkdownPreview({
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
+}
+
+function scrollToMarkdownHeading(root: HTMLElement | null, fragment: string) {
+  const heading = Array.from(
+    root?.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? [],
+  ).find((element) => element.id === fragment);
+  heading?.scrollIntoView({ block: "start" });
 }

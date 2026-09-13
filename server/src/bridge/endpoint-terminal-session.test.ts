@@ -70,6 +70,9 @@ type TestPane = {
   mouseReporting: boolean;
   rect?: Rect;
   innerRect?: Rect;
+  offset?: number;
+  maxOffset?: number;
+  hasScroll?: boolean;
 };
 const DEFAULT_PANES: TestPane[] = [
   { paneId: "w1:p1", x: 0, mouseReporting: false },
@@ -83,6 +86,9 @@ function writePane(
   mouseReporting = false,
   rect = { x, y, width: 10, height: 5 },
   innerRect = { x: x + 1, y: y + 1, width: 8, height: 3 },
+  offset = 0,
+  maxOffset = 100,
+  hasScroll = true,
 ) {
   w.string(paneId);
   w.varint(1);
@@ -93,10 +99,12 @@ function writePane(
     w.varint(bounds.height);
   }
   w.bool(false);
-  w.bool(true); // scroll metrics present
-  w.varint(0); // offset_from_bottom
-  w.varint(100); // max_offset_from_bottom
-  w.varint(3); // viewport_rows
+  w.bool(hasScroll);
+  if (hasScroll) {
+    w.varint(offset); // offset_from_bottom
+    w.varint(maxOffset); // max_offset_from_bottom
+    w.varint(3); // viewport_rows
+  }
   w.bool(true); // focused
   w.bool(mouseReporting);
   w.bool(false);
@@ -126,6 +134,9 @@ function surfaceFrame(
       pane.mouseReporting,
       pane.rect,
       pane.innerRect,
+      pane.offset,
+      pane.maxOffset,
+      pane.hasScroll,
     );
   w.varint(0);
   w.bool(false);
@@ -1059,9 +1070,22 @@ test("accepted presses retain clamped drag and release ownership outside the pan
 test("terminal bridge carries endpoint mouse state and targets each attached terminal explicitly", async () => {
   const inputs: string[] = [];
   const scrollRequests: unknown[] = [];
+  const senders: Array<(panes: TestPane[]) => void> = [];
   const socketPath = await startSessionServer({
-    onRequest: (method, params) => {
-      if (method === "pane.scroll") scrollRequests.push(params);
+    onConnection: (send) => senders.push(send),
+    onRequest: (method, params, connection) => {
+      if (method === "pane.scroll") {
+        scrollRequests.push(params);
+        senders[connection - 1]([
+          { paneId: "w1:p1", x: 0, mouseReporting: true },
+          {
+            paneId: "w1:p2",
+            x: 10,
+            mouseReporting: true,
+            offset: params.offset_from_bottom,
+          },
+        ]);
+      }
     },
     panes: [
       { paneId: "w1:p1", x: 0, mouseReporting: true },
@@ -1114,12 +1138,15 @@ test("terminal bridge carries endpoint mouse state and targets each attached ter
       ["down", "history"],
       ["up", "page-key"],
     ]) {
+      const before = scrollRequests.length;
       await bridge.handleTerminalRpc(ws, "history", "terminal.scroll", {
         terminal_id: "right",
         direction,
         lines: 7,
         source,
       });
+      // Verify each routing mode separately; bursts intentionally coalesce.
+      await settleUntil(() => scrollRequests.length > before);
     }
     await Bun.sleep(40);
     expect(scrollRequests).toEqual([
@@ -1849,14 +1876,14 @@ describe("attached endpoint creation and input readiness", () => {
         { browser_source: creationSource },
         () => true,
       );
+      await bridge.handleTerminalRpc(ws, "input", "terminal.input", {
+        terminal_id: "term1",
+        data: "WA==",
+      });
       await bridge.handleTerminalRpc(ws, "scroll", "terminal.scroll", {
         terminal_id: "term1",
         direction: "up",
         lines: 1,
-      });
-      await bridge.handleTerminalRpc(ws, "input", "terminal.input", {
-        terminal_id: "term1",
-        data: "WA==",
       });
       await settleUntil(() => inputs.length === 1);
       expect(requests).toEqual(["pane.focus", "tab.create"]);
@@ -2473,6 +2500,191 @@ test("reconnect replaces advertisements while other connection runtimes retain t
   }
 });
 
+describe("wheel bursts with delayed endpoint frames", () => {
+  test("a stale repaint cannot rewind pending wheel movement", async () => {
+    const first = deferred<void>();
+    const requests: number[] = [];
+    let send!: (panes: TestPane[]) => void;
+    const socketPath = await startSessionServer({
+      onConnection: (push) => {
+        send = push;
+      },
+      onRequest: async (method, params) => {
+        if (method !== "pane.scroll") return;
+        requests.push(params.offset_from_bottom);
+        if (requests.length === 1) await first.promise;
+        send([{ ...DEFAULT_PANES[0], offset: params.offset_from_bottom }]);
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "term1",
+      async () => "w1:p1",
+    );
+    let frames = 0;
+    session.on("terminal", () => frames++);
+    try {
+      await session.connect(8, 3, { cols: 10, rows: 5 });
+      session.scroll("up", 3);
+      await settleUntil(() => requests.length === 1);
+      session.scroll("up", 3);
+      const before = frames;
+      send(DEFAULT_PANES); // old viewport arrives while the first request is pending
+      await settleUntil(() => frames > before);
+      session.scroll("up", 3);
+      first.resolve();
+      await Bun.sleep(60);
+      expect(requests[requests.length - 1]).toBe(9);
+      expect(
+        requests.every((offset, i) => i === 0 || offset >= requests[i - 1]),
+      ).toBe(true);
+      expect(requests.length).toBeLessThanOrEqual(2);
+    } finally {
+      first.resolve();
+      session.close();
+    }
+  });
+});
+
+test("wheel targets survive RPC replies before their surface acknowledgements", async () => {
+  const requests: number[] = [];
+  let send!: (panes: TestPane[]) => void;
+  const socketPath = await startSessionServer({
+    onConnection: (push) => {
+      send = push;
+    },
+    onRequest: (method, params) => {
+      if (method === "pane.scroll") requests.push(params.offset_from_bottom);
+    },
+  });
+  const session = new EndpointTerminalSession(
+    socketPath,
+    "term1",
+    async () => "w1:p1",
+  );
+  let frames = 0;
+  session.on("terminal", () => frames++);
+  const publish = async (offset: number) => {
+    const before = frames;
+    send([{ ...DEFAULT_PANES[0], offset }]);
+    await settleUntil(() => frames > before);
+  };
+  try {
+    await session.connect(8, 3, { cols: 10, rows: 5 });
+    session.scroll("up", 3);
+    await settleUntil(() => requests.length === 1);
+    await session.focus(() => true); // RPC completed, but no surface yet
+    session.scroll("up", 3);
+    await session.focus(() => true);
+    session.scroll("up", 3);
+    await session.focus(() => true);
+    expect(requests).toEqual([3]); // all unsent movement coalesces behind the frame
+    await publish(3);
+    await settleUntil(() => requests.length === 2);
+    await publish(9); // final acknowledgement retires the pending intent
+    await publish(20); // subsequent scrolling by another client is authoritative
+    session.scroll("down", 2);
+    await settleUntil(() => requests.length === 3);
+    expect(requests).toEqual([3, 9, 18]);
+  } finally {
+    session.close();
+  }
+});
+
+for (const scenario of ["reverse", "grow", "close", "input"] as const) {
+  test(`pending wheel burst handles ${scenario}`, async () => {
+    const first = deferred<void>();
+    const requests: number[] = [];
+    let send!: (panes: TestPane[]) => void;
+    let maxOffset = 100;
+    const socketPath = await startSessionServer({
+      onConnection: (push) => {
+        send = push;
+      },
+      onRequest: async (method, params) => {
+        if (method !== "pane.scroll") return;
+        requests.push(params.offset_from_bottom);
+        if (requests.length === 1) await first.promise;
+        if (scenario !== "close")
+          send([
+            {
+              ...DEFAULT_PANES[0],
+              offset: params.offset_from_bottom,
+              maxOffset,
+            },
+          ]);
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "term1",
+      async () => "w1:p1",
+    );
+    let frames = 0;
+    session.on("terminal", () => frames++);
+    try {
+      await session.connect(8, 3, { cols: 10, rows: 5 });
+      session.scroll("up", 3);
+      await settleUntil(() => requests.length === 1);
+      if (scenario === "grow") {
+        maxOffset = 105;
+        const before = frames;
+        send([{ ...DEFAULT_PANES[0], maxOffset }]);
+        await settleUntil(() => frames > before);
+        session.scroll("up", 2);
+      } else {
+        session.scroll("up", 12);
+        if (scenario === "reverse") session.scroll("down", 20);
+        else if (scenario === "input") session.input(Buffer.from("x"));
+        else session.close();
+      }
+      first.resolve();
+      if (scenario !== "close" && scenario !== "input")
+        await settleUntil(() => requests.length === 2);
+      else await Bun.sleep(30);
+      expect(requests).toEqual(
+        scenario === "grow" ? [3, 10] : scenario === "reverse" ? [3, 0] : [3],
+      );
+    } finally {
+      first.resolve();
+      session.close();
+    }
+  });
+}
+
+test("failed scrolling releases pending intent for the next wheel gesture", async () => {
+  const requests: number[] = [];
+  const failed = deferred<void>();
+  const socketPath = await startSessionServer({
+    onRequest: (method, params) => {
+      if (method !== "pane.scroll") return;
+      requests.push(params.offset_from_bottom);
+      if (requests.length === 1) throw new Error("scroll rejected");
+    },
+  });
+  const session = new EndpointTerminalSession(
+    socketPath,
+    "term1",
+    async () => "w1:p1",
+    {
+      ...silentLogger,
+      debug: (message) => {
+        if (message === "endpoint pane.scroll failed") failed.resolve();
+      },
+    },
+  );
+  try {
+    await session.connect(8, 3, { cols: 10, rows: 5 });
+    session.scroll("up", 3);
+    await failed.promise;
+    session.scroll("up", 2);
+    await settleUntil(() => requests.length === 2);
+    expect(requests).toEqual([3, 2]);
+  } finally {
+    session.close();
+  }
+});
+
 describe("attached endpoint cursor focus", () => {
   test("focuses an owned attachment without input and rejects other viewers", async () => {
     const requests: Array<{ method: string; params: any }> = [];
@@ -2628,4 +2840,374 @@ describe("attached endpoint cursor focus", () => {
       }
     });
   }
+});
+
+async function scrollFixture(
+  onScroll: (offset: number, index: number) => unknown = () => ({}),
+) {
+  const requests: number[] = [];
+  let send!: (panes: TestPane[]) => void;
+  const socketPath = await startSessionServer({
+    onConnection: (push) => {
+      send = push;
+    },
+    onRequest: (method, params) => {
+      if (method !== "pane.scroll") return;
+      requests.push(params.offset_from_bottom);
+      return onScroll(params.offset_from_bottom, requests.length);
+    },
+  });
+  const session = new EndpointTerminalSession(
+    socketPath,
+    "term1",
+    async () => "w1:p1",
+  );
+  await session.connect(8, 3, { cols: 10, rows: 5 });
+  return {
+    session,
+    requests,
+    send,
+    // Focus is a public command-lane fence, not a private scheduler assertion.
+    fence: () => session.focus(() => true),
+    publish: async (offset: number, maxOffset = 100) => {
+      const frame = new Promise<void>((resolve) =>
+        session.once("terminal", () => resolve()),
+      );
+      send([{ ...DEFAULT_PANES[0], offset, maxOffset }]);
+      await frame;
+    },
+  };
+}
+
+function paneScrollResult(offset: number, maxOffset = 100) {
+  return {
+    type: "pane_info",
+    pane: {
+      pane_id: "w1:p1",
+      scroll: {
+        offset_from_bottom: offset,
+        max_offset_from_bottom: maxOffset,
+        viewport_rows: 3,
+      },
+      revision: 999, // terminal metadata revision, deliberately unrelated to surfaces
+    },
+  };
+}
+
+describe("scroll dispatch reconciliation", () => {
+  test("growth after RPC completion cannot create an unsent hidden target", async () => {
+    const f = await scrollFixture();
+    try {
+      f.session.scroll("up", 3);
+      await f.fence();
+      await f.publish(0, 105);
+      await f.publish(3, 105);
+      await f.fence();
+      expect(f.requests).toEqual([3]);
+      f.session.scroll("up", 2);
+      await f.fence();
+      expect(f.requests).toEqual([3, 5]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("external viewport replacement retires a completed dispatch without its exact target", async () => {
+    const f = await scrollFixture();
+    try {
+      f.session.scroll("up", 3);
+      await f.fence();
+      await f.publish(20);
+      f.session.scroll("down", 2);
+      await f.fence();
+      expect(f.requests).toEqual([3, 18]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("rapid gestures coalesce across multiple delayed surfaces without stale replay", async () => {
+    const f = await scrollFixture();
+    try {
+      for (let i = 0; i < 3; i++) {
+        f.session.scroll("up", 3);
+        await f.fence();
+      }
+      expect(f.requests).toEqual([3]);
+      await f.publish(3);
+      await f.fence();
+      expect(f.requests).toEqual([3, 9]);
+      await f.publish(3); // queued repaint of the preceding viewport
+      f.session.scroll("up", 2);
+      await f.fence();
+      expect(f.requests).toEqual([3, 9]);
+      await f.publish(9);
+      await f.fence();
+      await f.publish(11);
+      await f.fence();
+      expect(f.requests).toEqual([3, 9, 11]);
+      await f.publish(20);
+      f.session.scroll("down", 2);
+      await f.fence();
+      expect(f.requests).toEqual([3, 9, 11, 18]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("surface before RPC completion cannot retire newer wheel intent", async () => {
+    const hold = deferred<void>();
+    const f = await scrollFixture(async (_offset, index) => {
+      if (index === 1) await hold.promise;
+    });
+    try {
+      f.session.scroll("up", 3);
+      await settleUntil(() => f.requests.length === 1);
+      await f.publish(3);
+      f.session.scroll("up", 3);
+      f.session.scroll("up", 3);
+      hold.resolve();
+      await f.fence();
+      await settleUntil(() => f.requests.length === 2);
+      await f.publish(9);
+      await f.fence();
+      expect(f.requests).toEqual([3, 9]);
+    } finally {
+      hold.resolve();
+      f.session.close();
+    }
+  });
+
+  test("undispatched reversal retires a no-op before the next gesture", async () => {
+    const f = await scrollFixture();
+    try {
+      f.session.scroll("up", 3);
+      f.session.scroll("down", 3);
+      await f.fence();
+      expect(f.requests).toEqual([]);
+      f.session.scroll("up", 2);
+      await f.fence();
+      expect(f.requests).toEqual([2]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("undispatched reversal retains wheel intent arriving during no-op completion", async () => {
+    const f = await scrollFixture();
+    try {
+      f.session.scroll("up", 3);
+      f.session.scroll("down", 3);
+      // Let the queued callback run, but not its promise completion handlers.
+      await Promise.resolve();
+      f.session.scroll("up", 2);
+      await f.fence();
+      await settleUntil(() => f.requests.length > 0);
+      expect(f.requests).toEqual([2]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("reversal awaits its own surface instead of reviving the earlier offset", async () => {
+    const f = await scrollFixture();
+    try {
+      f.session.scroll("up", 3);
+      await f.fence();
+      f.session.scroll("down", 3);
+      await f.fence();
+      expect(f.requests).toEqual([3]);
+      await f.publish(3);
+      await f.fence();
+      await f.publish(3);
+      f.session.scroll("down", 1);
+      await f.fence();
+      expect(f.requests).toEqual([3, 0]);
+      await f.publish(0);
+      f.session.scroll("up", 2);
+      await f.fence();
+      expect(f.requests).toEqual([3, 0, 2]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("waiting for a surface does not block focus, resize, or application input", async () => {
+    const requests: number[] = [];
+    const resizes: number[][] = [];
+    const inputs: string[] = [];
+    const socketPath = await startSessionServer({
+      onRequest: (method, params) => {
+        if (method === "pane.scroll") requests.push(params.offset_from_bottom);
+      },
+      onResize: (cols, rows) => {
+        resizes.push([cols, rows]);
+      },
+      onPaneInput: (paneId) => {
+        inputs.push(paneId);
+      },
+    });
+    const session = new EndpointTerminalSession(
+      socketPath,
+      "term1",
+      async () => "w1:p1",
+    );
+    try {
+      await session.connect(8, 3, { cols: 10, rows: 5 });
+      session.scroll("up", 3);
+      await session.focus(() => true);
+      session.scroll("up", 2);
+      session.resize(8, 3);
+      await session.focus(() => true);
+      expect(requests).toEqual([3]);
+      expect(resizes).toEqual([[10, 5]]);
+      session.input(Buffer.from("x"));
+      await session.focus(() => true);
+      expect(inputs).toEqual(["w1:p1"]);
+    } finally {
+      session.close();
+    }
+  });
+
+  test("a clamped no-op result needs no surface and leaves the command lane usable", async () => {
+    const f = await scrollFixture((_offset, index) =>
+      index === 1 ? paneScrollResult(0, 0) : {},
+    );
+    try {
+      f.session.scroll("up", 3);
+      await f.fence();
+      // History can regrow without changing the viewport's offset.
+      await f.publish(0, 100);
+      f.session.scroll("up", 2);
+      await f.fence();
+      expect(f.requests).toEqual([3, 2]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("history shrink settles an opaque-result dispatch at its clamped surface", async () => {
+    const f = await scrollFixture();
+    try {
+      f.session.scroll("up", 3);
+      await f.fence();
+      await f.publish(0, 0);
+      await f.fence();
+      await f.publish(0, 100);
+      f.session.scroll("up", 2);
+      await f.fence();
+      expect(f.requests).toEqual([3, 2]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test("growth during a pending RPC preserves queued movement despite older result metrics", async () => {
+    const hold = deferred<void>();
+    const f = await scrollFixture(async (offset, index) => {
+      if (index === 1) {
+        await hold.promise;
+        return paneScrollResult(offset, 100);
+      }
+    });
+    try {
+      f.session.scroll("up", 3);
+      await settleUntil(() => f.requests.length === 1);
+      f.session.scroll("up", 97);
+      await f.publish(0, 105);
+      hold.resolve();
+      await f.fence();
+      expect(f.requests).toEqual([3]);
+      await f.publish(3, 105);
+      await f.fence();
+      expect(f.requests).toEqual([3, 105]);
+      await f.publish(105, 105);
+      await f.fence();
+      expect(f.requests).toEqual([3, 105]);
+    } finally {
+      hold.resolve();
+      f.session.close();
+    }
+  });
+
+  test("a server-clamped nonzero result settles at its applied viewport", async () => {
+    const f = await scrollFixture((_offset, index) =>
+      index === 1 ? paneScrollResult(2, 2) : {},
+    );
+    try {
+      f.session.scroll("up", 3);
+      await f.fence();
+      await f.publish(2, 2);
+      f.session.scroll("down", 1);
+      await f.fence();
+      expect(f.requests).toEqual([3, 1]);
+    } finally {
+      f.session.close();
+    }
+  });
+
+  test.each([
+    {},
+    { ...paneScrollResult(0, 0), type: "other" },
+    {
+      type: "pane_info",
+      pane: { ...paneScrollResult(0, 0).pane, pane_id: "other" },
+    },
+    paneScrollResult(-1),
+    paneScrollResult(3, 2),
+    paneScrollResult(Number.MAX_SAFE_INTEGER + 1),
+  ])(
+    "unrecognized scroll result %# waits for viewport feedback",
+    async (result) => {
+      const f = await scrollFixture(() => result);
+      try {
+        f.session.scroll("up", 3);
+        await f.fence();
+        f.session.scroll("up", 2);
+        await f.fence();
+        expect(f.requests).toEqual([3]);
+        await f.publish(3);
+        await f.fence();
+        expect(f.requests).toEqual([3, 5]);
+      } finally {
+        f.session.close();
+      }
+    },
+  );
+
+  test.each(["input", "pane disappears", "metrics disappear", "close"])(
+    "%s cancels waiting and queued scroll intent",
+    async (reason) => {
+      const f = await scrollFixture();
+      try {
+        f.session.scroll("up", 3);
+        await f.fence();
+        f.session.scroll("up", 6);
+        if (reason === "input") f.session.input(Buffer.from("x"));
+        else if (reason === "pane disappears") f.send([]);
+        else if (reason === "metrics disappear")
+          f.send([{ ...DEFAULT_PANES[0], hasScroll: false }]);
+        else f.session.close();
+        if (reason !== "close") {
+          await f.fence();
+          await f.publish(0);
+          f.session.scroll("up", 2);
+          await f.fence();
+          expect(f.requests).toEqual([3, 2]);
+        } else {
+          const replacement = await scrollFixture();
+          try {
+            replacement.session.scroll("up", 2);
+            await replacement.fence();
+            expect(replacement.requests).toEqual([2]);
+          } finally {
+            replacement.session.close();
+          }
+          expect(f.requests).toEqual([3]);
+        }
+      } finally {
+        f.session.close();
+      }
+    },
+  );
 });

@@ -24,6 +24,7 @@ import type { FileExplorerEntry, FilePreview } from "../types";
 import { useConnectionClient } from "../useConnectionClient";
 import {
   resolveWorkspaceMarkdownImageUrl,
+  workspaceMarkdownDocumentPath,
   workspaceFileUrl,
 } from "../workspaceFileUrl";
 import { MarkdownPreview, type MarkdownSelectionTarget } from "./markdown";
@@ -47,6 +48,7 @@ export type ActiveFilePreviewSelection = {
   preview: FilePreview | null;
   loading: boolean;
   error: string | null;
+  fragment?: string;
 };
 
 export type FilePreviewSelectionMeta = {
@@ -162,11 +164,13 @@ export function FilePreviewContent({
   preview,
   loading,
   error,
+  fragment,
   changesContent,
   changesKey,
   annotations = [],
   backAction,
   onOpenChanges,
+  onOpenFile,
   onCreateAnnotation,
   onReanchorAnnotations,
 }: {
@@ -174,11 +178,13 @@ export function FilePreviewContent({
   preview: FilePreview | null;
   loading: boolean;
   error: string | null;
+  fragment?: string;
   changesContent?: ReactNode;
   changesKey?: string;
   backAction?: { label: string; onClick: () => void };
   annotations?: readonly ReviewAnnotation[];
   onOpenChanges?: () => void;
+  onOpenFile?: (path: string, fragment?: string) => void;
   onCreateAnnotation?: (annotation: NewReviewAnnotation) => void;
   onReanchorAnnotations?: (path: string, text: string) => void;
 }) {
@@ -237,6 +243,11 @@ export function FilePreviewContent({
     preview?.workspace_id,
     previewPath,
   ]);
+  const markdownLinkUrlResolver = useMemo(() => {
+    if (!preview?.workspace_id) return undefined;
+    return (path: string) =>
+      workspaceFileUrl(connectionClient, preview.workspace_id, path);
+  }, [connectionClient, preview?.workspace_id]);
   const changesAvailable =
     changesContent !== undefined && !!changesKey && !!onOpenChanges;
   const showingChanges = detailTab === "changes" && changesAvailable;
@@ -527,6 +538,14 @@ export function FilePreviewContent({
             <MarkdownPreview
               text={previewText}
               imageUrlResolver={markdownImageUrlResolver}
+              documentPath={
+                onOpenFile && preview
+                  ? workspaceMarkdownDocumentPath(previewPath, preview.root)
+                  : undefined
+              }
+              linkUrlResolver={markdownLinkUrlResolver}
+              fragment={fragment}
+              onOpenDocument={onOpenFile}
               onSelectionChange={
                 onCreateAnnotation ? setMarkdownSelection : undefined
               }
