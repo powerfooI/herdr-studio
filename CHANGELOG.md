@@ -11,6 +11,13 @@
 - Move project links to `powerfooI/roamgate` and the website to `/roamgate/`.
   Old website links do not redirect; update bookmarks. Existing releases and
   local configuration are preserved.
+- Add Mobile Layout settings with a configurable breakpoint, saved or URL-forced
+  display modes, and separate mobile/desktop sidebar orders; agents appear first
+  on mobile by default.
+- Restore Page Up/Down in terminal applications such as nano and add configurable
+  terminal copy shortcuts while preserving Ctrl+C as terminal input.
+- Add platform-aware keyboard presets and a searchable shortcut editor under
+  Behavior & automation, with custom bindings and preset import/export.
 
 ## 0.7.0 - 2026-09-13
 

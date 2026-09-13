@@ -1,3 +1,11 @@
+import {
+  shortcutMatches,
+  shortcutTitle,
+  shortcutLabel,
+  useShortcutPreferences,
+  getShortcutSnapshot,
+} from "../shortcutPreferences";
+import { SHORTCUT_NUMBERS, type ShortcutNumber } from "../shortcutBindings";
 import { endpointCreationReason } from "../store";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -189,19 +197,10 @@ type CommandNumberShortcutEvent = CommandNumberShortcutModifiers &
 export function commandNumberShortcutIndex(
   event: CommandNumberShortcutModifiers,
 ) {
-  // Desktop browsers reserve bare Cmd/Win+1-9 (tab switching on macOS, taskbar
-  // shortcuts on Windows) and never deliver them to pages, so Alt+1-9 is the
-  // displayed shortcut: it is the only modifier combo that reliably reaches
-  // the page across macOS, Windows and Linux. Ctrl (delivered on macOS) and
-  // Meta (delivered by embedded webviews) are accepted as aliases.
-  const modifiers =
-    Number(event.altKey) + Number(event.ctrlKey) + Number(event.metaKey);
-  if (modifiers !== 1 || event.shiftKey) return null;
-  if (/^[1-9]$/.test(event.key)) return Number(event.key) - 1;
-  // Option+digit types alternate characters on macOS (e.g. ¡ for 1), so fall
-  // back to the physical key code for layout-independent matching.
-  const match = /^Digit([1-9])$/.exec(event.code);
-  return match ? Number(match[1]) - 1 : null;
+  const number = SHORTCUT_NUMBERS.find((n) =>
+    shortcutMatches(event, `command.${n}`),
+  );
+  return number === undefined ? null : number - 1;
 }
 
 export function commandNumberedActions<T>(
@@ -241,6 +240,7 @@ export function CommandCombobox({
   onOpenFile?: (workspaceId: string, entry: FileExplorerEntry) => void;
   onOpenDiffViewer?: (workspaceId?: string) => void;
 }) {
+  useShortcutPreferences();
   const s = useStoreSelector(
     (state) => ({
       activeConnectionId: state.activeConnectionId,
@@ -334,19 +334,24 @@ export function CommandCombobox({
   );
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const commandK = e.key.toLowerCase() === "k" && e.metaKey;
-      const controlK =
-        e.key.toLowerCase() === "k" && e.ctrlKey && !isTypingTarget(e.target);
-      if (!commandK && !controlK) return;
+      if (e.defaultPrevented || document.querySelector(".modal-backdrop"))
+        return;
+      if (!shortcutMatches(e, "command.menu") || e.repeat) return;
+      if (
+        isTypingTarget(e.target) &&
+        !(e.target as HTMLElement).closest(".command-popover, .xterm")
+      )
+        return;
       e.preventDefault();
+      e.stopPropagation();
       setOpen((value) => {
         const next = !value;
         if (!next) setSearch("");
         return next;
       });
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
   const run = (fn: () => void) => {
@@ -987,6 +992,7 @@ export function CommandCombobox({
             type="button"
             className={`topbar-button command-trigger ${open ? "is-active" : ""}`}
             aria-label="Open command menu"
+            title={shortcutTitle("Open command menu", "command.menu")}
           >
             <Keyboard size={15} />
             <span>Actions</span>
@@ -1197,8 +1203,12 @@ function ActionItem({
   onSelect: () => void;
   disabledReason?: string | null;
 }) {
-  const numberShortcut =
-    numberShortcutIndex === undefined ? null : `⌥${numberShortcutIndex + 1}`;
+  useShortcutPreferences();
+  const id =
+    numberShortcutIndex === undefined
+      ? null
+      : (`command.${numberShortcutIndex + 1}` as `command.${ShortcutNumber}`);
+  const numberShortcut = id ? shortcutLabel(id) : null;
   return (
     <CommandItem
       value={value}
@@ -1208,9 +1218,11 @@ function ActionItem({
       onSelect={onSelect}
       className={danger ? "is-danger" : undefined}
       aria-keyshortcuts={
-        numberShortcutIndex === undefined
-          ? undefined
-          : `Alt+${numberShortcutIndex + 1}`
+        id
+          ? getShortcutSnapshot()
+              .preset.bindings[id].map((key) => key.replace("Ctrl", "Control"))
+              .join(" ") || undefined
+          : undefined
       }
     >
       <span className="command-item-icon">{icon}</span>

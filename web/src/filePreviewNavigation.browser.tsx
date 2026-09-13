@@ -6,6 +6,10 @@ import { bridge, type ConnectionClient } from "./api";
 import { __storeTesting, store } from "./store";
 import type { FilePreview, Workspace } from "./types";
 import {
+  defaultShortcutBindings,
+  detectShortcutPlatform,
+} from "./shortcutBindings";
+import {
   readResourceFileSelection,
   resourceScopeForWorkspace,
   WORKSPACE_INSPECTOR_REQUEST_EVENT,
@@ -136,12 +140,23 @@ async function showA(path = "A.md") {
     "A rendered",
   );
 }
+function commandMenuEvent() {
+  // Match the platform preset: Meta+K on macOS, Ctrl+Alt+K elsewhere.
+  const binding = defaultShortcutBindings(detectShortcutPlatform())[
+    "command.menu"
+  ][0];
+  const parts = binding.split("+");
+  return new KeyboardEvent("keydown", {
+    key: parts[parts.length - 1].toLowerCase(),
+    ctrlKey: parts.includes("Ctrl"),
+    altKey: parts.includes("Alt"),
+    metaKey: parts.includes("Meta"),
+    shiftKey: parts.includes("Shift"),
+    bubbles: true,
+  });
+}
 async function quickOpen(path: string) {
-  flushSync(() =>
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
-    ),
-  );
+  flushSync(() => window.dispatchEvent(commandMenuEvent()));
   await until(
     () =>
       document.querySelector<HTMLInputElement>(

@@ -184,6 +184,7 @@ function GitStatusBadges({
 }
 
 export function WorkspaceTree({
+  agentsFirst = false,
   onSelect,
   onBrowseFiles,
   onReviewChanges,
@@ -192,6 +193,7 @@ export function WorkspaceTree({
   onReviewChangesForAgent,
   onViewAgentHistory,
 }: {
+  agentsFirst?: boolean;
   onSelect?: (workspace: Workspace) => void;
   onBrowseFiles?: (workspace: Workspace) => void;
   onReviewChanges?: (workspace: Workspace) => void;
@@ -772,8 +774,8 @@ export function WorkspaceTree({
 
   return (
     <>
-      {workspacePanel}
-      {agentsPanel}
+      {agentsFirst ? agentsPanel : workspacePanel}
+      {agentsFirst ? workspacePanel : agentsPanel}
       <ContextMenu
         state={menu}
         pinnedWorkspaceKeys={pinnedWorkspaceSet}

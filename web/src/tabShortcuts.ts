@@ -1,3 +1,5 @@
+import { getShortcutSnapshot } from "./shortcutPreferences";
+import { matchesShortcut, type ShortcutBindings } from "./shortcutBindings";
 import type { Pane, Tab } from "./types";
 
 export type TabShortcutAction = "create" | "close" | "previous" | "next";
@@ -7,17 +9,14 @@ type TabShortcutEvent = Pick<
   "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey"
 >;
 
-/** Maps exact macOS tab shortcuts without consuming extra modifier variants. */
+/** Resolve tab commands from the active preset. */
 export function tabShortcutAction(
   event: TabShortcutEvent,
+  bindings: ShortcutBindings = getShortcutSnapshot().preset.bindings,
 ): TabShortcutAction | null {
-  if (!event.metaKey || event.ctrlKey || event.shiftKey) return null;
-
-  const key = event.key.toLowerCase();
-  if (!event.altKey && key === "t") return "create";
-  if (!event.altKey && key === "w") return "close";
-  if (event.altKey && event.key === "ArrowLeft") return "previous";
-  if (event.altKey && event.key === "ArrowRight") return "next";
+  for (const action of ["create", "close", "previous", "next"] as const) {
+    if (matchesShortcut(event, `tab.${action}`, bindings)) return action;
+  }
   return null;
 }
 

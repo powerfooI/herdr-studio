@@ -21,7 +21,7 @@ describe("terminal wheel scrolling", () => {
     expect(terminalWheelScroll(0, 0, 30)).toBeNull();
   });
 
-  test("routes full Page Up and Page Down as page-key scrollback", () => {
+  test("routes full Page Up and Page Down for application-aware page-key handling", () => {
     expect(terminalPageScroll("up", 30)).toEqual({
       direction: "up",
       lines: 28,

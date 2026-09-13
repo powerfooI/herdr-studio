@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import {
-  macCommandEditingSequence,
-  modifiedEnterSequence,
-} from "./terminalKeys";
+import { terminalShortcutSequence } from "./terminalKeys";
+import { defaultShortcutBindings } from "./shortcutBindings";
+type KeyEvent = Parameters<typeof terminalShortcutSequence>[0];
+const modifiedEnterSequence = (event: KeyEvent) =>
+  terminalShortcutSequence(event, defaultShortcutBindings("linux"));
+const macCommandEditingSequence = (event: KeyEvent, isMac: boolean) =>
+  isMac
+    ? terminalShortcutSequence(event, defaultShortcutBindings("mac"))
+    : null;
 
 function keyEvent(
   overrides: Partial<Parameters<typeof modifiedEnterSequence>[0]> = {},

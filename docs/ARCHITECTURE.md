@@ -75,6 +75,13 @@ method again at dispatch:
   `health_check` enables endpoint ping/pong. `surface_interest` and
   `presentation_effects_fence` do not enable surface-setting or fencing controls.
 
+Full page-key requests use semantic PageUp/PageDown input on endpoints. Herdr
+routes them to the application or host scrollback using the PTY's current modes;
+they do not require `pane.scroll`. Explicit half-page history requests continue
+to use `pane.scroll`, including in mouse-aware applications. Legacy attachments
+retain their PageKey/Wheel routing. Both keyboard shortcuts and mobile buttons
+use this contract.
+
 Mouse input uses zero-based pane-local cells, bounded to the crop. Only a press
 inside the pane acquires drag/release ownership; later positions clamp to its
 edge. Reporting changes and session closure cancel ownership. Mouse-aware apps

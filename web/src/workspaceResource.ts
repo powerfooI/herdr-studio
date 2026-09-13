@@ -1,3 +1,5 @@
+import { getShortcutSnapshot } from "./shortcutPreferences";
+import { matchesShortcut, type ShortcutBindings } from "./shortcutBindings";
 import type { Workspace } from "./types";
 import { connectionStorageKey } from "./connectionStorage";
 
@@ -11,15 +13,9 @@ export function isWorkspaceInspectorShortcut(
     KeyboardEvent,
     "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "repeat"
   >,
+  bindings: ShortcutBindings = getShortcutSnapshot().preset.bindings,
 ): boolean {
-  return (
-    event.key.toLowerCase() === "b" &&
-    event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey &&
-    event.shiftKey &&
-    !event.repeat
-  );
+  return !event.repeat && matchesShortcut(event, "inspector.toggle", bindings);
 }
 
 export interface WorkspaceInspectorRequest {

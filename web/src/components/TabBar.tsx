@@ -1,3 +1,4 @@
+import { shortcutTitle, useShortcutPreferences } from "../shortcutPreferences";
 import {
   shallowEqual,
   store,
@@ -66,6 +67,7 @@ export function TabBar({
   inspectorOpen?: boolean;
   onToggleInspector?: () => void;
 }) {
+  useShortcutPreferences();
   const s = useStoreSelector(
     (state) => ({
       activeConnectionId: state.activeConnectionId,
@@ -286,7 +288,7 @@ export function TabBar({
               store.createTab(focusedWs.workspace_id);
             }}
             disabled={!!createReason}
-            title={createReason ?? "New tab"}
+            title={createReason ?? shortcutTitle("New tab", "tab.create")}
           >
             +
           </button>
@@ -296,11 +298,12 @@ export function TabBar({
               type="button"
               className={inspectorOpen ? "is-active" : ""}
               aria-expanded={inspectorOpen}
-              title={
+              title={shortcutTitle(
                 inspectorOpen
-                  ? "Close Workspace Inspector (⌘⇧B)"
-                  : "Open Workspace Inspector (⌘⇧B)"
-              }
+                  ? "Close Workspace Inspector"
+                  : "Open Workspace Inspector",
+                "inspector.toggle",
+              )}
               onClick={onToggleInspector}
             >
               <PanelRight size={14} />
