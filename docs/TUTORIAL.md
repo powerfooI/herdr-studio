@@ -92,7 +92,7 @@ access working before adding another network connection.
 > login token. The plugin also uses the user service. Check the actual listener
 > address before following the private-access examples later in this tutorial.
 
-![Desktop workspace with project navigation on the left, a terminal in the center, and agent message history on the right](./images/herdr-studio-desktop-session-history.png)
+![Desktop workspace with project navigation on the left, live terminals in the center, and changed files on the right](./images/roamgate-desktop-changes.png)
 
 *Find your project and active pane first. You do not need to identify every
 button yet. Screenshots show an existing version; menu positions may change
@@ -188,7 +188,7 @@ not just the last line in the terminal.
 **You are done when:** you can identify the new lines and explain whether the
 run command is correct, rather than repeating the agent's summary.
 
-![File Explorer previewing a README with raw and rendered views](./images/herdr-studio-desktop-file-explorer.png)
+![File Explorer previewing a README with raw and rendered views](./images/roamgate-desktop-files.png)
 
 *File Explorer explains a file; Diff Viewer explains a change. File-tree search
 covers files already loaded into the tree, not a repository-wide full-text
@@ -223,7 +223,7 @@ are not GitHub PR comments and do not automatically sync to another device.
 When a changed file prevents re-anchoring, the comment is marked stale and its
 original quote remains available for inspection.
 
-![Diff Viewer showing file changes that can be reviewed in context](./images/herdr-studio-desktop-diff-viewer.png)
+![Diff Viewer with a comment on selected changed lines](./images/roamgate-desktop-annotations.png)
 
 ### 2.5 Do not rush into bulk actions
 
@@ -308,7 +308,7 @@ means the phone itself, not your work computer.
 project. Confirm that the service address is stable before installing. Install
 your Roamgate URL, not this tutorial's Pages URL.
 
-![Mobile terminal with touch shortcut controls](./images/herdr-studio-mobile-terminal.png)
+![Mobile terminal with touch shortcut controls](./images/roamgate-mobile-terminal.png)
 
 *On a small screen, start with one action: check an agent waiting for your
 input, inspect a diff, or add feedback. You do not need to reproduce an entire

@@ -9,34 +9,15 @@ const outputDirectory = join(root, ".pages-dist");
 const assetDirectory = join(outputDirectory, "assets");
 
 const assets = [
+  ["docs/images/roamgate-desktop-changes.png", "roamgate-desktop-changes.png"],
+  ["docs/images/roamgate-desktop-files.png", "roamgate-desktop-files.png"],
   [
-    "docs/images/herdr-studio-desktop-session-history.png",
-    "herdr-studio-desktop-session-history.png",
+    "docs/images/roamgate-desktop-annotations.png",
+    "roamgate-desktop-annotations.png",
   ],
-  [
-    "docs/images/herdr-studio-desktop-file-explorer.png",
-    "herdr-studio-desktop-file-explorer.png",
-  ],
-  [
-    "docs/images/herdr-studio-desktop-diff-viewer.png",
-    "herdr-studio-desktop-diff-viewer.png",
-  ],
-  [
-    "docs/images/herdr-studio-desktop-terminal.png",
-    "herdr-studio-desktop-terminal.png",
-  ],
-  [
-    "docs/images/herdr-studio-mobile-changed-files.png",
-    "herdr-studio-mobile-changed-files.png",
-  ],
-  [
-    "docs/images/herdr-studio-mobile-file-viewer.png",
-    "herdr-studio-mobile-file-viewer.png",
-  ],
-  [
-    "docs/images/herdr-studio-mobile-terminal.png",
-    "herdr-studio-mobile-terminal.png",
-  ],
+  ["docs/images/roamgate-mobile-changes.png", "roamgate-mobile-changes.png"],
+  ["docs/images/roamgate-mobile-files.png", "roamgate-mobile-files.png"],
+  ["docs/images/roamgate-mobile-terminal.png", "roamgate-mobile-terminal.png"],
 ] as const;
 
 async function ensureFile(path: string): Promise<void> {

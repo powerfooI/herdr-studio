@@ -178,8 +178,8 @@
               <span class="window-live"><i></i> Connected</span>
             </div>
             <a
-              href="./assets/herdr-studio-desktop-session-history.png"
-              aria-label="Open the Roamgate session history screenshot"
+              href="./assets/roamgate-desktop-changes.png"
+              aria-label="Open the Roamgate workspace screenshot"
             >
               <picture>
                 <source
@@ -192,10 +192,10 @@
                   sizes="(max-width: 620px) calc(100vw - 8px), (max-width: 1240px) calc(100vw - 48px), 1180px"
                 />
                 <img
-                  src="./assets/herdr-studio-desktop-session-history.png"
-                  alt="Roamgate showing multiple workspaces, a live terminal, and agent session history"
-                  width="4990"
-                  height="2820"
+                  src="./assets/roamgate-desktop-changes.png"
+                  alt="Roamgate showing multiple workspaces, live terminals, and image changes"
+                  width="5000"
+                  height="2714"
                   fetchpriority="high"
                 />
               </picture>
@@ -383,18 +383,18 @@
               <button
                 type="button"
                 role="tab"
-                id="tab-sessions"
+                id="tab-changes"
                 aria-controls="showcase-panel"
                 aria-selected="true"
                 tabindex="0"
                 data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-session-history.png"
-                data-alt="Roamgate session history beside a live terminal"
-                data-label="Session history"
-                data-title="Know what happened without reading every line."
-                data-copy="Scan agent messages, inspect session details, search transcripts, and export the original record or normalized ATIF trajectory."
+                data-image="./assets/roamgate-desktop-changes.png"
+                data-alt="Roamgate changed files and image previews beside live terminals"
+                data-label="Changes"
+                data-title="Review code and image changes beside your terminals."
+                data-copy="Inspect staged, unstaged, untracked, and branch changes without leaving the active workspace."
               >
-                <span>01</span> Sessions
+                <span>01</span> Changes
               </button>
               <button
                 type="button"
@@ -404,7 +404,7 @@
                 aria-selected="false"
                 tabindex="-1"
                 data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-file-explorer.png"
+                data-image="./assets/roamgate-desktop-files.png"
                 data-alt="Roamgate file explorer with a rendered README preview"
                 data-label="File explorer"
                 data-title="Browse the repository without leaving the terminal."
@@ -415,34 +415,18 @@
               <button
                 type="button"
                 role="tab"
-                id="tab-changes"
+                id="tab-annotations"
                 aria-controls="showcase-panel"
                 aria-selected="false"
                 tabindex="-1"
                 data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-diff-viewer.png"
-                data-alt="Roamgate changed-files view with a visual image diff"
-                data-label="Changes"
-                data-title="Turn a working tree into an actionable review."
-                data-copy="Move between staged, unstaged, untracked, and branch changes. Annotate precise lines and hand structured feedback back to an agent."
+                data-image="./assets/roamgate-desktop-annotations.png"
+                data-alt="Roamgate diff viewer with a line annotation beside live terminals"
+                data-label="Diff annotations"
+                data-title="Turn precise lines into actionable feedback."
+                data-copy="Select diff lines, add comments, and prepare structured feedback for your agent."
               >
-                <span>03</span> Changes
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="tab-terminal"
-                aria-controls="showcase-panel"
-                aria-selected="false"
-                tabindex="-1"
-                data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-terminal.png"
-                data-alt="Roamgate full browser terminal"
-                data-label="Full terminal"
-                data-title="The terminal remains the source of truth."
-                data-copy="Use the same agent CLIs and shell workflows you already trust, with responsive sizing, pane controls, scrollback, paste, and keyboard navigation."
-              >
-                <span>04</span> Terminal
+                <span>03</span> Annotations
               </button>
             </div>
 
@@ -450,26 +434,26 @@
               class="showcase-panel"
               id="showcase-panel"
               role="tabpanel"
-              aria-labelledby="tab-sessions"
+              aria-labelledby="tab-changes"
               tabindex="0"
               data-showcase-panel
             >
               <div class="showcase-window">
                 <div class="showcase-topline">
                   <span><i></i><i></i><i></i></span>
-                  <strong data-showcase-label>Session history</strong>
+                  <strong data-showcase-label>Changes</strong>
                   <em>Local / Connected</em>
                 </div>
                 <a
-                  href="./assets/herdr-studio-desktop-session-history.png"
+                  href="./assets/roamgate-desktop-changes.png"
                   aria-label="Open the current Roamgate product screenshot"
                   data-showcase-link
                 >
                   <img
-                    src="./assets/herdr-studio-desktop-session-history.png"
-                    alt="Roamgate session history beside a live terminal"
-                    width="4990"
-                    height="2820"
+                    src="./assets/roamgate-desktop-changes.png"
+                    alt="Roamgate changed files and image previews beside live terminals"
+                    width="5000"
+                    height="2714"
                     loading="lazy"
                     decoding="async"
                     data-showcase-image
@@ -478,12 +462,11 @@
               </div>
               <div class="showcase-caption" aria-live="polite">
                 <h3 data-showcase-title>
-                  Know what happened without reading every line.
+                  Review code and image changes beside your terminals.
                 </h3>
                 <p data-showcase-copy>
-                  Scan agent messages, inspect session details, search
-                  transcripts, and export the original record or normalized ATIF
-                  trajectory.
+                  Inspect staged, unstaged, untracked, and branch changes
+                  without leaving the active workspace.
                 </p>
               </div>
             </div>
@@ -585,12 +568,12 @@
           >
             <figure class="phone phone-left">
               <div class="phone-speaker"></div>
-              <a href="./assets/herdr-studio-mobile-changed-files.png">
+              <a href="./assets/roamgate-mobile-changes.png">
                 <img
-                  src="./assets/herdr-studio-mobile-changed-files.png"
+                  src="./assets/roamgate-mobile-changes.png"
                   alt="Roamgate changed files view on mobile"
                   width="1179"
-                  height="2426"
+                  height="2379"
                   loading="lazy"
                   decoding="async"
                 />
@@ -598,12 +581,12 @@
             </figure>
             <figure class="phone phone-center">
               <div class="phone-speaker"></div>
-              <a href="./assets/herdr-studio-mobile-terminal.png">
+              <a href="./assets/roamgate-mobile-terminal.png">
                 <img
-                  src="./assets/herdr-studio-mobile-terminal.png"
+                  src="./assets/roamgate-mobile-terminal.png"
                   alt="Roamgate terminal controls on mobile"
                   width="1179"
-                  height="2426"
+                  height="2379"
                   loading="lazy"
                   decoding="async"
                 />
@@ -611,12 +594,12 @@
             </figure>
             <figure class="phone phone-right">
               <div class="phone-speaker"></div>
-              <a href="./assets/herdr-studio-mobile-file-viewer.png">
+              <a href="./assets/roamgate-mobile-files.png">
                 <img
-                  src="./assets/herdr-studio-mobile-file-viewer.png"
+                  src="./assets/roamgate-mobile-files.png"
                   alt="Roamgate rendered file preview on mobile"
                   width="1179"
-                  height="2426"
+                  height="2379"
                   loading="lazy"
                   decoding="async"
                 />

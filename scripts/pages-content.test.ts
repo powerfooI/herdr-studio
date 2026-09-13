@@ -73,7 +73,7 @@ describe("tutorial Markdown", () => {
     const { content } = await renderTutorial(
       '# Tutorial\n\n<a id="tailscale"></a>\n\n## Networking\n\n' +
         "[Jump](#tailscale) [Deployment](./DEPLOYMENT.md#logging) [Security](../SECURITY.md)\n\n" +
-        "![Terminal](./images/herdr-studio-desktop-terminal.png)\n\n```bash\necho '<safe>'\n```\n\n" +
+        "![Workspace](./images/roamgate-desktop-changes.png)\n\n```bash\necho '<safe>'\n```\n\n" +
         "| Name | Purpose |\n| --- | --- |\n| Serve | Private access |\n",
     );
     expect(content).toContain('href="#tailscale"');
@@ -83,11 +83,9 @@ describe("tutorial Markdown", () => {
     expect(content).toContain(
       'href="https://github.com/powerfooI/herdr-studio/blob/main/SECURITY.md"',
     );
-    expect(content).toContain(
-      'src="../assets/herdr-studio-desktop-terminal.png"',
-    );
-    expect(content).toContain('width="4990"');
-    expect(content).toContain('height="2820"');
+    expect(content).toContain('src="../assets/roamgate-desktop-changes.png"');
+    expect(content).toContain('width="5000"');
+    expect(content).toContain('height="2714"');
     expect(content).toContain('loading="lazy"');
     expect(content).toContain("&lt;safe&gt;");
     expect(content).toContain('role="region"');
@@ -99,6 +97,31 @@ describe("tutorial Markdown", () => {
 });
 
 describe("Pages references", () => {
+  test("website and tutorial reuse the current README screenshots", async () => {
+    const [readme, site, tutorial, build] = await Promise.all(
+      [
+        "../README.md",
+        "../site/index.html",
+        "../docs/TUTORIAL.md",
+        "./build-pages.ts",
+      ].map((path) => Bun.file(new URL(path, import.meta.url)).text()),
+    );
+    const screenshotPattern = /roamgate-(?:desktop|mobile)-[a-z-]+\.png/g;
+    const screenshots = [...new Set(readme.match(screenshotPattern))].sort();
+    expect(screenshots).toHaveLength(6);
+    for (const source of [site, build]) {
+      expect([...new Set(source.match(screenshotPattern))].sort()).toEqual(
+        screenshots,
+      );
+    }
+    for (const source of [site, tutorial, build]) {
+      expect(source).not.toMatch(/herdr-studio-(?:desktop|mobile)-/);
+    }
+    for (const image of tutorial.match(screenshotPattern) ?? []) {
+      expect(screenshots).toContain(image);
+    }
+  });
+
   test("collects relative links and responsive images without external URLs", () => {
     expect(
       localPageReferences(
