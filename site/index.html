@@ -6,16 +6,16 @@
     <meta name="theme-color" content="#080b12" />
     <meta
       name="description"
-      content="Herdr Studio is an independent, open-source community project for Herdr. Control terminals, inspect agent sessions, review files and diffs, and manage worktrees from desktop or mobile."
+      content="Roamgate is an independent, open-source community project for Herdr. Control terminals, inspect agent sessions, review files and diffs, and manage worktrees from desktop or mobile."
     />
     <meta property="og:type" content="website" />
     <meta
       property="og:title"
-      content="Herdr Studio - Keep every agent in sight"
+      content="Roamgate - Keep every agent in sight"
     />
     <meta
       property="og:description"
-      content="A fast, visual workspace for every terminal, agent, file, diff, and worktree running in Herdr."
+      content="Roamgate is an independent community client for Herdr, not an official Herdr product. Access terminals and review agent sessions from desktop or mobile."
     />
     <meta
       property="og:url"
@@ -23,36 +23,38 @@
     />
     <meta
       property="og:image"
-      content="https://powerfooI.github.io/herdr-studio/og.png"
+      content="https://powerfooI.github.io/herdr-studio/roamgate-og.png"
     />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="Herdr Studio - Keep every agent in sight"
+      content="Roamgate - Keep every agent in sight"
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:title"
-      content="Herdr Studio - Keep every agent in sight"
+      content="Roamgate - Keep every agent in sight"
     />
     <meta
       name="twitter:description"
-      content="An independent, open-source community project for Herdr."
+      content="Roamgate is an independent community client for Herdr, not an official Herdr product."
     />
     <meta
       name="twitter:image"
-      content="https://powerfooI.github.io/herdr-studio/og.png"
+      content="https://powerfooI.github.io/herdr-studio/roamgate-og.png"
     />
     <link rel="canonical" href="https://powerfooI.github.io/herdr-studio/" />
-    <link rel="icon" href="./assets/herdr-icon-48.png" />
+    <link rel="icon" href="./favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/png" sizes="48x48" href="./assets/roamgate-icon-48.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/roamgate-icon-180.png" />
     <link rel="stylesheet" href="./styles.css" />
-    <title>Herdr Studio - Keep every agent in sight</title>
+    <title>Roamgate - Keep every agent in sight</title>
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "name": "Herdr Studio",
+        "name": "Roamgate",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS, Linux, Windows",
         "description": "An open-source browser and PWA client for Herdr.",
@@ -71,22 +73,8 @@
 
     <header class="site-header" data-header>
       <div class="shell header-inner">
-        <a class="brand" href="#top" aria-label="Herdr Studio home">
-          <span class="brand-mark">
-            <img
-              src="./assets/herdr-icon-48.png"
-              srcset="
-                ./assets/herdr-icon-48.png 48w,
-                ./assets/herdr-icon-72.png 72w,
-                ./assets/herdr-icon.png    96w
-              "
-              sizes="36px"
-              alt=""
-              width="36"
-              height="36"
-            />
-          </span>
-          <span>Herdr Studio</span>
+        <a class="brand" href="#top" aria-label="Roamgate home">
+          <img class="brand-logo" src="./assets/roamgate-lockup-charcoal.png" width="160" height="64" alt="Roamgate" />
         </a>
 
         <button
@@ -109,7 +97,7 @@
           <a
             class="github-link"
             href="https://github.com/powerfooI/herdr-studio"
-            aria-label="Herdr Studio on GitHub"
+            aria-label="Roamgate on GitHub"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -146,13 +134,13 @@
               rel="noopener noreferrer"
               >Herdr</a
             >
-            keeps the terminals alive. Herdr Studio turns the whole herd into a
+            keeps the terminals alive. Roamgate turns the whole herd into a
             fast, visual workspace for terminals, sessions, files, diffs, and
             worktrees from any modern browser.
           </p>
           <div class="hero-actions">
             <a class="button button-primary" href="#install">
-              Install Herdr Studio
+              Install Roamgate
               <svg viewBox="0 0 20 20" aria-hidden="true">
                 <path d="m7 4 6 6-6 6" />
               </svg>
@@ -168,14 +156,15 @@
             <span>PWA</span>
           </div>
           <p class="hero-requirement">
-            Independent community project for
+            Formerly Herdr Studio. An independent community client for
             <a
               href="https://herdr.dev"
               target="_blank"
               rel="noopener noreferrer"
               >Herdr</a
             >
-            &middot; Requires a running Herdr server.
+            &middot; Not affiliated with or endorsed by Herdr.
+            Requires a running Herdr server.
           </p>
         </div>
 
@@ -185,12 +174,12 @@
               <span class="traffic traffic-red"></span>
               <span class="traffic traffic-yellow"></span>
               <span class="traffic traffic-green"></span>
-              <div class="window-title">Herdr Studio</div>
+              <div class="window-title">Roamgate</div>
               <span class="window-live"><i></i> Connected</span>
             </div>
             <a
-              href="./assets/herdr-studio-desktop-session-history.png"
-              aria-label="Open the Herdr Studio session history screenshot"
+              href="./assets/roamgate-desktop-changes.png"
+              aria-label="Open the Roamgate workspace screenshot"
             >
               <picture>
                 <source
@@ -203,10 +192,10 @@
                   sizes="(max-width: 620px) calc(100vw - 8px), (max-width: 1240px) calc(100vw - 48px), 1180px"
                 />
                 <img
-                  src="./assets/herdr-studio-desktop-session-history.png"
-                  alt="Herdr Studio showing multiple workspaces, a live terminal, and agent session history"
-                  width="4990"
-                  height="2820"
+                  src="./assets/roamgate-desktop-changes.png"
+                  alt="Roamgate showing multiple workspaces, live terminals, and image changes"
+                  width="4998"
+                  height="2714"
                   fetchpriority="high"
                 />
               </picture>
@@ -394,18 +383,18 @@
               <button
                 type="button"
                 role="tab"
-                id="tab-sessions"
+                id="tab-changes"
                 aria-controls="showcase-panel"
                 aria-selected="true"
                 tabindex="0"
                 data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-session-history.png"
-                data-alt="Herdr Studio session history beside a live terminal"
-                data-label="Session history"
-                data-title="Know what happened without reading every line."
-                data-copy="Scan agent messages, inspect session details, search transcripts, and export the original record or normalized ATIF trajectory."
+                data-image="./assets/roamgate-desktop-changes.png"
+                data-alt="Roamgate changed files and image previews beside live terminals"
+                data-label="Changes"
+                data-title="Review code and image changes beside your terminals."
+                data-copy="Inspect staged, unstaged, untracked, and branch changes without leaving the active workspace."
               >
-                <span>01</span> Sessions
+                <span>01</span> Changes
               </button>
               <button
                 type="button"
@@ -415,8 +404,8 @@
                 aria-selected="false"
                 tabindex="-1"
                 data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-file-explorer.png"
-                data-alt="Herdr Studio file explorer with a rendered README preview"
+                data-image="./assets/roamgate-desktop-files.png"
+                data-alt="Roamgate file explorer with a rendered README preview"
                 data-label="File explorer"
                 data-title="Browse the repository without leaving the terminal."
                 data-copy="Preview source, Markdown, Mermaid, and images; search loaded files; upload, download, copy paths, and manage files locally or over SSH."
@@ -426,34 +415,18 @@
               <button
                 type="button"
                 role="tab"
-                id="tab-changes"
+                id="tab-annotations"
                 aria-controls="showcase-panel"
                 aria-selected="false"
                 tabindex="-1"
                 data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-diff-viewer.png"
-                data-alt="Herdr Studio changed-files view with a visual image diff"
-                data-label="Changes"
-                data-title="Turn a working tree into an actionable review."
-                data-copy="Move between staged, unstaged, untracked, and branch changes. Annotate precise lines and hand structured feedback back to an agent."
+                data-image="./assets/roamgate-desktop-annotations.png"
+                data-alt="Roamgate diff viewer with a line annotation beside live terminals"
+                data-label="Diff annotations"
+                data-title="Turn precise lines into actionable feedback."
+                data-copy="Select diff lines, add comments, and prepare structured feedback for your agent."
               >
-                <span>03</span> Changes
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="tab-terminal"
-                aria-controls="showcase-panel"
-                aria-selected="false"
-                tabindex="-1"
-                data-showcase-tab
-                data-image="./assets/herdr-studio-desktop-terminal.png"
-                data-alt="Herdr Studio full browser terminal"
-                data-label="Full terminal"
-                data-title="The terminal remains the source of truth."
-                data-copy="Use the same agent CLIs and shell workflows you already trust, with responsive sizing, pane controls, scrollback, paste, and keyboard navigation."
-              >
-                <span>04</span> Terminal
+                <span>03</span> Annotations
               </button>
             </div>
 
@@ -461,26 +434,26 @@
               class="showcase-panel"
               id="showcase-panel"
               role="tabpanel"
-              aria-labelledby="tab-sessions"
+              aria-labelledby="tab-changes"
               tabindex="0"
               data-showcase-panel
             >
               <div class="showcase-window">
                 <div class="showcase-topline">
                   <span><i></i><i></i><i></i></span>
-                  <strong data-showcase-label>Session history</strong>
+                  <strong data-showcase-label>Changes</strong>
                   <em>Local / Connected</em>
                 </div>
                 <a
-                  href="./assets/herdr-studio-desktop-session-history.png"
-                  aria-label="Open the current Herdr Studio product screenshot"
+                  href="./assets/roamgate-desktop-changes.png"
+                  aria-label="Open the current Roamgate product screenshot"
                   data-showcase-link
                 >
                   <img
-                    src="./assets/herdr-studio-desktop-session-history.png"
-                    alt="Herdr Studio session history beside a live terminal"
-                    width="4990"
-                    height="2820"
+                    src="./assets/roamgate-desktop-changes.png"
+                    alt="Roamgate changed files and image previews beside live terminals"
+                    width="4998"
+                    height="2714"
                     loading="lazy"
                     decoding="async"
                     data-showcase-image
@@ -489,12 +462,11 @@
               </div>
               <div class="showcase-caption" aria-live="polite">
                 <h3 data-showcase-title>
-                  Know what happened without reading every line.
+                  Review code and image changes beside your terminals.
                 </h3>
                 <p data-showcase-copy>
-                  Scan agent messages, inspect session details, search
-                  transcripts, and export the original record or normalized ATIF
-                  trajectory.
+                  Inspect staged, unstaged, untracked, and branch changes
+                  without leaving the active workspace.
                 </p>
               </div>
             </div>
@@ -509,7 +481,7 @@
             <h2>Running in three steps.</h2>
           </div>
           <p>
-            Herdr Studio is a thin bridge around the runtime you already use.
+            Roamgate is a thin bridge around the runtime you already use.
             Your agents still live in real terminal sessions owned by Herdr.
           </p>
         </div>
@@ -535,7 +507,7 @@
                 <path d="M8 5 3 12l5 7m8-14 5 7-5 7M14 3l-4 18" />
               </svg>
             </div>
-            <h3>Studio connects locally or over SSH</h3>
+            <h3>Roamgate connects locally or over SSH</h3>
             <p>
               Run one standalone binary beside Herdr. It bridges the local
               socket API, terminal stream, files, Git operations, and session
@@ -592,16 +564,16 @@
           <div
             class="phone-stage reveal reveal-delay"
             role="group"
-            aria-label="Herdr Studio mobile views"
+            aria-label="Roamgate mobile views"
           >
             <figure class="phone phone-left">
               <div class="phone-speaker"></div>
-              <a href="./assets/herdr-studio-mobile-changed-files.png">
+              <a href="./assets/roamgate-mobile-changes.png">
                 <img
-                  src="./assets/herdr-studio-mobile-changed-files.png"
-                  alt="Herdr Studio changed files view on mobile"
+                  src="./assets/roamgate-mobile-changes.png"
+                  alt="Roamgate changed files view on mobile"
                   width="1179"
-                  height="2426"
+                  height="2379"
                   loading="lazy"
                   decoding="async"
                 />
@@ -609,12 +581,12 @@
             </figure>
             <figure class="phone phone-center">
               <div class="phone-speaker"></div>
-              <a href="./assets/herdr-studio-mobile-terminal.png">
+              <a href="./assets/roamgate-mobile-terminal.png">
                 <img
-                  src="./assets/herdr-studio-mobile-terminal.png"
-                  alt="Herdr Studio terminal controls on mobile"
+                  src="./assets/roamgate-mobile-terminal.png"
+                  alt="Roamgate terminal controls on mobile"
                   width="1179"
-                  height="2426"
+                  height="2379"
                   loading="lazy"
                   decoding="async"
                 />
@@ -622,12 +594,12 @@
             </figure>
             <figure class="phone phone-right">
               <div class="phone-speaker"></div>
-              <a href="./assets/herdr-studio-mobile-file-viewer.png">
+              <a href="./assets/roamgate-mobile-files.png">
                 <img
-                  src="./assets/herdr-studio-mobile-file-viewer.png"
-                  alt="Herdr Studio rendered file preview on mobile"
+                  src="./assets/roamgate-mobile-files.png"
+                  alt="Roamgate rendered file preview on mobile"
                   width="1179"
-                  height="2426"
+                  height="2379"
                   loading="lazy"
                   decoding="async"
                 />
@@ -693,7 +665,7 @@
             <h2>Give your agents a window.</h2>
             <p>
               Install the standalone binary on macOS or Linux, start Herdr
-              Studio, and open the URL it prints. Windows x64 and ARM64 archives
+              Roamgate, and open the URL it prints. Windows x64 and ARM64 archives
               are available from GitHub Releases.
             </p>
             <div class="install-actions">
@@ -728,13 +700,13 @@
               </button>
             </div>
             <pre><code data-install-command><span>$</span> curl -fsSL \
-  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-herdr-gui.sh \
+  https://github.com/powerfooI/herdr-studio/releases/latest/download/install-roamgate.sh \
   | sh</code></pre>
             <div class="install-result" aria-hidden="true">
               <span></span>
               <p>
-                <strong>Herdr Studio installed</strong
-                ><small>Run <code>herdr-gui</code> to start</small>
+                <strong>Roamgate installed</strong
+                ><small>Run <code>roamgate</code> to start</small>
               </p>
             </div>
           </div>
@@ -746,21 +718,7 @@
       <div class="shell footer-grid">
         <div class="footer-brand">
           <a class="brand" href="#top">
-            <span class="brand-mark">
-              <img
-                src="./assets/herdr-icon-48.png"
-                srcset="
-                  ./assets/herdr-icon-48.png 48w,
-                  ./assets/herdr-icon-72.png 72w,
-                  ./assets/herdr-icon.png    96w
-                "
-                sizes="36px"
-                alt=""
-                width="36"
-                height="36"
-              />
-            </span>
-            <span>Herdr Studio</span>
+            <img class="brand-logo" src="./assets/roamgate-lockup-charcoal.png" width="160" height="64" alt="Roamgate" />
           </a>
           <p>
             An independent, open-source community project for
@@ -810,7 +768,7 @@
         </div>
       </div>
       <div class="shell footer-bottom">
-        <span>&copy; <span data-year></span> Herdr Studio contributors.</span>
+        <span>&copy; <span data-year></span> Roamgate contributors.</span>
         <span>Real terminals. Clear context. Any screen.</span>
       </div>
     </footer>

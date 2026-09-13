@@ -9,15 +9,15 @@ function cookieHeader(response: Response): string {
 }
 
 describe("request authentication boundaries", () => {
-  test("brands the login page as Herdr Studio", async () => {
+  test("brands the login page as Roamgate", async () => {
     const handlers = createAuthHandlers({
       authRequired: true,
       password: "fixed-password",
     });
     const html = await handlers.loginPage().text();
 
-    expect(html).toContain("<title>Herdr Studio login</title>");
-    expect(html).toContain("<h2>▦ Herdr Studio</h2>");
+    expect(html).toContain("<title>Roamgate login</title>");
+    expect(html).toContain("<h2>▦ Roamgate</h2>");
     expect(html).not.toContain("herdr-gui");
   });
 

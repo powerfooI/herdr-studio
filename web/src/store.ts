@@ -678,7 +678,7 @@ function reloadWhenUpdatedServerIsReady(
               pendingRestartVersion: null,
               notice: {
                 kind: "success",
-                message: `Herdr Studio ${expectedVersion} is running`,
+                message: `Roamgate ${expectedVersion} is running`,
                 detail:
                   "Reloading the application to use the updated frontend.",
                 loading: true,
@@ -700,7 +700,7 @@ function reloadWhenUpdatedServerIsReady(
       notice: {
         kind: "error",
         message: "Updated server did not become ready",
-        detail: `Could not verify Herdr Studio ${expectedVersion}. Reload the page after checking the server process.`,
+        detail: `Could not verify Roamgate ${expectedVersion}. Reload the page after checking the server process.`,
       },
     });
   })().finally(() => {
@@ -1379,7 +1379,7 @@ async function checkForUpdate(showErrors = false) {
         notice: showErrors
           ? {
               kind: "success",
-              message: "Herdr Studio is up to date",
+              message: "Roamgate is up to date",
               detail: info.latest_version
                 ? `Current version: ${info.current_version}`
                 : undefined,
@@ -2123,7 +2123,7 @@ export const store = {
       if (control.type === "pause_connection") {
         store.pauseConnection(
           control.reason ??
-            "Another Herdr Studio client paused this connection. Resume when you want this browser to sync again.",
+            "Another Roamgate client paused this connection. Resume when you want this browser to sync again.",
         );
       }
     });
@@ -2987,8 +2987,7 @@ export const store = {
         ? {
             kind: "success",
             message: "Task notifications enabled",
-            detail:
-              "Herdr Studio will notify you when an agent task completes.",
+            detail: "Roamgate will notify you when an agent task completes.",
             autoDismissMs: 5000,
           }
         : {
@@ -3088,7 +3087,7 @@ export const store = {
           dismissedUpdateVersion: latestVersion,
           notice: {
             kind: "success",
-            message: `Herdr Studio ${installedVersion} installed`,
+            message: `Roamgate ${installedVersion} installed`,
             detail: "Restart the herdr-gui process to use the new version.",
           },
         });
@@ -3100,7 +3099,7 @@ export const store = {
         dismissedUpdateVersion: latestVersion,
         notice: {
           kind: "success",
-          message: "Herdr Studio is already up to date",
+          message: "Roamgate is already up to date",
         },
       });
     } catch (e) {

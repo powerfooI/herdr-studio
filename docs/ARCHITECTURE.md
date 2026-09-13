@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes Herdr Studio's current system contracts. See
+This document describes Roamgate's current system contracts. See
 [FEATURES.md](../FEATURES.md) for behavior and shortcuts and
 [DEPLOYMENT.md](./DEPLOYMENT.md) for supported configurations.
 
@@ -118,7 +118,7 @@ discarded, and attachment ownership and connection leases are rechecked before
 dispatch. Same-tab cursor ownership remains shared with other Herdr clients.
 
 Creation uses explicit context and `focus: false`, adopting returned IDs only
-while the initiating selection and connection lease remain current. Studio-only
+while the initiating selection and connection lease remain current. Roamgate-only
 `browser_source` identifies the source terminal, pane, tab, and workspace. The
 bridge validates attachment ownership and live topology, strips that field, and
 calls the advertised create method on the existing endpoint's serialized
@@ -231,9 +231,17 @@ Production builds embed the frontend and Bun runtime into one platform executabl
 users need neither Bun nor Node.js. Source builds use Bun and Vite. See
 [standalone builds](./DEPLOYMENT.md#build-a-standalone-executable).
 
+Roamgate has a separate release namespace: executable and package members,
+archive/checksum filenames, and manifest identity all use `roamgate`. Every
+release provides a manifest; missing or legacy metadata fails closed without
+an archive-discovery fallback. Publication checks require exactly the six
+platforms' Roamgate assets and prohibit legacy update aliases. Historical
+clients cannot discover Roamgate from their old Latest URLs; see the
+[manual transition contract](./DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
+
 ## Trust boundary
 
-Studio is a trusted single-user administration tool, not a sandbox or multi-user
+Roamgate is a trusted single-user administration tool, not a sandbox or multi-user
 permission system. Authenticated browsers can control terminals, change files,
 manage shared profiles, and execute trusted repository hooks. It provides neither
 TLS termination nor rate limiting; see [SECURITY.md](../SECURITY.md).

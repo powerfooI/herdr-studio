@@ -56,7 +56,13 @@ describe("worktree hook runner", () => {
         JSON.stringify({
           worktree: {
             setup:
-              'printf \'%s|%s|%s\' "$PASEO_HOOK" "$PASEO_CHECKOUT_PATH" "$PASEO_SOURCE_CHECKOUT_PATH"',
+              'printf \'%s|%s|%s\' "$PASEO_HOOK" "$PASEO_CHECKOUT_PATH" "$PASEO_SOURCE_CHECKOUT_PATH"' +
+              ' && test "$ROAMGATE_HOOK_EVENT" = "worktree.created"' +
+              ' && test "$ROAMGATE_HOOK_EVENT" = "$HERDR_GUI_HOOK_EVENT"' +
+              ' && test "$ROAMGATE_HOOK_CHECKOUT_PATH" = "$PASEO_CHECKOUT_PATH"' +
+              ' && test "$ROAMGATE_HOOK_CHECKOUT_PATH" = "$HERDR_GUI_HOOK_CHECKOUT_PATH"' +
+              ' && test "$ROAMGATE_HOOK_SOURCE_CHECKOUT_PATH" = "$PASEO_SOURCE_CHECKOUT_PATH"' +
+              ' && test "$ROAMGATE_HOOK_SOURCE_CHECKOUT_PATH" = "$HERDR_GUI_HOOK_SOURCE_CHECKOUT_PATH"',
           },
         }),
       );

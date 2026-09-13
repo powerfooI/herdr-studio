@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Introduce Roamgate, formerly Herdr Studio, as an independent community client
+  for Herdr, with its own logo, app icons, and social sharing images.
+- **Breaking:** commands and release assets now use `roamgate`. Old clients
+  cannot update to Roamgate through their default channel, and old latest
+  installer URLs stop working. Install manually; existing processes, data, and
+  historical releases are preserved. The legacy source installer remains
+  available for historical versions. See the
+  [transition guide](./docs/DEPLOYMENT.md#transition-from-herdr-studio--herdr-gui).
+- Accept `ROAMGATE_*` configuration variables alongside `HERDR_GUI_*`; the new
+  names take precedence when both are set.
 - Show the Terminal theme menu action as a full-width row on mobile and stop the
   Terminal Themes dialog subtitle from overlapping section titles.
 - Open relative Markdown document links in the current preview, including heading

@@ -97,14 +97,14 @@ function parseServiceCommand(args: string[]): ParsedServiceCommand | null {
 }
 
 function serviceHelp(): string {
-  return `Manage Herdr Studio as a user service.
+  return `Manage Roamgate as a user service.
 
 Usage:
-  herdr-gui service install [--force]
-  herdr-gui service status
-  herdr-gui service restart
-  herdr-gui service reload
-  herdr-gui service uninstall
+  roamgate service install [--force]
+  roamgate service status
+  roamgate service restart
+  roamgate service reload
+  roamgate service uninstall
 
 Linux uses a systemd user service. macOS uses a launchd LaunchAgent.
 Windows uses a per-user Task Scheduler task that starts at login.
@@ -350,7 +350,10 @@ function prepareServiceAccess(configPath: string): ServiceAccess {
     throw new Error(`invalid PORT in ${configPath}: ${configuredPort}`);
   }
 
-  const password = readEnvironmentValue(contents, "HERDR_GUI_PASSWORD") ?? "";
+  const password =
+    readEnvironmentValue(contents, "ROAMGATE_PASSWORD") ??
+    readEnvironmentValue(contents, "HERDR_GUI_PASSWORD") ??
+    "";
   const usesFixedPassword = password.length > 0;
   if (
     usesFixedPassword ||
@@ -715,7 +718,7 @@ export function runServiceCommand(
     return runServiceAction(command.action, platform, runtime, runCommand);
   } catch (cause) {
     error(`herdr-gui service: ${(cause as Error).message}`);
-    error("Run `herdr-gui service --help` for usage.");
+    error("Run `roamgate service --help` for usage.");
     return 1;
   }
 }

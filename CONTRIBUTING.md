@@ -47,8 +47,15 @@ bun run build:site
 Serve `.pages-dist/` with a local static HTTP server and open `/tutorial/`.
 Also check deployment beneath the `/herdr-studio/` Pages subpath, narrow-screen
 layouts, keyboard navigation, and reading with JavaScript disabled. Generated
-`.pages-dist/` files must not be committed. The Pages workflow rebuilds when
-the tutorial source, renderer, template, or shared website assets change.
+`.pages-dist/` files must not be committed.
+
+Pages deployment is manual so a website update cannot advertise an unpublished
+installer. Publish a Roamgate release as GitHub Latest first, then dispatch
+**Deploy Pages** on `main` from GitHub Actions. The workflow checks the live
+`install-roamgate.sh` URL before uploading the site; missing assets, HTTP errors,
+and network failures block deployment. A source build alone does not satisfy
+this gate. After a repository rename, align the site's installer URL and the
+workflow check before dispatching.
 
 ## Pull Requests
 

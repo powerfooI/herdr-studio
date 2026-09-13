@@ -221,7 +221,7 @@ export function ConfigMenu({
           >
             <div className="config-summary">
               <div>
-                <strong>Herdr Studio</strong>
+                <strong>Roamgate</strong>
                 <span>Version {APP_VERSION}</span>
               </div>
               <span

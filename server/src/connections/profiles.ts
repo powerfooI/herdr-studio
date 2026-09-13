@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, win32 } from "node:path";
 import { validateSshDestination } from "../bridge/ssh-command";
 import { nativeSocketPath } from "../config/server-config";
+import { roamgateEnv } from "../config/environment";
 import { validateConnectionId } from "./protocol";
 import { LEGACY_DEFAULT_CONNECTION_ID } from "./types";
 
@@ -62,7 +63,7 @@ export type PublicConnectionProfile = ConnectionProfile & {
 
 export function defaultConnectionProfilesPath(): string {
   return (
-    process.env.HERDR_GUI_CONNECTIONS_PATH ??
+    roamgateEnv("CONNECTIONS_PATH") ??
     join(homedir(), ".config", "herdr-gui", "connections.json")
   );
 }
@@ -450,7 +451,7 @@ export class ConnectionProfileStore {
   private canHardenDefaultPath(): boolean {
     return (
       this.options.path === undefined &&
-      process.env.HERDR_GUI_CONNECTIONS_PATH === undefined
+      roamgateEnv("CONNECTIONS_PATH") === undefined
     );
   }
 

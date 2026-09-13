@@ -2611,8 +2611,15 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-start">
           <div className="brand">
-            <img className="logo" src="/herdr-icon.png" alt="Herdr" />
-            <span className="brand-title">Studio</span>
+            <img
+              className="logo"
+              src="/roamgate-mark-48.png"
+              srcSet="/roamgate-mark-48.png 2x, /roamgate-mark-72.png 3x"
+              width={24}
+              height={24}
+              alt=""
+            />
+            <span className="brand-title">Roamgate</span>
             <span className="brand-version">v{packageJson.version}</span>
           </div>
           <ConnectionSwitcher />
@@ -2833,7 +2840,7 @@ export default function App() {
               <ToastMark kind="info" loading={s.updateInstalling} />
               <div className="toast-content">
                 <strong>
-                  Herdr Studio {s.updateInfo.latest_version} is available
+                  Roamgate {s.updateInfo.latest_version} is available
                 </strong>
                 <p>
                   Current {s.updateInfo.current_version}

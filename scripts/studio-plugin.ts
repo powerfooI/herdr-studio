@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Thin Herdr plugin shim for Herdr Studio. Herdr invokes the verbs below
+// Thin Herdr plugin shim for Roamgate. Herdr invokes the verbs below
 // through herdr-plugin.toml actions; the verb names and their argv mapping
 // are a frozen contract because managed installs call the action set cached
 // at install time.
@@ -7,8 +7,8 @@
 // Verbs: build, build-source, start, restart, status, url, version,
 // uninstall, panel. The whole shim runs on Bun. `build` downloads the
 // checksum-verified prebuilt release binary matching this checkout's
-// version; `build-source` compiles from source for development. The service
-// verbs (start, restart, status, uninstall) delegate to the binary,
+// version; `build-source` compiles unreleased checkouts before local linking.
+// The service verbs (start, restart, status, uninstall) delegate to the binary,
 // downloading it first when missing. `url` and `version` only read on-disk
 // state. `panel` is the interactive popup TUI behind the manifest [[panes]]
 // entry and downloads on demand for its service keys.
@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BINARY_CANDIDATES =
-  process.platform === "win32" ? ["herdr-gui.exe", "herdr-gui"] : ["herdr-gui"];
+  process.platform === "win32" ? ["roamgate.exe", "roamgate"] : ["roamgate"];
 
 function binaryPath(): string | null {
   for (const name of BINARY_CANDIDATES) {
@@ -69,22 +69,22 @@ function capture(argv: string[]): { code: number; out: string; err: string } {
 }
 
 // Release archives ship one prebuilt binary per platform; `build` downloads
-// and checksum-verifies the archive matching this checkout's version, so
-// plugin users never need a source toolchain. `build-source` compiles from
-// source and remains for development.
+// and checksum-verifies the archive matching this checkout's version.
+// Unreleased checkouts require an explicit `build-source`, then local linking.
 export const PLATFORM_ASSETS: Record<
   string,
   { asset: string; binary: string }
 > = {
-  "darwin-arm64": { asset: "herdr-gui-darwin-arm64", binary: "herdr-gui" },
-  "darwin-x64": { asset: "herdr-gui-darwin-x64", binary: "herdr-gui" },
-  "linux-arm64": { asset: "herdr-gui-linux-arm64", binary: "herdr-gui" },
-  "linux-x64": { asset: "herdr-gui-linux-x64", binary: "herdr-gui" },
-  "win32-arm64": { asset: "herdr-gui-windows-arm64", binary: "herdr-gui.exe" },
-  "win32-x64": { asset: "herdr-gui-windows-x64", binary: "herdr-gui.exe" },
+  "darwin-arm64": { asset: "roamgate-darwin-arm64", binary: "roamgate" },
+  "darwin-x64": { asset: "roamgate-darwin-x64", binary: "roamgate" },
+  "linux-arm64": { asset: "roamgate-linux-arm64", binary: "roamgate" },
+  "linux-x64": { asset: "roamgate-linux-x64", binary: "roamgate" },
+  "win32-arm64": { asset: "roamgate-windows-arm64", binary: "roamgate.exe" },
+  "win32-x64": { asset: "roamgate-windows-x64", binary: "roamgate.exe" },
 };
 
 const RELEASE_REPOSITORY = "powerfooI/herdr-studio";
+const SOURCE_INSTALL_HINT = `For an unreleased checkout, run \`bun scripts/studio-plugin.ts build-source\` in a local clone, then \`herdr plugin link .\`. For release-only installation, select a published Roamgate tag with \`herdr plugin install ${RELEASE_REPOSITORY} --ref vX.Y.Z\`.`;
 
 export function releaseAssetFor(
   platform: string,
@@ -102,7 +102,7 @@ async function downloadPrebuilt(): Promise<number> {
   const target = releaseAssetFor(process.platform, process.arch);
   if (!target) {
     console.error(
-      `studio-plugin: no prebuilt binary for ${process.platform}-${process.arch}`,
+      `studio-plugin: no prebuilt binary for ${process.platform}-${process.arch}. ${SOURCE_INSTALL_HINT}`,
     );
     return 1;
   }
@@ -118,7 +118,7 @@ async function downloadPrebuilt(): Promise<number> {
     ]);
     if (!checksumResponse.ok || !archiveResponse.ok) {
       console.error(
-        `studio-plugin: download failed (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}); does release v${version} exist?`,
+        `studio-plugin: download failed for Roamgate v${version} (checksum HTTP ${checksumResponse.status}, archive HTTP ${archiveResponse.status}). ${SOURCE_INSTALL_HINT}`,
       );
       return 1;
     }
@@ -159,7 +159,7 @@ async function downloadPrebuilt(): Promise<number> {
     return 0;
   } catch (error) {
     console.error(
-      `studio-plugin: download failed: ${error instanceof Error ? error.message : String(error)}`,
+      `studio-plugin: download failed: ${error instanceof Error ? error.message : String(error)}. ${SOURCE_INSTALL_HINT}`,
     );
     return 1;
   } finally {
@@ -180,9 +180,7 @@ function buildSource(): number {
 async function ensureBinary(): Promise<string | null> {
   const existing = binaryPath();
   if (existing) return existing;
-  console.error(
-    "studio-plugin: herdr-gui binary missing, downloading it first",
-  );
+  console.error("studio-plugin: roamgate binary missing, downloading it first");
   if ((await downloadPrebuilt()) !== 0) return null;
   const downloaded = binaryPath();
   if (!downloaded) {
@@ -303,7 +301,7 @@ function statusText(): string {
 
 function renderPanel(message: string) {
   const lines = [
-    "Herdr Studio",
+    "Roamgate",
     "",
     `Status:  ${statusText()}`,
     `URL:     ${computeUrl()}`,
