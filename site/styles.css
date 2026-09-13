@@ -279,8 +279,7 @@
     display: block;
     width: 160px;
     height: auto;
-    border-radius: 8px;
-    background: #faf9f6;
+    filter: brightness(0) invert(0.85);
   }
 
   .primary-nav {
