@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 - 2026-09-13
+
 - Introduce Roamgate, formerly Herdr Studio, as an independent community client
   for Herdr, with its own logo, app icons, and social sharing images.
 - **Breaking:** commands and release assets now use `roamgate`. Old clients
