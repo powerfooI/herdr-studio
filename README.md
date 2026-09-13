@@ -1,9 +1,11 @@
 # Roamgate
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./site/assets/roamgate-lockup-on-charcoal.png" />
-  <img src="./site/assets/roamgate-lockup-charcoal.png" alt="Roamgate logo" width="400" />
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./site/assets/roamgate-lockup-on-charcoal.png" />
+    <img src="./site/assets/roamgate-lockup-charcoal.png" alt="Roamgate logo" width="400" />
+  </picture>
+</p>
 
 An independent, community-built **web and PWA client** for
 [Herdr](https://herdr.dev). Access terminals, inspect agent sessions, and review
