@@ -43,7 +43,7 @@ test.skipIf(!chrome)(
               report('page loaded');
               window.addEventListener('error', event => report('error: ' + event.message));
               window.addEventListener('unhandledrejection', event => report('rejection: ' + event.reason));
-              </script><script src="/filePreviewNavigation.browser.js"></script></body>`,
+              </script><script type="module" src="/filePreviewNavigation.browser.js"></script></body>`,
             { headers: { "Content-Type": "text/html" } },
           );
         }

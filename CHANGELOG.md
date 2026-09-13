@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the Terminal theme menu action as a full-width row on mobile and stop the
+  Terminal Themes dialog subtitle from overlapping section titles.
 - Open relative Markdown document links in the current preview, including heading
   anchors, without opening another Studio window.
 - Keep fast terminal wheel scrolling from jumping backward or replaying stale
