@@ -215,7 +215,7 @@ ${programArguments}
 `;
 }
 
-/** Published <= 0.7.0 identities, used only to prevent duplicate services. */
+/** Published <= 0.7.0 identities, retained until explicit service cutover. */
 export function resolveLegacyServicePaths(
   platform: ServicePlatform,
   homeDir: string,
