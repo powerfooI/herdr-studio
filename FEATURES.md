@@ -244,6 +244,10 @@ Lifecycle to manage saved per-checkout settings.
   rendered as diagrams.
 - Render `.mmd`/`.mermaid` Mermaid sources as diagrams with a Raw/Rendered
   toggle.
+- Follow relative file links in Markdown previews within the current Inspector.
+  Links resolve from the document's directory; leading `/` resolves from the
+  workspace root. Heading fragments scroll within the destination document.
+  External links continue to open in a new browser tab.
 - Preview common images, PDFs, and workspace-local Markdown images; unsupported
   binary files remain download-only.
 - Drag files onto the workspace root or a directory to upload them.
