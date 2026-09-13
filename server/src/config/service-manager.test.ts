@@ -7,9 +7,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import legacyDefinitions from "./service-legacy-definitions.test.json";
 import { tmpdir } from "node:os";
 import {
   runServiceCommand as runServiceCommandWithLegacyCheck,
@@ -21,6 +23,7 @@ import {
   renderWindowsTaskDefinition,
   resolveServicePaths,
   resolveLegacyServicePaths,
+  escapeSystemdExecPath,
 } from "./service-definitions";
 
 // Existing lifecycle cases model a host without legacy services. Dedicated
@@ -54,6 +57,36 @@ function tempHome(): string {
   const path = mkdtempSync(join(tmpdir(), "roamgate-service-"));
   tempDirs.push(path);
   return path;
+}
+
+// Golden templates captured from tag v0.7.0, independent of current renderers.
+function publishedLegacyDefinition(
+  platform: keyof typeof legacyDefinitions,
+  homeDir: string,
+  binary = join(homeDir, "roamgate"),
+): string {
+  const paths = resolveLegacyServicePaths(platform, homeDir);
+  const values: Record<string, string> = {
+    BINARY_PATH: resolve(binary),
+    CONFIG_PATH: paths.config,
+    TASK_NAME: paths.taskName ?? "",
+    STDOUT_PATH: join(homeDir, "Library", "Logs", "herdr-gui.stdout.log"),
+    STDERR_PATH: join(homeDir, "Library", "Logs", "herdr-gui.stderr.log"),
+  };
+  return legacyDefinitions[platform].replace(
+    /BINARY_PATH|CONFIG_PATH|TASK_NAME|STDOUT_PATH|STDERR_PATH/g,
+    (key) => {
+      const value = values[key];
+      if (platform === "systemd") return escapeSystemdExecPath(value);
+      if (platform === "windows-task") return value.replaceAll("'", "''");
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+    },
+  );
 }
 
 function isWindowsTaskQuery(argv: string[]): boolean {
@@ -987,6 +1020,363 @@ describe("service commands", () => {
     expect(code).toBe(0);
     expect(commandCount).toBe(0);
     expect(logs.join("\n")).toContain("No managed systemd service found");
+  });
+});
+
+describe("management after a 0.7.0 in-place update", () => {
+  for (const platform of ["linux", "darwin", "win32"]) {
+    for (const action of ["status", "restart", "reload", "uninstall"]) {
+      test(`${platform} ${action} manages the generated legacy service without migrating it`, () => {
+        const homeDir = tempHome();
+        const servicePlatform =
+          platform === "linux"
+            ? "systemd"
+            : platform === "darwin"
+              ? "launchd"
+              : "windows-task";
+        const legacy = resolveLegacyServicePaths(servicePlatform, homeDir);
+        const current = resolveServicePaths(servicePlatform, homeDir);
+        mkdirSync(dirname(legacy.definition), { recursive: true });
+        mkdirSync(dirname(legacy.config), { recursive: true });
+        const definition = publishedLegacyDefinition(servicePlatform, homeDir);
+        writeFileSync(legacy.definition, definition);
+        writeFileSync(legacy.config, "HOST=127.0.0.1\nPORT=8899\n");
+        const tokenPath = join(dirname(legacy.config), "auth-token");
+        writeFileSync(tokenPath, "a".repeat(64), { mode: 0o600 });
+        const commands: string[][] = [];
+        const logs: string[] = [];
+        expect(
+          runServiceCommandWithLegacyCheck(["service", "install", "--force"], {
+            runtime: {
+              platform,
+              homeDir,
+              execPath: join(homeDir, "roamgate"),
+              argv: [],
+              uid: 501,
+            },
+            runCommand: () => {
+              throw new Error("must not activate a new service");
+            },
+            error: () => undefined,
+          }),
+        ).toBe(1);
+        const code = runServiceCommandWithLegacyCheck(["service", action], {
+          runtime: {
+            platform,
+            homeDir,
+            execPath: join(homeDir, "roamgate"),
+            argv: [],
+            uid: 501,
+          },
+          runCommand: (argv) => {
+            commands.push(argv);
+            if (argv.includes("roamgate.service")) return 4;
+            if (argv.includes("gui/501/dev.roamgate")) return 113;
+            if (
+              isWindowsTaskQuery(argv) &&
+              argv.at(-1)?.includes(current.taskName!)
+            )
+              return 3;
+            return 0;
+          },
+          log: (message) => logs.push(message),
+        });
+        expect(code).toBe(0);
+        const last = commands.at(-1)!;
+        if (action === "uninstall") {
+          expect(
+            commands.some(
+              (argv) =>
+                argv.includes("disable") ||
+                argv.includes("bootout") ||
+                argv.includes("/Delete"),
+            ),
+          ).toBeTrue();
+          expect(existsSync(legacy.definition)).toBeFalse();
+        } else {
+          expect(last.join(" ")).toContain("herdr-gui");
+          expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
+        }
+        // Probes may inspect the new identity, but no mutation may target it.
+        for (const argv of commands) {
+          if (
+            argv.includes("status") ||
+            argv[1] === "print" ||
+            isWindowsTaskQuery(argv)
+          )
+            continue;
+          if (argv.includes("daemon-reload")) continue;
+          expect(argv.join(" ")).toContain("herdr-gui");
+        }
+        expect(readFileSync(legacy.config, "utf8")).toBe(
+          "HOST=127.0.0.1\nPORT=8899\n",
+        );
+        expect(readFileSync(tokenPath, "utf8")).toBe("a".repeat(64));
+        expect(existsSync(current.definition)).toBeFalse();
+        expect(existsSync(current.config)).toBeFalse();
+        expect(logs.join("\n")).toContain("legacy service");
+      });
+    }
+  }
+});
+
+describe("legacy management safety", () => {
+  for (const platform of ["linux", "darwin", "win32"]) {
+    const servicePlatform =
+      platform === "linux"
+        ? "systemd"
+        : platform === "darwin"
+          ? "launchd"
+          : "windows-task";
+    for (const state of [
+      "both definitions",
+      "current loaded",
+      "query failure",
+      "custom legacy",
+      "custom generated identity",
+      "custom generated script",
+      "another binary",
+      "legacy loaded only",
+    ]) {
+      test(`${platform} refuses ambiguous or unverified management: ${state}`, () => {
+        const homeDir = tempHome();
+        const legacy = resolveLegacyServicePaths(servicePlatform, homeDir);
+        const current = resolveServicePaths(servicePlatform, homeDir);
+        let definition = publishedLegacyDefinition(
+          servicePlatform,
+          homeDir,
+          state === "another binary" ? "/other/roamgate" : "/opt/roamgate",
+        );
+        if (state === "custom legacy") definition = "custom definition";
+        if (state === "custom generated identity") {
+          definition =
+            platform === "linux"
+              ? definition.replace("ExecStart=", "ExecStart=/custom/wrapper ")
+              : platform === "darwin"
+                ? definition.replace(
+                    "<string>dev.herdr.herdr-gui</string>",
+                    "<string>dev.roamgate</string>",
+                  )
+                : definition.replace(
+                    "$taskName = ",
+                    "$taskName = 'custom'; # ",
+                  );
+        }
+        if (state === "custom generated script")
+          definition += "\nWrite-Output 'custom command'\n";
+        if (state !== "legacy loaded only") {
+          mkdirSync(dirname(legacy.definition), { recursive: true });
+          writeFileSync(legacy.definition, definition);
+        }
+        if (state === "both definitions") {
+          mkdirSync(dirname(current.definition), { recursive: true });
+          writeFileSync(
+            current.definition,
+            "# Generated by roamgate service install.\n",
+          );
+        }
+        const customized =
+          state.startsWith("custom") || state === "another binary";
+        for (const action of ["status", "restart", "reload", "uninstall"]) {
+          const commands: string[][] = [];
+          expect(
+            runServiceCommandWithLegacyCheck(["service", action], {
+              runtime: {
+                platform,
+                homeDir,
+                execPath: "/opt/roamgate",
+                argv: [],
+                uid: 501,
+              },
+              runCommand: (argv) => {
+                commands.push(argv);
+                if (argv[0] === "launchctl" && argv[2] === "gui/501") return 0;
+                if (customized) {
+                  if (argv.includes("roamgate.service")) return 4;
+                  if (argv.includes("gui/501/dev.roamgate")) return 113;
+                  if (
+                    isWindowsTaskQuery(argv) &&
+                    argv.at(-1)?.includes(current.taskName!)
+                  )
+                    return 3;
+                }
+                return state === "query failure" ? 5 : 0;
+              },
+              log: () => undefined,
+              error: () => undefined,
+            }),
+          ).toBe(1);
+          expect(
+            commands.every(
+              (argv) =>
+                argv.includes("status") ||
+                argv[1] === "print" ||
+                isWindowsTaskQuery(argv),
+            ),
+          ).toBeTrue();
+          if (customized) expect(commands).toHaveLength(0);
+          expect(existsSync(legacy.definition)).toBe(
+            state !== "legacy loaded only",
+          );
+          if (state !== "legacy loaded only")
+            expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
+          expect(existsSync(current.definition)).toBe(
+            state === "both definitions",
+          );
+        }
+      });
+    }
+
+    test(`${platform} preserves the legacy definition when stopping fails`, () => {
+      const homeDir = tempHome();
+      const legacy = resolveLegacyServicePaths(servicePlatform, homeDir);
+      const current = resolveServicePaths(servicePlatform, homeDir);
+      mkdirSync(dirname(legacy.definition), { recursive: true });
+      const definition = publishedLegacyDefinition(
+        servicePlatform,
+        homeDir,
+        "/opt/roamgate",
+      );
+      writeFileSync(legacy.definition, definition);
+      const commands: string[][] = [];
+      expect(
+        runServiceCommandWithLegacyCheck(["service", "uninstall"], {
+          runtime: {
+            platform,
+            homeDir,
+            execPath: "/opt/roamgate",
+            argv: [],
+            uid: 501,
+          },
+          runCommand: (argv) => {
+            commands.push(argv);
+            if (argv.includes("roamgate.service")) return 4;
+            if (argv.includes("gui/501/dev.roamgate")) return 113;
+            if (
+              isWindowsTaskQuery(argv) &&
+              argv.at(-1)?.includes(current.taskName!)
+            )
+              return 3;
+            if (
+              argv.includes("disable") ||
+              argv.includes("bootout") ||
+              isWindowsTaskWait(argv)
+            )
+              return 7;
+            return 0;
+          },
+          log: () => undefined,
+        }),
+      ).toBe(7);
+      expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
+      expect(commands.some((argv) => argv.includes("/Delete"))).toBeFalse();
+    });
+  }
+
+  test("restores the original systemd definition and permissions if daemon-reload fails", () => {
+    const homeDir = tempHome();
+    const legacy = resolveLegacyServicePaths("systemd", homeDir);
+    const definition = publishedLegacyDefinition(
+      "systemd",
+      homeDir,
+      "/opt/roamgate",
+    );
+    mkdirSync(dirname(legacy.definition), { recursive: true });
+    mkdirSync(dirname(legacy.config), { recursive: true });
+    writeFileSync(legacy.definition, definition, { mode: 0o640 });
+    writeFileSync(legacy.config, "HOST=127.0.0.1\n");
+    const tokenPath = join(dirname(legacy.config), "auth-token");
+    writeFileSync(tokenPath, "a".repeat(64));
+    for (const throws of [false, true]) {
+      expect(
+        runServiceCommandWithLegacyCheck(["service", "uninstall"], {
+          runtime: {
+            platform: "linux",
+            homeDir,
+            execPath: "/opt/roamgate",
+            argv: [],
+          },
+          runCommand: (argv) => {
+            if (argv.includes("roamgate.service")) return 4;
+            if (argv.includes("daemon-reload")) {
+              expect(existsSync(legacy.definition)).toBeFalse();
+              if (throws) throw new Error("daemon-reload failed");
+              return 7;
+            }
+            return 0;
+          },
+          log: () => undefined,
+          error: () => undefined,
+        }),
+      ).toBe(throws ? 1 : 7);
+      expect(readFileSync(legacy.definition, "utf8")).toBe(definition);
+      if (process.platform !== "win32")
+        expect(statSync(legacy.definition).mode & 0o777).toBe(0o640);
+      expect(readFileSync(legacy.config, "utf8")).toBe("HOST=127.0.0.1\n");
+      expect(readFileSync(tokenPath, "utf8")).toBe("a".repeat(64));
+      expect(
+        existsSync(`${legacy.definition}.uninstall-${process.pid}`),
+      ).toBeFalse();
+    }
+  });
+
+  test("refuses symlinked legacy definitions without touching the target", () => {
+    if (process.platform === "win32") return;
+    const homeDir = tempHome();
+    const legacy = resolveLegacyServicePaths("systemd", homeDir);
+    const target = join(homeDir, "other.service");
+    writeFileSync(target, "# Generated by herdr-gui service install.\n");
+    mkdirSync(dirname(legacy.definition), { recursive: true });
+    symlinkSync(target, legacy.definition);
+    for (const action of ["status", "restart", "reload", "uninstall"]) {
+      expect(
+        runServiceCommandWithLegacyCheck(["service", action], {
+          runtime: {
+            platform: "linux",
+            homeDir,
+            execPath: "/opt/roamgate",
+            argv: [],
+          },
+          runCommand: () => {
+            throw new Error("must not call native commands");
+          },
+          error: () => undefined,
+        }),
+      ).toBe(1);
+      expect(readFileSync(target, "utf8")).toContain("Generated by herdr-gui");
+    }
+  });
+
+  test("keeps the legacy launchd definition on query errors during uninstall or reload", () => {
+    const homeDir = tempHome();
+    const legacy = resolveLegacyServicePaths("launchd", homeDir);
+    mkdirSync(dirname(legacy.definition), { recursive: true });
+    writeFileSync(
+      legacy.definition,
+      publishedLegacyDefinition("launchd", homeDir, "/opt/roamgate"),
+    );
+    for (const action of ["uninstall", "reload"]) {
+      const commands: string[][] = [];
+      expect(
+        runServiceCommandWithLegacyCheck(["service", action], {
+          runtime: {
+            platform: "darwin",
+            homeDir,
+            execPath: "/opt/roamgate",
+            argv: [],
+            uid: 501,
+          },
+          runCommand: (argv) => {
+            commands.push(argv);
+            if (argv[2] === "gui/501/dev.roamgate") return 113;
+            return argv[2] === "gui/501/dev.herdr.herdr-gui" ? 5 : 0;
+          },
+          log: () => undefined,
+        }),
+      ).toBe(5);
+      expect(commands.every((argv) => argv[1] === "print")).toBeTrue();
+      expect(existsSync(legacy.definition)).toBeTrue();
+    }
   });
 });
 

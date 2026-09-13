@@ -72,7 +72,8 @@ For endpoint negotiation, input, and reconnect contracts, see
 ## Transition from Herdr Studio / herdr-gui
 
 **Roamgate is a breaking distribution change, not an in-place update offered to
-old clients.** Its releases publish only `roamgate-*` archives, checksums, and
+Herdr Studio clients (0.6.2 and earlier).** Its releases publish only `roamgate-*`
+archives, checksums, and
 update manifests, plus `install-roamgate.sh`. Starting with Roamgate 0.7.0,
 the old default update and latest-installer URLs no longer work.
 Old clients may report an update-check error: removing a manifest alone would
@@ -87,22 +88,37 @@ today's Latest installer does not add this migration. Build this source checkout
 explicitly until a release containing these changes is published; do not reuse
 a previously downloaded `server/roamgate` binary.
 
+Roamgate 0.7.0 already uses the new release assets and can receive later in-app
+updates. Updating its binary does not rename its service. If only an unmodified
+0.7.0-generated legacy definition exists and it points to the executable being
+invoked, the new CLI routes `service status`, `restart`, `reload`, and `uninstall`
+to that service, preserving its name, definition and
+environment until explicit cutover. `uninstall` stops/removes that service but
+preserves its configuration and data. No new service is installed automatically.
+Ambiguous old/new services, custom or symlinked legacy definitions, a loaded legacy
+service without its definition, and detection errors require intervention with
+the previous binary or native service manager; the CLI does not guess or silently
+report a successful removal. This compatibility does not restore the retired
+Herdr Studio update channel or migrate plugin registrations.
+
 To switch an existing installation deliberately:
 
 1. Back up the previous executable, service definition, and configuration with
    permissions intact. Include `~/.config/herdr-gui/` and, on Windows,
    `%APPDATA%\herdr-gui\` plus `~/.config/herdr-gui/` for old settings/profiles.
-2. Stop and uninstall the old managed service **using the previous executable**
-   before replacing it: `herdr-gui service uninstall` for Herdr Studio, or
-   `/path/to/previous/roamgate service uninstall` for published 0.7.0. Both
+2. Stop and uninstall the old managed service before installing the new service.
+   Before replacing the executable, use `herdr-gui service uninstall` for Herdr
+   Studio or `/path/to/previous/roamgate service uninstall` for published 0.7.0.
+   After an in-place Roamgate update, `roamgate service uninstall` also handles
+   the sole generated legacy definition as described above. These commands
    preserve configuration. For custom definitions/wrappers, explicitly stop,
    disable, and archive the old definition using its native manager instead;
    review custom arguments and environment before recreating it. Stop unmanaged
    processes too. Do not keep old and new auto-start entries enabled together.
 3. Build the new executable using [source build instructions](#build-a-standalone-executable).
-   Run `./server/roamgate service install` explicitly. Install, restart and reload
-   refuse an installed/loaded legacy service, even with `--force`, before
-   changing configuration or definitions. A detection error also blocks install.
+   Run `./server/roamgate service install` explicitly. Install refuses an
+   installed/loaded legacy service, even with `--force`, before changing
+   configuration or definitions. A detection error also blocks install.
 4. Check service status, login and saved connections. For rollback, uninstall the
    new service with the new binary, then restore the old binary/definition and
    enable only that service. Legacy data remains intact; changes made in the new
